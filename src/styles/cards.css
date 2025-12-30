@@ -1,0 +1,236 @@
+/* src/styles/cards.css */
+
+/* --- 1. Summary View Cards --- */
+/* [UI]: Styling for the card look in lists */
+.zettel-template-card {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 8px;
+	transition: transform 0.1s ease;
+}
+
+/* [UI]: Hover effect - lift up slightly */
+.zettel-template-card:hover {
+	transform: translateY(-1px);
+	border-color: var(--interactive-accent);
+	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.zettel-card-label {
+	font-weight: bold;
+	font-size: 1em;
+}
+
+.zettel-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* --- 2. Modal Grid Cards --- */
+/* [UI]: The grid layout used in the 'Note Creation Modal' */
+.note-cards-container {
+	display: grid;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+/* [UI]: Individual card in the modal grid */
+.note-card {
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 15px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	text-align: center;
+}
+
+.note-card:hover {
+	background-color: var(--background-primary);
+	border-color: var(--interactive-accent);
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.card-emoji {
+	font-size: 2em;
+	margin-bottom: 5px;
+	display: block;
+}
+
+.note-card-title {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+/* --- 3. Category Box (Collapsible Accordion) --- */
+/* [UI]: The main container for a Category (e.g., FLEETING) */
+.zettel-type-box {
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	margin-bottom: 15px;
+	overflow: hidden; /* Ensures the list is hidden when collapsed */
+	transition: box-shadow 0.2s ease;
+}
+
+.zettel-type-box:hover {
+	box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+	border-color: var(--interactive-accent);
+}
+
+/* [UI]: The Header Bar of the category box */
+.zettel-type-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 15px 20px;
+	cursor: pointer; /* Indicates it's clickable */
+	background-color: var(--background-secondary-alt);
+	border-bottom: 1px solid transparent;
+}
+
+/* [UI]: Visual change when expanded */
+.zettel-type-box.is-expanded .zettel-type-header {
+	border-bottom-color: var(--background-modifier-border);
+}
+
+.zettel-type-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zettel-type-title {
+	font-weight: 700;
+	font-size: 1.1em;
+	text-transform: uppercase;
+	color: var(--text-normal);
+}
+
+.zettel-type-meta {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	display: flex;
+	gap: 10px;
+}
+
+/* --- [NEW] Header Actions (Right Side) --- */
+/* [UI]: Container for the Plus button and Chevron */
+.zettel-type-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+/* [UI]: Style for icon buttons in the header */
+.zettel-header-icon, .zettel-type-toggle {
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 6px;
+	border-radius: 4px;
+	transition: all 0.2s ease;
+}
+
+.zettel-header-icon:hover, .zettel-type-toggle:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+/* [UI]: Rotate the chevron arrow based on state */
+.zettel-type-toggle svg {
+	transition: transform 0.2s ease;
+	transform: rotate(-90deg); /* Pointing Left (Collapsed) */
+}
+
+.zettel-type-box.is-expanded .zettel-type-toggle svg {
+	transform: rotate(0deg); /* Pointing Down (Expanded) */
+}
+
+/* --- 4. Scrollable Template List --- */
+/* [UI]: The area containing the actual templates */
+.zettel-template-list {
+	display: none; /* Hidden by default */
+	max-height: 300px; /* Force scrolling if too tall */
+	overflow-y: auto;
+	padding: 10px;
+	background-color: var(--background-primary);
+}
+
+/* [UI]: Show list when parent has 'is-expanded' class */
+.zettel-type-box.is-expanded .zettel-template-list {
+	display: block;
+}
+
+/* [UI]: A single row in the template list */
+.zettel-list-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	border-radius: 6px;
+	margin-bottom: 4px;
+	transition: background 0.2s;
+}
+
+.zettel-list-item:hover {
+	background-color: var(--background-secondary);
+}
+
+.zettel-item-name {
+	flex: 1;
+	font-weight: 500;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.zettel-item-actions {
+	display: flex;
+	gap: 6px;
+	opacity: 0.6;
+}
+
+.zettel-list-item:hover .zettel-item-actions {
+	opacity: 1;
+}
+
+/* --- 5. Default Star Icon --- */
+.zettel-default-icon {
+	color: var(--text-faint);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	padding: 4px;
+	border-radius: 4px;
+	transition: color 0.2s ease;
+}
+
+.zettel-default-icon:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+/* [UI]: Force gold color when selected */
+.zettel-default-icon.is-selected {
+	color: var(--interactive-accent) !important;
+	opacity: 1;
+}
+
+.zettel-default-icon svg {
+	width: 16px;
+	height: 16px;
+}

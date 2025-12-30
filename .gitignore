@@ -151,3 +151,13 @@ coverage/
 .vscode/
 *.swp
 .DS_Store
+
+# local publish tool: yalc
+.yalc
+yalc.lock
+
+
+# Plugin File
+main.js
+data.json
+styles.css

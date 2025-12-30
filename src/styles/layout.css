@@ -1,0 +1,32 @@
+.zettel-settings-wrapper {
+	padding: 10px 5px;
+	max-width: 800px;
+	margin: 0 auto;
+}
+
+.zettel-view-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 10px;
+}
+
+.zettel-category-header {
+	margin-top: 30px;
+	font-size: 0.85em;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 5px;
+}
+
+.no-options {
+	text-align: center;
+	color: var(--text-muted);
+	font-style: italic;
+	padding: 20px;
+}

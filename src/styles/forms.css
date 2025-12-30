@@ -1,0 +1,61 @@
+/* Property Editor (3-Column Grid) */
+.zettel-prop-row {
+	display: grid;
+	grid-template-columns: 140px 1fr auto;
+	gap: 15px;
+	align-items: center;
+	background-color: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	transition: all 0.2s ease;
+}
+
+.zettel-prop-row:hover {
+	background-color: var(--background-primary);
+	border-color: var(--interactive-accent);
+}
+
+.zettel-prop-label {
+	font-weight: 600;
+	font-size: 0.9em;
+	color: var(--text-normal);
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zettel-prop-input {
+	display: flex;
+	align-items: center;
+	width: 100%;
+}
+.zettel-prop-input input {
+	width: 100%;
+}
+
+.zettel-prop-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+/* Section Blocks */
+.zettel-section-box {
+	background-color: var(--background-primary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 6px;
+	padding: 15px;
+	margin-bottom: 15px;
+}
+
+.zettel-section-header-row {
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 10px;
+	margin-bottom: 10px;
+	align-items: center;
+}

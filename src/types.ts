@@ -1,26 +1,22 @@
 // src/types.ts
-import {
-	NoteType,
-	NoteTemplateConfig,
-	IKeyValue
-} from "obsidian-lib-mknote"; // Using types from the new library
+import { NoteType, NoteTemplateConfig } from 'markdown-note-orm';
 
 export interface INoteOptionExtraParams {
 	tags?: string[];
 	prefix?: string;
-	properties?: IKeyValue<unknown>[];
+	properties?: Record<string, unknown>[];
 }
 
 export interface INoteOption {
 	enabled: boolean;
 	type: NoteType;
 	label: string;
+	isDefault?: boolean;
 	toKanban?: boolean;
 	emoji?: string;
 	path?: string;
-	// Graphical template config can be stored per option or globally per type
 	templateConfig?: NoteTemplateConfig;
-	metadata?: any;
+	metadata?: unknown;
 	folderNote?: boolean;
 	openAfterCreation?: boolean;
 	openMode?: string;
@@ -37,12 +33,18 @@ export interface ZettelkastenSettings {
 	autoOpenNewNote: boolean;
 	showUpgradeNotifications: boolean;
 	folderNotesEnabled: boolean;
-	templateDirPath: string; // Keep for backward compatibility if needed
-
-	/**
-	 * Graphical template configurations for each core note type.
-	 * This replaces the old path-based template system.
-	 */
-	templateConfigs: Record<NoteType, NoteTemplateConfig>;
+	templateDirPath: string;
 	createNoteOptions: INoteOption[];
+	mySetting: string;
 }
+
+export interface NoteCategory {
+	type: NoteType;
+	label: string;
+	icon: string;
+	className: string;
+	upgradePath: NoteType[];
+	description?: string; // Optional description for tooltip or subtitle
+}
+
+
