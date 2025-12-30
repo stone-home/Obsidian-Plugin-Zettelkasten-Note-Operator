@@ -1,8 +1,8 @@
 {
-  "name": "template-obsidian-plugin",
-  "version": "0.0.0-development",
-  "description": "Template for Development of Obsidian Plugin",
-  "main": "src/main.js",
+  "name": "obsidian-lib-zettelkasten-operator",
+  "version": "0.0.0",
+  "description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
+  "main": "src/main.ts",
   "scripts": {
     "prepare": "husky",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
@@ -44,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stone-home/Template-Obsidian-Plugin.git"
+    "url": "git+https://github.com/stone-home/Obsidian-Plugin-Zettelkasten-Note-Operator.git"
   },
   "lint-staged": {
     "*.tex": [

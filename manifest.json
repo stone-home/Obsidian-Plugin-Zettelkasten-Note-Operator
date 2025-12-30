@@ -1,9 +1,9 @@
 {
-  "id": "template-obsidian-plugin",
-  "name": "Template for Development of Obsidian Plugin",
+  "id": "zettelkasten-operator",
+  "name": "Zettelkasten Notes Operator",
   "version": "1.0.0",
   "minAppVersion": "0.15.0",
-  "description": "Here need to fill a brief of plugin",
+  "description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
   "author": "Stone",
-  "authorUrl": "https://github.com/stone-home/Template-Obsidian-Plugin.git#readme"
+  "authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Zettelkasten-Note-Operator#readme"
 }
