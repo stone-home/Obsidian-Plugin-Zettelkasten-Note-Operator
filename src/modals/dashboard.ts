@@ -181,7 +181,6 @@ export class Dashboard extends Modal {
 		const infoCard = section.createDiv('info-card');
 
 		const activeNote = await this.factory.loadActiveNote();
-
 		if (activeNote) {
 			this.renderInfoRow(infoCard, 'Name:', activeNote.title);
 			this.renderInfoRow(
@@ -197,11 +196,10 @@ export class Dashboard extends Modal {
 				tags.length > 0 ? tags.join(', ') : 'None'
 			);
 		} else {
-			const emptyState = infoCard.createDiv('empty-state');
+			const emptyState = infoCard.createDiv('zk-active-empty');
 			setIcon(emptyState, 'file-minus');
 			emptyState.createDiv({
 				text: 'No active Markdown note.',
-				attr: { style: 'margin-top: 8px;' },
 			});
 		}
 	}

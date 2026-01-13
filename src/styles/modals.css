@@ -222,6 +222,25 @@
 	font-style: italic;
 }
 
+.zk-active-empty {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 10px;
+	width: 100%;
+	padding: 4px 0;
+	color: var(--text-muted);
+	font-style: italic;
+	font-size: 0.85rem;
+}
+
+.zk-active-empty svg {
+	width: 18px;
+	height: 18px;
+	opacity: 0.7;
+}
+
+
 /* --- Responsive Adjustments --- */
 @media (max-width: 400px) {
 	.quick-access-btn .btn-label {
