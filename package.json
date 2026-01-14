@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
-    "markdown-note-orm": "file:.yalc/markdown-note-orm",
+    "markdown-note-orm": "^1.1.1",
     "winston": "^3.19.0"
   },
   "repository": {
@@ -48,11 +48,11 @@
     "url": "git+https://github.com/stone-home/Obsidian-Plugin-Zettelkasten-Note-Operator.git"
   },
   "lint-staged": {
-	"*.{js,ts,tsx}": [
-	  "eslint --fix",
-	  "prettier --write",
-	  "npm run typecheck"
-	],
+    "*.{js,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write",
+      "npm run typecheck"
+    ],
     "*.{json,md}": [
       "prettier --write"
     ]
