@@ -1,9 +1,9 @@
 {
-  "id": "zettelkasten-operator",
-  "name": "Zettelkasten Notes Operator",
-  "version": "1.0.0",
-  "minAppVersion": "0.15.0",
-  "description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
-  "author": "Stone",
-  "authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Zettelkasten-Note-Operator#readme"
+	"id": "zettelkasten-operator",
+	"name": "Zettelkasten Notes Operator",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
+	"author": "Stone",
+	"authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Zettelkasten-Note-Operator#readme"
 }
