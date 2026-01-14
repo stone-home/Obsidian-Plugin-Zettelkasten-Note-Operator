@@ -1,7 +1,7 @@
-import { App, Modal, Notice, setIcon } from 'obsidian';
-import { NoteTypeMap } from "markdown-note-orm"
+import { App, Modal, Notice, setIcon, TFolder, FuzzySuggestModal } from 'obsidian';
+import { NoteTypeMap, INoteFrontmatter } from "markdown-note-orm"
 import type { NoteFactory } from '../service/factory';
-import { INoteOption, ZettelkastenSettings } from '../types';
+import {INoteOption, INoteOptionExtraParams, ZettelkastenSettings} from '../types';
 import { DEFAULT_NOTE_CATEGORIES } from "../constants"
 import { Logger } from '../logger';
 import { TemplateGridModal } from './template';
@@ -11,6 +11,45 @@ export type OnNoteCreateCallback = (
 	option: INoteOption,
 	title: string
 ) => Promise<void>;
+
+/**
+ * [Class]: FolderFuzzyModal
+ * [Purpose]: Select a folder, but ONLY if it is within the allowed root path.
+ */
+class FolderFuzzyModal extends FuzzySuggestModal<TFolder> {
+	private rootPath: string;
+	private onSelect: (folder: TFolder) => void;
+
+	constructor(app: App, rootPath: string, onSelect: (folder: TFolder) => void) {
+		super(app);
+		this.rootPath = rootPath;
+		this.onSelect = onSelect;
+		this.setPlaceholder(`Move to folder in: ${rootPath || 'Root'}...`);
+	}
+
+	getItems(): TFolder[] {
+		const allFiles = this.app.vault.getAllLoadedFiles();
+
+		// [LOGIC]: Filter for folders that start with the rootPath
+		return allFiles.filter((f): f is TFolder => {
+			if (!(f instanceof TFolder)) return false;
+
+			const normalizedRoot = this.rootPath ? this.rootPath.replace(/\/$/, '') : '';
+			if (!normalizedRoot) return true; // If root setting is empty, allow all
+
+			return f.path === normalizedRoot || f.path.startsWith(normalizedRoot + '/');
+		});
+	}
+
+	getItemText(item: TFolder): string {
+		return item.path;
+	}
+
+	onChooseItem(item: TFolder, evt: MouseEvent | KeyboardEvent): void {
+		this.onSelect(item);
+	}
+}
+
 
 export class Dashboard extends Modal {
 	private settings: ZettelkastenSettings;
@@ -72,7 +111,7 @@ export class Dashboard extends Modal {
 		});
 	}
 
-	private renderCategoryGrid(container: HTMLElement, types: (keyof NoteTypeMap)[]) {
+	private renderCategoryGrid(container: HTMLElement, types: (keyof NoteTypeMap)[], noteExtraParams?: INoteFrontmatter) {
 		const grid = container.createDiv('note-type-grid');
 
 		types.forEach((nType) => {
@@ -92,29 +131,11 @@ export class Dashboard extends Modal {
 					nType,
 					this.settings.createNoteOptions,
 					(selectedOption) => {
-						let targetPath = '';
-						if (selectedOption.path) {
-							targetPath = selectedOption.path;
-						} else {
-							// Centralized path logic
-							switch (nType) {
-								case 'fleeting':
-									targetPath = this.settings.fleetingPath;
-									break;
-								case 'literature':
-									targetPath = this.settings.literaturePath;
-									break;
-								case 'permanent':
-									targetPath = this.settings.permanentPath;
-									break;
-								case 'atom':
-									targetPath = this.settings.atomPath;
-									break;
-							}
-						}
-
-						new FileNameModal(this.app, targetPath, async (title) => {
+						new FileNameModal(this.app, selectedOption.specificFolder, async (title) => {
 							try {
+								if (noteExtraParams) {
+									selectedOption.extraInfo = noteExtraParams;
+								}
 								await this.onComplete(selectedOption, title);
 								this.close();
 							} catch (e) {
@@ -142,7 +163,6 @@ export class Dashboard extends Modal {
 	}
 
 	private async renderUpgradeSection(container: HTMLElement): Promise<void> {
-		const section = container.createDiv('dashboard-section new-note-section');
 
 		const activeNote = await this.factory.loadActiveNote();
 		if (activeNote) {
@@ -154,12 +174,23 @@ export class Dashboard extends Modal {
 			// Only render if there are upgrade paths
 			if (!upgradePathList || upgradePathList.length === 0) return;
 
+			const section = container.createDiv('dashboard-section new-note-section');
 			const header = section.createDiv('section-header');
 			header.createEl('h3', { text: 'Upgrade' });
 			header.createEl('span', { text: 'Select type', cls: 'section-subtitle' });
 
 			// Reuse the logic with the specific list
-			this.renderCategoryGrid(section, upgradePathList);
+			this.renderCategoryGrid(
+				section,
+				upgradePathList,
+				{
+					properties: {
+						sources: [
+							`[[${activeNote.title}}]]`
+						]
+					}
+				}
+			);
 		}
 	}
 
@@ -169,18 +200,58 @@ export class Dashboard extends Modal {
 		const headerRow = section.createDiv('section-header-row');
 		headerRow.createEl('h3', { text: 'Active Context' });
 
+		const infoCard = section.createDiv('info-card');
+		const activeNote = await this.factory.loadActiveNote();
 		const moveButton = headerRow.createEl('button', {
 			cls: 'clickable-icon',
 			attr: { 'aria-label': 'Move Note' },
 		});
 		setIcon(moveButton, 'folder-input');
 		moveButton.addEventListener('click', async () => {
-			new Notice('Move function not implemented yet');
+			const activeNote = await this.factory.loadActiveNote();
+			if (!activeNote) {
+				new Notice('No active note to move.');
+				return;
+			}
+
+			// 1. Get current type (handle lowercase as requested)
+			const rawType = activeNote.properties.get('type') as string;
+			const currentType = (rawType ? rawType.toLowerCase() : 'fleeting') as keyof NoteTypeMap;
+
+			// 2. Determine allowed Root Path based on Settings
+			let allowedRoot = '';
+			switch (currentType) {
+				case 'fleeting': allowedRoot = this.settings.fleetingPath; break;
+				case 'literature': allowedRoot = this.settings.literaturePath; break;
+				case 'permanent': allowedRoot = this.settings.permanentPath; break;
+				case 'atom': allowedRoot = this.settings.atomPath; break;
+				default:
+					// Fallback: If type is unknown, maybe allow root? or warn?
+					// For safety, defaulting to fleetingPath or root if undefined
+					allowedRoot = this.settings.fleetingPath || '';
+					break;
+			}
+
+			// 3. Open Folder Selection Modal restricted to allowedRoot
+			new FolderFuzzyModal(this.app, allowedRoot, async (folder) => {
+				try {
+					const fileName = activeNote.title
+					const newPath = `${folder.path}/${fileName}`;
+
+					// 4. Move
+					await activeNote.moveTo(newPath);
+					new Notice(`Moved to ${folder.path}`);
+
+					// 5. Refresh
+					this.contentEl.empty();
+					this.onOpen();
+				} catch (e) {
+					this.logger.error('Failed to move note', e);
+					new Notice('Move failed.');
+				}
+			}).open();
 		});
 
-		const infoCard = section.createDiv('info-card');
-
-		const activeNote = await this.factory.loadActiveNote();
 		if (activeNote) {
 			this.renderInfoRow(infoCard, 'Name:', activeNote.title);
 			this.renderInfoRow(

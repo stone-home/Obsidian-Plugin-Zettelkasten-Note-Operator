@@ -11,6 +11,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import MyPlugin from './main';
+import { ZettelkastenSettings } from "./types";
 import { NoteType } from 'markdown-note-orm';
 
 /**
@@ -35,7 +36,6 @@ class PropertyCreationModal extends Modal {
 		contentEl.createEl('h2', { text: 'Add New Property', cls: 'modal-title' });
 
 		const container = contentEl.createDiv();
-		// [FIX]: Using attr: { style: ... } to avoid TS2353 error
 		container.setAttr('style', 'display:flex; flex-direction:column; gap:15px');
 
 		// --- Input: Property Name ---
@@ -50,7 +50,7 @@ class PropertyCreationModal extends Modal {
 		nameInput.setPlaceholder('e.g. status, tags');
 		nameInput.inputEl.style.width = '100%';
 		nameInput.onChange((v) => (this.name = v));
-		nameInput.inputEl.focus(); // [UI]: Auto-focus for better UX
+		nameInput.inputEl.focus();
 
 		// --- Input: Data Type Dropdown ---
 		const typeDiv = container.createDiv();
@@ -191,12 +191,31 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	private renderGeneralSettings(containerEl: HTMLElement) {
 		containerEl.createEl('h2', { text: 'General Configuration' });
-		new Setting(containerEl).setName('Common Setting').addText((text) =>
-			text.setValue(this.plugin.settings.mySetting).onChange(async (value) => {
-				this.plugin.settings.mySetting = value;
+		// Default folder configuration for each type of note
+		new Setting(containerEl).setName("Fleeting Default Path").addText(t => {
+			t.setValue(this.plugin.settings.fleetingPath).onChange(async (v) => {
+				this.plugin.settings.fleetingPath = v;
 				await this.plugin.saveSettings();
 			})
-		);
+		})
+		new Setting(containerEl).setName("Literature Default Path").addText(t => {
+			t.setValue(this.plugin.settings.literaturePath).onChange(async (v) => {
+				this.plugin.settings.literaturePath = v;
+				await this.plugin.saveSettings();
+			})
+		})
+		new Setting(containerEl).setName("Atom Default Path").addText(t => {
+			t.setValue(this.plugin.settings.atomPath).onChange(async (v) => {
+				this.plugin.settings.atomPath = v;
+				await this.plugin.saveSettings();
+			})
+		})
+		new Setting(containerEl).setName("Permanent Default Path").addText(t => {
+			t.setValue(this.plugin.settings.permanentPath).onChange(async (v) => {
+				this.plugin.settings.permanentPath = v;
+				await this.plugin.saveSettings();
+			})
+		})
 	}
 
 	// --- [VIEW]: Template List (Accordion Summary) ---
@@ -262,10 +281,13 @@ export class SampleSettingTab extends PluginSettingTab {
 			e.stopPropagation(); // [CRITICAL]: Stop click from bubbling up to toggle the accordion
 
 			// Create new template data
+			const settingKey = `${type.toLowerCase()}Path` as keyof ZettelkastenSettings;
+			const defaultPath = this.plugin.settings[settingKey] as string;
 			this.plugin.settings.createNoteOptions.push({
 				enabled: true,
 				type: type,
 				label: `New ${type} Template`,
+				specificFolder: defaultPath,
 				isDefault: false,
 				templateConfig: { properties: {}, sections: [] },
 			});
@@ -382,6 +404,16 @@ export class SampleSettingTab extends PluginSettingTab {
 				await this.plugin.saveSettings();
 			})
 		);
+
+		new Setting(containerEl).setName('Brief of Template').addText((t) =>
+			t.setPlaceholder("introduce your template here").setValue(option.brief || "").onChange(async (v) => {
+				option.brief = v;
+				await this.plugin.saveSettings();
+			})
+		);
+
+		// The default dir path for each type
+		// The value of specificFolder should be also changed when type is changed.
 		new Setting(containerEl).setName('Category').addDropdown((d) =>
 			d
 				.addOptions({
@@ -392,7 +424,29 @@ export class SampleSettingTab extends PluginSettingTab {
 				})
 				.setValue(option.type)
 				.onChange(async (v) => {
+					const settingKey = `${v.toLowerCase()}Path` as keyof ZettelkastenSettings;
 					option.type = v as NoteType;
+					option.specificFolder = this.plugin.settings[settingKey] as string;
+					await this.plugin.saveSettings();
+					this.display();
+				})
+		);
+
+		new Setting(containerEl).setName('Specific Folder').addText((t) => {
+			t.setValue(option.specificFolder)
+				.onChange(async (v) => {
+					option.specificFolder = v;
+					await this.plugin.saveSettings();
+				});
+		});
+
+		new Setting(containerEl).setName('Prefix').addText((t) =>
+			t.setValue(option.extraInfo?.prefix || '$date')
+				.onChange(async (v) => {
+					if (!option.extraInfo) {
+						option.extraInfo = {};
+					}
+					option.extraInfo.prefix = v;
 					await this.plugin.saveSettings();
 				})
 		);
