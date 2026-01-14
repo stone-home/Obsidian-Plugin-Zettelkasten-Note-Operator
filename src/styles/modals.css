@@ -1,0 +1,249 @@
+/* src/styles/modals.css */
+
+/* --- Main Modal Container (Dashboard & Template Grid) --- */
+/* Common styling for the content wrapper of our custom modals */
+.zettelkasten-dashboard-modal,
+.zettelkasten-template-modal {
+	padding: 20px;
+	max-width: 90vw;
+	min-width: 510px;
+	width: fit-content;
+}
+
+/* --- Dashboard Specific --- */
+.dashboard-header .modal-title {
+	text-align: center;
+	font-size: 1.4rem;
+	font-weight: 700;
+	margin-bottom: 0.5rem;
+	color: var(--text-normal);
+}
+
+/* --- Generic Sections --- */
+.dashboard-section {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+	margin-bottom: 8px;
+}
+
+.section-header h3 {
+	margin: 0;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.section-subtitle {
+	font-size: 0.8rem;
+	color: var(--text-faint);
+}
+
+/* --- Quick Access (Small Buttons) --- */
+.quick-access-grid {
+	display: grid;
+	/* Adaptive columns: fit as many 100px items as possible */
+	grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+	gap: 10px;
+}
+
+.quick-access-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 10px;
+	background-color: var(--background-secondary);
+	border: 1px solid transparent;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-shadow: none;
+}
+
+.quick-access-btn:hover {
+	background-color: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border);
+	transform: translateY(-1px);
+}
+
+.quick-access-btn .btn-icon svg {
+	width: 15px;
+	height: 15px;
+	color: var(--text-muted);
+}
+
+.quick-access-btn .btn-label {
+	font-size: 0.8rem;
+	font-weight: 500;
+	color: var(--text-normal);
+	white-space: nowrap;
+}
+
+/* --- New Note Section & Template Section (Shared Grid Styles) --- */
+.note-type-grid,
+.template-grid {
+	display: grid;
+	/* Adaptive columns: usually 2, but 1 on tiny screens */
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+}
+
+.note-type-card,
+.template-card {
+	display: flex;
+	align-items: center;
+	padding: 12px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	cursor: pointer;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	position: relative;
+	overflow: hidden;
+}
+
+.note-type-card:hover,
+.template-card:hover {
+	background: var(--background-primary);
+	border-color: var(--interactive-accent);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+	transform: translateY(-2px);
+}
+
+/* Icon wrappers */
+.card-icon-wrapper,
+.template-icon-wrapper {
+	background: var(--background-modifier-form-field);
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 10px;
+	flex-shrink: 0;
+}
+
+.note-type-card svg,
+.template-card svg {
+	width: 16px;
+	height: 16px;
+	color: var(--text-accent);
+}
+
+.card-label,
+.template-label {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-normal);
+	word-break: break-word;
+}
+
+/* --- Template Grid Modal Specifics --- */
+.template-modal-header h2 {
+	text-align: center;
+	margin-bottom: 1rem;
+}
+
+.template-card .template-desc {
+	display: block;
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	font-weight: normal;
+	margin-top: 2px;
+}
+
+
+/* --- Active Note Section --- */
+.section-header-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
+}
+
+.section-header-row h3 {
+	margin: 0;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.info-card {
+	background: var(--background-secondary-alt);
+	border-radius: 8px;
+	padding: 10px 12px;
+	font-size: 0.85rem;
+}
+
+.info-row {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 4px;
+	align-items: baseline;
+}
+
+.info-label {
+	color: var(--text-muted);
+	font-weight: 500;
+	min-width: 50px;
+	font-size: 0.8rem;
+}
+
+.info-value {
+	color: var(--text-normal);
+	font-weight: 400;
+	word-break: break-all;
+	flex: 1;
+}
+
+.empty-state {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: var(--text-muted);
+	padding: 8px;
+	font-style: italic;
+}
+
+.zk-active-empty {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 10px;
+	width: 100%;
+	padding: 4px 0;
+	color: var(--text-muted);
+	font-style: italic;
+	font-size: 0.85rem;
+}
+
+.zk-active-empty svg {
+	width: 18px;
+	height: 18px;
+	opacity: 0.7;
+}
+
+
+/* --- Responsive Adjustments --- */
+@media (max-width: 400px) {
+	.quick-access-btn .btn-label {
+		display: none; /* Hide labels on tiny screens */
+	}
+}
