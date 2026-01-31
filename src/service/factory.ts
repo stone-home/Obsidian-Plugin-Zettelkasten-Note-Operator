@@ -4,7 +4,7 @@ import {
 	ZettelNoteModel,
 	NoteType,
 	NoteTypeMap,
-	NoteTemplateConfig,
+	NoteTemplateConfig, INoteFrontmatter,
 } from 'markdown-note-orm';
 import { ZettelkastenSettings } from '../types';
 import { Logger } from '../logger';
@@ -45,35 +45,24 @@ export class NoteFactory extends Component {
 			this,
 			async (option, title) => {
 				try {
-					let targetFolder = '';
-					if (option.path) {
-						targetFolder = option.path;
-					} else {
-						switch (option.type) {
-							case 'fleeting':
-								targetFolder = this.settings.fleetingPath;
-								break;
-							case 'literature':
-								targetFolder = this.settings.literaturePath;
-								break;
-							case 'permanent':
-								targetFolder = this.settings.permanentPath;
-								break;
-							case 'atom':
-								targetFolder = this.settings.atomPath;
-								break;
-						}
+					if (option.extraInfo?.prefix) {
+						title = `option.extraInfo.prefix-${title}`
 					}
-
-					await this.createZettel(
+					let targetFolder = option.specificFolder;
+					const note = await this.createZettel(
 						option.type,
 						title,
 						targetFolder,
-						option.templateConfig
+						option.templateConfig,
+						option.extraInfo?.properties
 					);
 
-					if (this.settings.autoOpenNewNote) {
+					if (option.openAfterCreation || this.settings.autoOpenNewNote) {
 						// this.app.workspace.openLinkText(...)
+						const fullPath = `${targetFolder}/${title}.md`;
+						await this.app.workspace.openLinkText(fullPath, "", false, {
+							state: { mode: "source" },
+						});
 					}
 				} catch (error) {
 					this.logger.error('Failed to create note', error);
@@ -87,7 +76,8 @@ export class NoteFactory extends Component {
 		type: K,
 		title: string,
 		folderPath: string,
-		specificConfig?: NoteTemplateConfig
+		specificConfig?: NoteTemplateConfig,
+		noteExtraParams?: INoteFrontmatter
 	): Promise<ZettelNoteModel<NoteTypeMap[K]>> {
 		const fullPath = `${folderPath}/${title}.md`;
 		const note = await LibFactory.createByType(
@@ -97,6 +87,15 @@ export class NoteFactory extends Component {
 			title,
 			specificConfig
 		);
+		if (noteExtraParams) {
+			// Check if batchUpdate exists (it might be on .properties or the note itself depending on lib version)
+			if (note.properties && typeof (note.properties as any).batchUpdate === 'function') {
+				(note.properties as any).batchUpdate(noteExtraParams);
+			} else {
+				// Fallback: Manual assignment
+				Object.assign(note.properties, noteExtraParams);
+			}
+		}
 		await note.save();
 		this.logger.info(`Zettel created: ${title} at ${folderPath}`);
 		new Notice(`Created: ${title}`);
