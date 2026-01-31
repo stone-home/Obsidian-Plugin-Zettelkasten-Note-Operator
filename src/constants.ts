@@ -11,6 +11,9 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	showUpgradeNotifications: true,
 	folderNotesEnabled: false,
 	templateDirPath: 'Templates',
+	dataviewEnabled: true,
+	dataviewQueryPath: 'dataview-scripts',
+	dataviewCodeBlockType: 'zettelkasten-query',
 	createNoteOptions: [],
 };
 

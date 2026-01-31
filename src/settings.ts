@@ -11,6 +11,7 @@ import {
 	setIcon,
 } from 'obsidian';
 import MyPlugin from './main';
+import { DataviewCommand } from "./dataview/command";
 import { ZettelkastenSettings } from "./types";
 import { NoteType } from 'markdown-note-orm';
 
@@ -216,6 +217,57 @@ export class SampleSettingTab extends PluginSettingTab {
 				await this.plugin.saveSettings();
 			})
 		})
+
+		containerEl.createEl('h2', { text: 'Dataview Integration' });
+
+		const refreshDataview = async () => {
+			if (!this.plugin.settings.dataviewEnabled) {
+				this.plugin.dataview?.unload();
+				this.plugin.dataview = undefined;
+				return;
+			}
+			this.plugin.dataview?.unload();
+			this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
+			await this.plugin.dataview.initialize();
+		};
+
+		new Setting(containerEl)
+			.setName("Enable Dataview scripts")
+			.setDesc("Load Dataview JS scripts from a vault folder.")
+			.addToggle(t => {
+				t.setValue(this.plugin.settings.dataviewEnabled)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewEnabled = v;
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Dataview scripts folder")
+			.setDesc("Vault-relative folder that stores Dataview JS scripts.")
+			.addText(t => {
+				t.setPlaceholder("dataview-scripts")
+					.setValue(this.plugin.settings.dataviewQueryPath)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewQueryPath = v.trim() || "dataview-scripts";
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Dataview code block type")
+			.setDesc("Language name used in code blocks (e.g. zettelkasten-query).")
+			.addText(t => {
+				t.setPlaceholder("zettelkasten-query")
+					.setValue(this.plugin.settings.dataviewCodeBlockType)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewCodeBlockType = v.trim() || "zettelkasten-query";
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
+			});
 	}
 
 	// --- [VIEW]: Template List (Accordion Summary) ---

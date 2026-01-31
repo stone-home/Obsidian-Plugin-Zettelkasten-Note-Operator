@@ -32,6 +32,9 @@ export interface ZettelkastenSettings {
 	showUpgradeNotifications: boolean;
 	folderNotesEnabled: boolean;
 	templateDirPath: string;
+	dataviewEnabled: boolean;
+	dataviewQueryPath: string;
+	dataviewCodeBlockType: string;
 	createNoteOptions: INoteOption[];
 }
 
