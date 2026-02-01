@@ -11,9 +11,9 @@ import {
 	setIcon,
 } from 'obsidian';
 import MyPlugin from './main';
-import { DataviewCommand } from "./dataview/command";
 import { ZettelkastenSettings } from "./types";
 import { NoteType } from 'markdown-note-orm';
+import { DataviewCommand } from "./dataview/command";
 
 /**
  * [Class]: PropertyCreationModal
@@ -218,6 +218,24 @@ export class SampleSettingTab extends PluginSettingTab {
 			})
 		})
 
+		containerEl.createEl('h2', { text: 'Project Management' });
+		new Setting(containerEl).setName("Research Root Path").addText(t => {
+			t.setPlaceholder("Research")
+				.setValue(this.plugin.settings.researchRootPath)
+				.onChange(async (v) => {
+					this.plugin.settings.researchRootPath = v.trim() || "Research";
+					await this.plugin.saveSettings();
+				});
+		});
+		new Setting(containerEl).setName("Projects Root Path").addText(t => {
+			t.setPlaceholder("Projects")
+				.setValue(this.plugin.settings.projectRootPath)
+				.onChange(async (v) => {
+					this.plugin.settings.projectRootPath = v.trim() || "Projects";
+					await this.plugin.saveSettings();
+				});
+		});
+
 		containerEl.createEl('h2', { text: 'Dataview Integration' });
 
 		const refreshDataview = async () => {
@@ -266,6 +284,18 @@ export class SampleSettingTab extends PluginSettingTab {
 						this.plugin.settings.dataviewCodeBlockType = v.trim() || "zettelkasten-query";
 						await this.plugin.saveSettings();
 						await refreshDataview();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("GitHub token keys (comma-separated)")
+			.setDesc("SecretStorage keys used for GitHub API access.")
+			.addText(t => {
+				t.setPlaceholder("github_token, my_token")
+					.setValue(this.plugin.settings.githubTokenKeys)
+					.onChange(async (v) => {
+						this.plugin.settings.githubTokenKeys = v.trim() || "github_token";
+						await this.plugin.saveSettings();
 					});
 			});
 	}

@@ -6,6 +6,8 @@ import { DEFAULT_NOTE_CATEGORIES } from "../constants"
 import { Logger } from '../logger';
 import { TemplateGridModal } from './template';
 import { FileNameModal } from './filename';
+import { ResearchProjectsModal } from './researchProjectsModal';
+import { CodeProjectsModal } from './codeProjectsModal';
 
 export type OnNoteCreateCallback = (
 	option: INoteOption,
@@ -91,8 +93,20 @@ export class Dashboard extends Modal {
 		const buttonGroup = section.createDiv('quick-access-grid');
 		const buttons = [
 			{ label: 'Kanban', icon: 'trello', callback: async () => {} },
-			{ label: 'Research', icon: 'atom', callback: async () => {} },
-			{ label: 'Projects', icon: 'folder-tree', callback: async () => {} },
+			{
+				label: 'Research',
+				icon: 'atom',
+				callback: async () => {
+					new ResearchProjectsModal(this.app, this.settings).open();
+				},
+			},
+			{
+				label: 'Projects',
+				icon: 'folder-tree',
+				callback: async () => {
+					new CodeProjectsModal(this.app, this.settings).open();
+				},
+			},
 		];
 
 		buttons.forEach(({ label, icon, callback }) => {

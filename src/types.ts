@@ -32,9 +32,12 @@ export interface ZettelkastenSettings {
 	showUpgradeNotifications: boolean;
 	folderNotesEnabled: boolean;
 	templateDirPath: string;
+	researchRootPath: string;
+	projectRootPath: string;
 	dataviewEnabled: boolean;
 	dataviewQueryPath: string;
 	dataviewCodeBlockType: string;
+	githubTokenKeys: string;
 	createNoteOptions: INoteOption[];
 }
 

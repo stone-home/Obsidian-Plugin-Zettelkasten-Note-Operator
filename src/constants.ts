@@ -11,9 +11,12 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	showUpgradeNotifications: true,
 	folderNotesEnabled: false,
 	templateDirPath: 'Templates',
+	researchRootPath: 'Research',
+	projectRootPath: 'Projects',
 	dataviewEnabled: true,
 	dataviewQueryPath: 'dataview-scripts',
 	dataviewCodeBlockType: 'zettelkasten-query',
+	githubTokenKeys: 'github_token',
 	createNoteOptions: [],
 };
 

@@ -1,5 +1,73 @@
 /* src/styles/cards.css */
 
+/* --- Dataview Quick Actions --- */
+.zk-dv-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zk-dv-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px 14px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary-alt);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.zk-dv-row {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	width: 100%;
+}
+
+.zk-dv-label {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	min-width: 110px;
+}
+
+.zk-dv-controls {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex: 1;
+}
+
+.zk-dv-actions input,
+.zk-dv-actions select {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 6px 8px;
+	color: var(--text-normal);
+	min-height: 32px;
+	flex: 1;
+	min-width: 120px;
+}
+
+.zk-dv-actions button {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 6px;
+	padding: 6px 10px;
+	cursor: pointer;
+	min-height: 32px;
+	white-space: nowrap;
+}
+
+.zk-dv-action {
+	margin-left: auto;
+}
+
 /* --- 1. Summary View Cards --- */
 /* [UI]: Styling for the card look in lists */
 .zettel-template-card {
