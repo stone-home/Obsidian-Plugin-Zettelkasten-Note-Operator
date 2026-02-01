@@ -100,8 +100,14 @@ export class DraftCompiler {
 			await this.app.vault.createFolder(materialsFolder);
 		}
 
-		await this.app.vault.create(outputPath, compiledContent);
-		new Notice(`Compiled to ${fileName}`);
+		const existing = this.app.vault.getAbstractFileByPath(outputPath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, compiledContent);
+			new Notice(`Compiled (updated) ${fileName}`);
+		} else {
+			await this.app.vault.create(outputPath, compiledContent);
+			new Notice(`Compiled to ${fileName}`);
+		}
 		this.logger.info(`Compiled draft to ${outputPath}`);
 
 		return `${cfg.materialsDir}/${fileName}`;

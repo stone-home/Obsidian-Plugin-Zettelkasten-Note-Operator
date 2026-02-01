@@ -64,8 +64,14 @@ export class PromptGenerator {
 		const fileName = `${draft.basename}_prompt_v${date}.md`;
 		const outputPath = `${promptsFolder}/${fileName}`;
 
-		await this.app.vault.create(outputPath, prompt);
-		new Notice(`AI Prompt saved to ${fileName}`);
+		const existing = this.app.vault.getAbstractFileByPath(outputPath);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, prompt);
+			new Notice(`AI Prompt updated: ${fileName}`);
+		} else {
+			await this.app.vault.create(outputPath, prompt);
+			new Notice(`AI Prompt saved to ${fileName}`);
+		}
 		this.logger.info(`Generated prompt at ${outputPath}`);
 
 		return outputPath;

@@ -74,9 +74,12 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
+		// Wait for vault cache to be ready before initializing dataview scripts
 		if (this.settings.dataviewEnabled) {
-			this.dataview = new DataviewCommand(this.app, this);
-			await this.dataview.initialize();
+			this.app.workspace.onLayoutReady(async () => {
+				this.dataview = new DataviewCommand(this.app, this);
+				await this.dataview.initialize();
+			});
 		}
 
 		this.registerGlobalActions();
