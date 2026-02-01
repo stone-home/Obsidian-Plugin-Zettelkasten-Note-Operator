@@ -103,6 +103,15 @@
 	gap: 12px;
 }
 
+.template-grid .empty-state {
+	grid-column: 1 / -1;
+	padding: 12px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-secondary-alt);
+	text-align: center;
+}
+
 .note-type-card,
 .template-card {
 	display: flex;
@@ -238,6 +247,120 @@
 	width: 18px;
 	height: 18px;
 	opacity: 0.7;
+}
+
+/* --- Project Dashboard Modals --- */
+.zk-creating-section {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 14px;
+	padding: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.zk-section-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 1rem;
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.zk-section-icon {
+	font-size: 0.9rem;
+	opacity: 0.8;
+}
+
+.zk-section-subtitle {
+	font-size: 0.85rem;
+	color: var(--text-muted);
+}
+
+.zk-select-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 12px;
+	align-items: end;
+}
+
+.zk-select-wrapper {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.zk-select-label {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.zk-select {
+	width: 100%;
+	padding: 6px 8px;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+.zk-select-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.zk-icon-button {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.zk-card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: 10px;
+}
+
+.zk-card {
+	padding: 12px 10px;
+	border-radius: 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.zk-card:hover,
+.zk-icon-button:hover {
+	background: var(--background-modifier-hover);
+}
+
+.zk-muted {
+	font-size: 0.85rem;
+	color: var(--text-faint);
+}
+
+.zk-project-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	color: var(--text-muted);
+	font-size: 0.85rem;
+}
+
+.zk-token-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 
