@@ -37,6 +37,8 @@ export interface ZettelkastenSettings {
 	literaturePath: string;
 	atomPath: string;
 	permanentPath: string;
+	lexiconPath: string;
+	hubPath: string;
 	autoOpenNewNote: boolean;
 	showUpgradeNotifications: boolean;
 	folderNotesEnabled: boolean;

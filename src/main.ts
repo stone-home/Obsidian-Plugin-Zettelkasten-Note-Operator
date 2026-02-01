@@ -1,4 +1,4 @@
-import { Plugin, TFile } from 'obsidian';
+import { Plugin, TFile, Notice } from 'obsidian';
 import { ZettelkastenSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./constants"
 import { SampleSettingTab } from "./settings";
@@ -6,6 +6,8 @@ import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
 import { ResearchManager } from "./service/projects/researchManager";
 import { CodeProjectManager } from "./service/projects/codeProjectManager";
+import { DraftCompiler } from "./service/compiler/draftCompiler";
+import { PromptGenerator } from "./service/compiler/promptGenerator";
 
 export default class MyPlugin extends Plugin {
 	public settings!: ZettelkastenSettings;
@@ -29,6 +31,46 @@ export default class MyPlugin extends Plugin {
 			name: 'Create New Zettel Note',
 			callback: () => {
 				this.factory.openCreationModal();
+			}
+		});
+
+		this.addCommand({
+			id: 'compile-current-draft',
+			name: 'Compile current draft to materials',
+			callback: async () => {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (!activeFile) {
+					new Notice("No active file.");
+					return;
+				}
+				if (!activeFile.path.includes("/drafts/")) {
+					new Notice("Active file is not in a drafts folder.");
+					return;
+				}
+				const compiler = new DraftCompiler(this.app, this.settings);
+				const cfg = await compiler.resolveConfig(activeFile);
+				if (!cfg) return;
+				const outputPath = await compiler.compileDraft(activeFile, cfg);
+				const sectionBase = activeFile.basename.replace("logic_", "");
+				await compiler.updateManifest(cfg, sectionBase, outputPath);
+			}
+		});
+
+		this.addCommand({
+			id: 'generate-ai-prompt',
+			name: 'Generate AI Prompt from current draft',
+			callback: async () => {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (!activeFile) {
+					new Notice("No active file.");
+					return;
+				}
+				if (!activeFile.path.includes("/drafts/")) {
+					new Notice("Active file is not in a drafts folder.");
+					return;
+				}
+				const generator = new PromptGenerator(this.app, this.settings);
+				await generator.generatePrompt(activeFile);
 			}
 		});
 
@@ -116,8 +158,43 @@ export default class MyPlugin extends Plugin {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
 			},
+			updateResearchDashboardProperties: async (
+				projectPath: string,
+				updates: { github_token_key?: string; public_repo?: boolean; repo?: string },
+			) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				await manager.updateDashboardProperties(projectPath, updates);
+			},
 			getGanttStatusColors: (): Record<string, string> => {
 				return { ...plugin.settings.ganttStatusColors };
+			},
+			getSettings: (): ZettelkastenSettings => {
+				return { ...plugin.settings };
+			},
+			compileDraft: async (draftPath: string) => {
+				const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
+				if (!file) throw new Error("Draft not found");
+				const compiler = new DraftCompiler(plugin.app, plugin.settings);
+				const cfg = await compiler.resolveConfig(file);
+				if (!cfg) throw new Error("Could not resolve project config");
+				return await compiler.compileDraft(file, cfg);
+			},
+			generateAIPrompt: async (draftFileOrPath: TFile | string) => {
+				let file: TFile | null = null;
+				if (typeof draftFileOrPath === "string") {
+					file = plugin.app.vault.getAbstractFileByPath(draftFileOrPath) as TFile;
+				} else {
+					file = draftFileOrPath;
+				}
+				if (!file) throw new Error("Draft not found");
+				const generator = new PromptGenerator(plugin.app, plugin.settings);
+				return await generator.generatePrompt(file);
+			},
+			pushToGitHub: async (projectPath: string, tokenKey?: string) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				return await manager.pushToGitHub(file, tokenKey);
 			},
 		};
 	}

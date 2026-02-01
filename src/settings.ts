@@ -218,6 +218,18 @@ export class SampleSettingTab extends PluginSettingTab {
 				await this.plugin.saveSettings();
 			})
 		})
+		new Setting(containerEl).setName("Lexicon Default Path").addText(t => {
+			t.setValue(this.plugin.settings.lexiconPath).onChange(async (v) => {
+				this.plugin.settings.lexiconPath = v;
+				await this.plugin.saveSettings();
+			})
+		})
+		new Setting(containerEl).setName("Hub/MoC Default Path").addText(t => {
+			t.setValue(this.plugin.settings.hubPath).onChange(async (v) => {
+				this.plugin.settings.hubPath = v;
+				await this.plugin.saveSettings();
+			})
+		})
 
 		containerEl.createEl('h2', { text: 'Project Management' });
 		new Setting(containerEl).setName("Research Root Path").addText(t => {

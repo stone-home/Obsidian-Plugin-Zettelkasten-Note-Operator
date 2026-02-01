@@ -1,23 +1,26 @@
-/* Google / Material Style Tabs */
+/* Modern Tab Navigation */
 .zettel-tab-nav {
 	display: flex;
-	gap: 0;
-	border-bottom: 1px solid var(--background-modifier-border);
-	margin-bottom: 25px;
+	gap: 4px;
+	padding: 8px;
+	background: var(--background-secondary);
+	border-radius: 12px;
+	margin-bottom: 24px;
 }
 
 .zettel-tab-button {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	background: transparent;
 	border: none;
-	border-radius: 0;
-	border-bottom: 2px solid transparent;
-	padding: 10px 24px;
-	font-size: 0.95em;
-	font-weight: 600;
+	border-radius: 8px;
+	padding: 10px 16px;
+	font-size: 0.9em;
+	font-weight: 500;
 	color: var(--text-muted);
 	cursor: pointer;
 	transition: all 0.2s ease;
-	margin-bottom: -1px;
 }
 
 .zettel-tab-button:hover {
@@ -26,6 +29,298 @@
 }
 
 .zettel-tab-button.active {
+	color: var(--text-normal);
+	background-color: var(--background-primary);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.zettel-tab-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.7;
+}
+
+.zettel-tab-button.active .zettel-tab-icon {
+	opacity: 1;
 	color: var(--interactive-accent);
-	border-bottom-color: var(--interactive-accent);
+}
+
+.zettel-tab-text {
+	white-space: nowrap;
+}
+
+/* Settings Section Headers */
+.zettel-section-header {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	margin: 24px 0 16px 0;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.zettel-section-header:first-child {
+	margin-top: 0;
+}
+
+.zettel-section-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 8px;
+	background: var(--interactive-accent);
+	color: white;
+	flex-shrink: 0;
+}
+
+.zettel-section-text {
+	flex: 1;
+}
+
+.zettel-section-title {
+	margin: 0 0 4px 0 !important;
+	font-size: 1.1em;
+	font-weight: 600;
+}
+
+.zettel-section-desc {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+/* Settings Cards */
+.zettel-settings-card {
+	background: var(--background-secondary);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 16px;
+}
+
+.zettel-settings-card .setting-item {
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 12px 0;
+}
+
+.zettel-settings-card .setting-item:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.zettel-settings-card .setting-item:first-child {
+	padding-top: 0;
+}
+
+/* Path Settings Grid */
+.zettel-settings-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.zettel-path-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	background: var(--background-secondary);
+	border-radius: 10px;
+	padding: 14px;
+	transition: box-shadow 0.2s ease;
+}
+
+.zettel-path-card:hover {
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.zettel-path-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.zettel-path-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.zettel-path-label {
+	font-weight: 600;
+	font-size: 0.95em;
+	margin-bottom: 2px;
+}
+
+.zettel-path-desc {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.zettel-path-input {
+	width: 100%;
+	padding: 6px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	font-size: 0.9em;
+}
+
+/* Toggle Card */
+.zettel-toggle-card {
+	padding: 20px;
+}
+
+.zettel-toggle-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.zettel-toggle-info {
+	flex: 1;
+}
+
+.zettel-toggle-title {
+	font-weight: 600;
+	font-size: 1em;
+	margin-bottom: 4px;
+}
+
+.zettel-toggle-desc {
+	font-size: 0.9em;
+	color: var(--text-muted);
+}
+
+.zettel-toggle-switch {
+	flex-shrink: 0;
+}
+
+/* Info Card */
+.zettel-info-card {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	background: var(--background-secondary);
+	border-radius: 10px;
+	padding: 14px;
+	border-left: 3px solid var(--interactive-accent);
+	margin-top: 16px;
+}
+
+.zettel-info-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+	flex-shrink: 0;
+}
+
+.zettel-info-text {
+	flex: 1;
+}
+
+.zettel-info-title {
+	font-weight: 600;
+	font-size: 0.95em;
+	margin-bottom: 4px;
+}
+
+.zettel-info-desc {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+/* Color List */
+.zettel-color-list {
+	margin-bottom: 16px;
+}
+
+.zettel-color-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.zettel-color-row:last-child {
+	border-bottom: none;
+}
+
+.zettel-color-preview {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	border: 2px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.zettel-color-status {
+	font-weight: 500;
+	min-width: 100px;
+	font-size: 0.95em;
+}
+
+.zettel-color-select {
+	flex: 1;
+}
+
+.zettel-color-delete {
+	opacity: 0.5;
+	transition: opacity 0.2s ease;
+}
+
+.zettel-color-row:hover .zettel-color-delete {
+	opacity: 1;
+}
+
+/* Add Color Row */
+.zettel-add-color-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-top: 12px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.zettel-status-input {
+	flex: 1;
+	min-width: 120px;
+}
+
+.zettel-color-dropdown {
+	min-width: 150px;
+}
+
+/* Reset Row */
+.zettel-reset-row {
+	padding-top: 16px;
+	margin-top: 16px;
+	border-top: 1px solid var(--background-modifier-border);
+	display: flex;
+	justify-content: flex-end;
+}
+
+/* Empty message */
+.zettel-empty-message {
+	color: var(--text-muted);
+	font-style: italic;
+	text-align: center;
+	padding: 16px 0;
+}
+
+/* Wide inputs */
+.zettel-input-wide {
+	width: 100%;
+	max-width: 300px;
 }

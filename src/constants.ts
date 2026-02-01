@@ -38,6 +38,8 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	literaturePath: '002-Literature',
 	atomPath: '003-Atom',
 	permanentPath: '004-Permanent',
+	lexiconPath: '005-Lexicon',
+	hubPath: '006-Hubs',
 	autoOpenNewNote: true,
 	showUpgradeNotifications: true,
 	folderNotesEnabled: false,
