@@ -72,8 +72,7 @@ describe("CodeProjectManager", () => {
 			expect(fm.project_name).toBe("TestProject");
 			expect(fm.repo).toBe("owner/name");
 			expect(fm.defaultBranch).toBe("trunk");
-			expect(fm.github_token_key).toBe("github_token");
-			expect(fm.public_repo).toBe(false);
+			expect(fm.public_repo).toBe(true);
 		});
 
 		it("should sanitize project name", async () => {

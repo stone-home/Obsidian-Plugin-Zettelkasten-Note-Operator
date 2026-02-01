@@ -76,6 +76,7 @@ export class CodeProjectsModal extends Modal {
 	private projects: TFile[] = [];
 	private selectedProject?: TFile;
 	private selectedTokenKey?: string;
+	private tokenKeys: string[] = [];
 
 	constructor(app: App, settings: ZettelkastenSettings) {
 		super(app);
@@ -86,7 +87,22 @@ export class CodeProjectsModal extends Modal {
 	async onOpen(): Promise<void> {
 		this.modalEl.addClass("zettelkasten-modal-container");
 		this.contentEl.addClass("zettelkasten-dashboard-content");
+		await this.loadTokenKeys();
 		await this.refresh();
+	}
+
+	private async loadTokenKeys(): Promise<void> {
+		const zk = (window as any).ZettelkastenOperator;
+		if (zk && typeof zk.getGithubTokenKeys === "function") {
+			try {
+				const keys = await zk.getGithubTokenKeys();
+				this.tokenKeys = ["(public)"].concat(keys);
+			} catch {
+				this.tokenKeys = ["(public)"];
+			}
+		} else {
+			this.tokenKeys = ["(public)"];
+		}
 	}
 
 	private async refresh(): Promise<void> {
@@ -224,13 +240,13 @@ export class CodeProjectsModal extends Modal {
 		row.createDiv({ text: "Token", cls: "zk-select-label" });
 
 		const selectEl = row.createEl("select", { cls: "zk-select" });
-		const keys = this.getTokenKeys();
+		const fm = this.getFrontmatter(this.selectedProject as TFile);
 		const currentKey =
 			this.selectedTokenKey ||
-			this.getFrontmatter(this.selectedProject as TFile).github_token_key ||
-			keys[0];
+			fm.github_token_key ||
+			(this.tokenKeys.length > 1 ? this.tokenKeys[1] : this.tokenKeys[0]);
 		this.selectedTokenKey = currentKey;
-		keys.forEach((key) => {
+		this.tokenKeys.forEach((key) => {
 			const option = selectEl.createEl("option", { text: key, value: key });
 			if (currentKey === key) {
 				option.selected = true;
@@ -244,15 +260,6 @@ export class CodeProjectsModal extends Modal {
 
 	private getFrontmatter(file: TFile): Record<string, any> {
 		return this.app.metadataCache.getFileCache(file)?.frontmatter || {};
-	}
-
-	private getTokenKeys(): string[] {
-		const raw = (this.settings as any).githubTokenKeys as string | undefined;
-		const keys = (raw || "github_token")
-			.split(",")
-			.map((s) => s.trim())
-			.filter((s) => s.length > 0);
-		return ["(public)"].concat(keys);
 	}
 
 	onClose(): void {

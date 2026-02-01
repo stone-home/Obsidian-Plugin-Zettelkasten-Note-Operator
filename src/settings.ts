@@ -237,6 +237,18 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
+		new Setting(containerEl)
+			.setName("GitHub token keys (comma-separated)")
+			.setDesc("SecretStorage keys used for GitHub API access.")
+			.addText(t => {
+				t.setPlaceholder("github_token, my_token")
+					.setValue(this.plugin.settings.githubTokenKeys)
+					.onChange(async (v) => {
+						this.plugin.settings.githubTokenKeys = v.trim() || "github_token";
+						await this.plugin.saveSettings();
+					});
+			});
+
 		// Gantt Status Colors Configuration
 		containerEl.createEl('h3', { text: 'Gantt Chart Status Colors' });
 		containerEl.createEl('p', {
@@ -348,17 +360,6 @@ export class SampleSettingTab extends PluginSettingTab {
 					});
 			});
 
-		new Setting(containerEl)
-			.setName("GitHub token keys (comma-separated)")
-			.setDesc("SecretStorage keys used for GitHub API access.")
-			.addText(t => {
-				t.setPlaceholder("github_token, my_token")
-					.setValue(this.plugin.settings.githubTokenKeys)
-					.onChange(async (v) => {
-						this.plugin.settings.githubTokenKeys = v.trim() || "github_token";
-						await this.plugin.saveSettings();
-					});
-			});
 	}
 
 	// --- [HELPER]: Get preview color for a PlantUML color value ---

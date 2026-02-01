@@ -28,7 +28,6 @@ describe("constants", () => {
 			expect(DEFAULT_SETTINGS).toHaveProperty("dataviewEnabled");
 			expect(DEFAULT_SETTINGS).toHaveProperty("dataviewQueryPath");
 			expect(DEFAULT_SETTINGS).toHaveProperty("dataviewCodeBlockType");
-			expect(DEFAULT_SETTINGS).toHaveProperty("githubTokenKeys");
 			expect(DEFAULT_SETTINGS).toHaveProperty("ganttStatusColors");
 			expect(DEFAULT_SETTINGS).toHaveProperty("createNoteOptions");
 		});
@@ -56,10 +55,6 @@ describe("constants", () => {
 		it("should have correct dataview defaults", () => {
 			expect(DEFAULT_SETTINGS.dataviewQueryPath).toBe("dataview-scripts");
 			expect(DEFAULT_SETTINGS.dataviewCodeBlockType).toBe("zettelkasten-query");
-		});
-
-		it("should have default github token key", () => {
-			expect(DEFAULT_SETTINGS.githubTokenKeys).toBe("github_token");
 		});
 
 		it("should have empty createNoteOptions array", () => {

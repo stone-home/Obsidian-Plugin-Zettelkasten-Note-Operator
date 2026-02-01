@@ -47,7 +47,6 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	dataviewEnabled: true,
 	dataviewQueryPath: 'dataview-scripts',
 	dataviewCodeBlockType: 'zettelkasten-query',
-	githubTokenKeys: 'github_token',
 	ganttStatusColors: { ...DEFAULT_GANTT_STATUS_COLORS },
 	createNoteOptions: [],
 };

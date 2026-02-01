@@ -46,7 +46,6 @@ export interface ZettelkastenSettings {
 	dataviewEnabled: boolean;
 	dataviewQueryPath: string;
 	dataviewCodeBlockType: string;
-	githubTokenKeys: string;
 	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
 }

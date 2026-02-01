@@ -196,8 +196,8 @@ export class CodeProjectManager {
 			`project_name: ${projectName}`,
 			"repo: owner/name",
 			"defaultBranch: trunk",
-			"github_token_key: github_token",
-			"public_repo: false",
+			"github_token_key: ",
+			"public_repo: true",
 			"---",
 			"",
 			"# Code Project Dashboard",
@@ -238,9 +238,18 @@ export class CodeProjectManager {
 			return;
 		}
 
-		const resolvedKey = tokenKey || cache.github_token_key || "github_token";
+		// Determine which token key to use:
+		// - If tokenKey is explicitly '' or '(public)', treat as public repo (no auth)
+		// - If tokenKey is undefined, fall back to frontmatter value
+		// - Otherwise use the provided tokenKey
+		const isPublicRequest = tokenKey === "" || tokenKey === "(public)";
+		const resolvedKey = isPublicRequest
+			? ""
+			: (tokenKey !== undefined ? tokenKey : (cache.github_token_key || ""));
+
 		let token: string | null = null;
-		if (!resolvedKey || resolvedKey === "(public)") {
+		if (!resolvedKey) {
+			// Public repo or no token configured
 			token = "";
 		} else {
 			const storage = (this.app as any).secretStorage;
@@ -253,7 +262,8 @@ export class CodeProjectManager {
 				token = "";
 			}
 		}
-		if (tokenKey && tokenKey !== cache.github_token_key) {
+		// Update frontmatter if tokenKey was explicitly provided and differs
+		if (tokenKey !== undefined && tokenKey !== cache.github_token_key) {
 			await this.app.fileManager.processFrontMatter(projectFile, (fm) => {
 				fm.github_token_key = tokenKey;
 			});

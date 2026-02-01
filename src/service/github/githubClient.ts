@@ -33,7 +33,10 @@ export class GitHubClient {
 		base: string,
 		head: string,
 	): Promise<any> {
-		const url = `https://api.github.com/repos/${owner}/${repo}/compare/${base}...${head}`;
+		// URL encode base and head to handle branch names with '/' like 'feature/foo'
+		const encodedBase = encodeURIComponent(base);
+		const encodedHead = encodeURIComponent(head);
+		const url = `https://api.github.com/repos/${owner}/${repo}/compare/${encodedBase}...${encodedHead}`;
 		return await this.getJson(url);
 	}
 }

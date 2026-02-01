@@ -63,14 +63,10 @@ export default class MyPlugin extends Plugin {
 						const ids = await storage.listSecrets();
 						return Array.isArray(ids) ? ids : [];
 					} catch {
-						// fallback if listSecrets fails
+						// Return empty array if listSecrets fails
 					}
 				}
-				const raw = plugin.settings.githubTokenKeys || "github_token";
-				return raw
-					.split(",")
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0);
+				return [];
 			},
 			createResearchObjective: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
