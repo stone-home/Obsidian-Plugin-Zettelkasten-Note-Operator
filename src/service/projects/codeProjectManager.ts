@@ -1,4 +1,10 @@
 import { App, Notice, TFile } from "obsidian";
+import {
+	ObsidianNoteFactory as LibFactory,
+	NoteType,
+	NoteTemplateConfig,
+	NoteTemplateSection,
+} from "markdown-note-orm";
 import { ZettelkastenSettings } from "../../types";
 import { GitHubClient } from "../github/githubClient";
 
@@ -9,6 +15,36 @@ export class CodeProjectManager {
 	constructor(app: App, settings: ZettelkastenSettings) {
 		this.app = app;
 		this.settings = settings;
+	}
+
+	/**
+	 * Creates a note using markdown-note-orm with proper Zettelkasten type and subtype tag.
+	 */
+	private async createNote(
+		filePath: string,
+		title: string,
+		baseType: NoteType,
+		subtype: string,
+		extraProps: Record<string, any> = {},
+		sections: NoteTemplateSection[] = [],
+	): Promise<TFile> {
+		const config: NoteTemplateConfig = {
+			properties: {
+				tags: [`type/${subtype}`],
+				...extraProps,
+			},
+			sections: sections,
+		};
+
+		const note = await LibFactory.createByType(
+			this.app,
+			filePath,
+			baseType,
+			title,
+			config,
+		);
+		await note.save();
+		return this.app.vault.getAbstractFileByPath(filePath) as TFile;
 	}
 
 	private sanitizeSegment(input: string): string {
@@ -36,6 +72,7 @@ export class CodeProjectManager {
 		await this.ensureFolder(folderPath);
 		await this.ensureFolder(`${folderPath}/releases`);
 		await this.ensureFolder(`${folderPath}/commits`);
+		await this.ensureFolder(`${folderPath}/requirements`);
 		const content = this.buildDashboardTemplate(folderName, folderPath);
 		return await this.app.vault.create(dashboardPath, content);
 	}
@@ -62,6 +99,7 @@ export class CodeProjectManager {
 		await this.ensureFolder(projectFolder);
 		await this.ensureFolder(`${projectFolder}/releases`);
 		await this.ensureFolder(`${projectFolder}/commits`);
+		await this.ensureFolder(`${projectFolder}/requirements`);
 
 		const dashboardPath = `${projectFolder}/Dashboard.md`;
 		const existing = this.app.vault.getAbstractFileByPath(dashboardPath);
@@ -71,64 +109,121 @@ export class CodeProjectManager {
 		return await this.app.vault.create(dashboardPath, content);
 	}
 
+	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
+		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
+		const folder = `${projectFolder}/requirements`;
+		await this.ensureFolder(folder);
+		const safeTitle = this.sanitizeSegment(title);
+		const filePath = `${folder}/${safeTitle}.md`;
+		if (this.app.vault.getAbstractFileByPath(filePath)) {
+			throw new Error("Requirement already exists.");
+		}
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"permanent",
+			"code-requirement",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				title: safeTitle,
+				status: "proposed",
+				priority: "medium",
+				release: "",
+			},
+		);
+	}
+
+	/**
+	 * Updates frontmatter properties of a project dashboard file.
+	 * Used by Quick Actions to persist github_token_key and public_repo.
+	 */
+	async updateDashboardProperties(
+		filePath: string,
+		updates: { github_token_key?: string; public_repo?: boolean },
+	): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(filePath) as TFile;
+		if (!file) return;
+		const content = await this.app.vault.read(file);
+		const fmRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+		const match = content.match(fmRegex);
+		if (!match) return;
+		const fmBlock = match[1];
+		const rest = content.slice(match[0].length);
+		const keysToUpdate = new Set(Object.keys(updates) as (keyof typeof updates)[]);
+		const lines = fmBlock.split(/\r?\n/);
+		const updated = new Set<string>();
+		const newLines: string[] = [];
+		for (const line of lines) {
+			const keyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
+			if (keyMatch && keysToUpdate.has(keyMatch[1] as keyof typeof updates)) {
+				const key = keyMatch[1] as keyof typeof updates;
+				updated.add(key);
+				const val = updates[key];
+				if (val !== undefined) {
+					newLines.push(
+						typeof val === "boolean" ? `${key}: ${val}` : `${key}: ${String(val)}`,
+					);
+				} else {
+					newLines.push(line);
+				}
+			} else {
+				newLines.push(line);
+			}
+		}
+		for (const key of keysToUpdate) {
+			if (!updated.has(key)) {
+				const val = updates[key as keyof typeof updates];
+				if (val !== undefined) {
+					newLines.push(
+						typeof val === "boolean"
+							? `${key}: ${val}`
+							: `${key}: ${String(val)}`,
+					);
+				}
+			}
+		}
+		const newContent = "---\n" + newLines.join("\n") + "\n---\n" + rest;
+		await this.app.vault.modify(file, newContent);
+	}
+
 	private buildDashboardTemplate(projectName: string, projectFolder: string): string {
+		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
 		return [
 			"---",
-			"type: code-project",
+			"type: permanent",
+			"tags:",
+			"  - type/code-project",
 			`project_name: ${projectName}`,
 			"repo: owner/name",
 			"defaultBranch: trunk",
 			"github_token_key: github_token",
+			"public_repo: false",
 			"---",
 			"",
 			"# Code Project Dashboard",
 			"",
 			"## Quick Actions",
 			"",
-			"```dataviewjs",
-			"const zk = window.ZettelkastenOperator;",
-			"const projectPath = dv.current().file.path;",
-			"if (!zk) {",
-			"  dv.paragraph('ZettelkastenOperator not available.');",
-			"} else {",
-			"  const row = dv.el('div', '', { cls: 'zk-dv-actions zk-dv-grid' });",
-			"  const tokenRow = row.createDiv({ cls: 'zk-dv-row' });",
-			"  tokenRow.createDiv({ text: 'Token', cls: 'zk-dv-label' });",
-			"  const tokenControls = tokenRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const tokenSelect = tokenControls.createEl('select');",
-			"  const tokenKeys = zk.getGithubTokenKeys ? zk.getGithubTokenKeys() : ['github_token'];",
-			"  tokenKeys.forEach(key => tokenSelect.createEl('option', { text: key, value: key }));",
-			"  const publicRow = row.createDiv({ cls: 'zk-dv-row' });",
-			"  publicRow.createDiv({ text: 'Public Repo', cls: 'zk-dv-label' });",
-			"  const publicControls = publicRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const publicToggle = publicControls.createEl('input', { type: 'checkbox' });",
-			"  publicControls.createSpan({ text: 'No PAT required' });",
-			"  const actionRow = row.createDiv({ cls: 'zk-dv-row' });",
-			"  actionRow.createDiv({ text: 'Refresh', cls: 'zk-dv-label' });",
-			"  actionRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const refreshBtn = actionRow.createEl('button', { text: 'Refresh Releases', cls: 'zk-dv-action' });",
-			"  refreshBtn.onclick = async () => {",
-			"    const key = publicToggle.checked ? '' : tokenSelect.value;",
-			"    await zk.refreshCodeProject(projectPath, key);",
-			"  };",
-			"}",
+			"```" + blockType,
+			"zk-project-quick-actions",
+			"```",
+			"",
+			"## Requirements",
+			"",
+			"```" + blockType,
+			"zk-project-requirements",
 			"```",
 			"",
 			"## Releases",
 			"",
-			"```dataview",
-			"TABLE version, date, url",
-			`FROM "${projectFolder}/releases"`,
-			"SORT date DESC",
+			"```" + blockType,
+			"zk-project-releases",
 			"```",
 			"",
 			"## Unreleased Commits",
 			"",
-			"```dataview",
-			"TABLE sha, message, date, url",
-			`FROM "${projectFolder}/commits"`,
-			"WHERE released = false",
-			"SORT date DESC",
+			"```" + blockType,
+			"zk-project-commits",
 			"```",
 			"",
 		].join("\n");
@@ -201,7 +296,9 @@ export class CodeProjectManager {
 		const filePath = `${projectFolder}/releases/${tag}.md`;
 		const content = [
 			"---",
-			"type: project-release",
+			"type: permanent",
+			"tags:",
+			"  - type/project-release",
 			`project: "[[${projectFile.path}|Dashboard]]"`,
 			`version: ${tag}`,
 			`url: ${release.html_url || ""}`,
@@ -227,7 +324,9 @@ export class CodeProjectManager {
 		const message = commit.commit?.message?.split("\n")[0] || "";
 		const content = [
 			"---",
-			"type: project-commit",
+			"type: permanent",
+			"tags:",
+			"  - type/project-commit",
 			`project: "[[${projectFile.path}|Dashboard]]"`,
 			`sha: ${sha}`,
 			`message: ${message.replace(/:/g, "")}`,

@@ -56,7 +56,16 @@ export default class MyPlugin extends Plugin {
 	private registerGlobalActions(): void {
 		const plugin = this;
 		(window as any).ZettelkastenOperator = {
-			getGithubTokenKeys: () => {
+			getGithubTokenKeys: async (): Promise<string[]> => {
+				const storage = (plugin.app as any).secretStorage;
+				if (storage && typeof storage.listSecrets === "function") {
+					try {
+						const ids = await storage.listSecrets();
+						return Array.isArray(ids) ? ids : [];
+					} catch {
+						// fallback if listSecrets fails
+					}
+				}
 				const raw = plugin.settings.githubTokenKeys || "github_token";
 				return raw
 					.split(",")
@@ -86,11 +95,33 @@ export default class MyPlugin extends Plugin {
 				if (!file) throw new Error("Project not found");
 				return await manager.createExperiment(file, title);
 			},
+			createResearchRequirement: async (projectPath: string, title: string) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				return await manager.createRequirement(file, title);
+			},
+			createCodeRequirement: async (projectPath: string, title: string) => {
+				const manager = new CodeProjectManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				return await manager.createRequirement(file, title);
+			},
 			refreshCodeProject: async (projectPath: string, tokenKey?: string) => {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.refreshProject(file, tokenKey);
+			},
+			updateProjectDashboardProperties: async (
+				projectPath: string,
+				updates: { github_token_key?: string; public_repo?: boolean },
+			) => {
+				const manager = new CodeProjectManager(plugin.app, plugin.settings);
+				await manager.updateDashboardProperties(projectPath, updates);
+			},
+			getGanttStatusColors: (): Record<string, string> => {
+				return { ...plugin.settings.ganttStatusColors };
 			},
 		};
 	}

@@ -11,9 +11,10 @@ import {
 	setIcon,
 } from 'obsidian';
 import MyPlugin from './main';
-import { ZettelkastenSettings } from "./types";
+import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
+import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS } from "./constants";
 
 /**
  * [Class]: PropertyCreationModal
@@ -236,6 +237,66 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
+		// Gantt Status Colors Configuration
+		containerEl.createEl('h3', { text: 'Gantt Chart Status Colors' });
+		containerEl.createEl('p', {
+			text: 'Define colors for each status in PlantUML Gantt charts. Format: ForegroundColor/BackgroundColor',
+			cls: 'setting-item-description',
+		});
+
+		// Ensure ganttStatusColors exists
+		if (!this.plugin.settings.ganttStatusColors) {
+			this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
+		}
+
+		const colorMap = this.plugin.settings.ganttStatusColors;
+		const colorContainer = containerEl.createDiv({ cls: 'zettel-gantt-colors' });
+
+		// Render existing status-color pairs
+		this.renderGanttColorList(colorContainer, colorMap);
+
+		// Add new status section
+		const addStatusContainer = containerEl.createDiv({ cls: 'zettel-add-status-row' });
+		addStatusContainer.style.cssText = 'display:flex; align-items:center; gap:10px; margin:16px 0;';
+
+		// Status name input
+		const statusInput = new TextComponent(addStatusContainer);
+		statusInput.setPlaceholder("status name (e.g. review)");
+		statusInput.inputEl.style.flex = '1';
+
+		// Color dropdown for new status
+		const newColorDropdown = new DropdownComponent(addStatusContainer);
+		GANTT_COLOR_OPTIONS.forEach(opt => {
+			newColorDropdown.addOption(opt.value, opt.label);
+		});
+		newColorDropdown.setValue(GANTT_COLOR_OPTIONS[0].value);
+
+		// Add button
+		new ButtonComponent(addStatusContainer)
+			.setButtonText("Add")
+			.setCta()
+			.onClick(async () => {
+				const status = statusInput.getValue().trim().toLowerCase();
+				const color = newColorDropdown.getValue();
+				if (status && color) {
+					this.plugin.settings.ganttStatusColors[status] = color;
+					await this.plugin.saveSettings();
+					this.display();
+				}
+			});
+
+		// Reset to defaults button
+		new Setting(containerEl)
+			.addButton(btn => {
+				btn.setButtonText("Reset to Defaults")
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			});
+
 		containerEl.createEl('h2', { text: 'Dataview Integration' });
 
 		const refreshDataview = async () => {
@@ -298,6 +359,64 @@ export class SampleSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+	}
+
+	// --- [HELPER]: Get preview color for a PlantUML color value ---
+	private getColorPreview(colorValue: string): string {
+		const option = GANTT_COLOR_OPTIONS.find(o => o.value === colorValue);
+		return option?.preview || '#ADD8E6';
+	}
+
+	// --- [HELPER]: Render Gantt Status Color List ---
+	private renderGanttColorList(container: HTMLElement, colorMap: IGanttStatusColorMap) {
+		container.empty();
+		const entries = Object.entries(colorMap);
+
+		if (entries.length === 0) {
+			container.createEl('p', {
+				text: 'No status colors defined.',
+				cls: 'setting-item-description',
+			});
+			return;
+		}
+
+		entries.forEach(([status, color]) => {
+			const row = container.createDiv({ cls: 'zettel-gantt-color-row' });
+			row.style.cssText = 'display:flex; align-items:center; gap:10px; margin-bottom:8px;';
+
+			// Status label
+			const statusSpan = row.createEl('span', { text: status });
+			statusSpan.style.cssText = 'min-width:100px; font-weight:500;';
+
+			// Color preview box
+			const previewBox = row.createDiv();
+			previewBox.style.cssText = `width:24px; height:24px; border-radius:4px; border:1px solid var(--background-modifier-border); background-color:${this.getColorPreview(color)};`;
+
+			// Color dropdown
+			const colorDropdown = new DropdownComponent(row);
+			GANTT_COLOR_OPTIONS.forEach(opt => {
+				colorDropdown.addOption(opt.value, opt.label);
+			});
+			colorDropdown.setValue(color);
+			colorDropdown.selectEl.style.flex = '1';
+			colorDropdown.onChange(async (v) => {
+				this.plugin.settings.ganttStatusColors[status] = v;
+				await this.plugin.saveSettings();
+				// Update preview box color
+				previewBox.style.backgroundColor = this.getColorPreview(v);
+			});
+
+			// Delete button
+			new ButtonComponent(row)
+				.setIcon('trash')
+				.setClass('clickable-icon')
+				.setTooltip('Remove')
+				.onClick(async () => {
+					delete this.plugin.settings.ganttStatusColors[status];
+					await this.plugin.saveSettings();
+					this.display();
+				});
+		});
 	}
 
 	// --- [VIEW]: Template List (Accordion Summary) ---

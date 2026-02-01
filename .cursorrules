@@ -1,0 +1,36 @@
+# Custom Instructions for Python, Bash, and TypeScript
+
+## General Principles
+- Be concise. Minimize redundant comments.
+- Use modular, reusable code patterns.
+- Always include error handling (try-catch, try-except, or exit codes).
+
+## TypeScript Rules
+- Use TypeScript **Strict Mode**.
+- Prefer `type` over `interface` for consistency unless extending.
+- Use **ES6+ features** (optional chaining, nullish coalescing).
+- Framework preference: [此处可填写如 Next.js 或 React]，使用函数式组件。
+- Documentation: Use JSDoc for complex logic.
+
+## Python Rules
+- Follow **PEP 8** style guidelines.
+- Use **Type Hints** for all function signatures (e.g., `def func(x: int) -> str:`).
+- Prefer `pathlib` over `os.path`.
+- Use f-strings for string formatting.
+- Ensure all dependencies are handled via `requirements.txt` or `pyproject.toml` logic.
+
+## Bash Rules
+- Always use `#!/bin/bash` or `#!/usr/bin/env bash` shebang.
+- Use `set -euo pipefail` at the start of scripts for robust error handling.
+- Double-quote all variables to prevent word splitting (e.g., "$VAR").
+- Prefer `[[ ]]` over `[ ]` for conditional tests.
+- Add brief usage instructions if the script requires arguments.
+
+## Refactoring & Workflow
+- Before rewriting, explain the logic briefly if the change is significant.
+- Suggest unit tests (pytest for Python, Vitest/Jest for TS) for logic-heavy functions.
+
+## Documentation Rules
+- General: Every function, class, and module must include a clear docstring.
+- Python: Use **Google Style** docstrings. Include sections for `Args`, `Returns`, and `Raises` where applicable.
+- TypeScript: Include TSDoc comments for exported members. Use `@param` and `@returns` tags.

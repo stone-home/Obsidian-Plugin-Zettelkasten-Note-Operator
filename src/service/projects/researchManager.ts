@@ -1,4 +1,10 @@
 import { App, TFile, TFolder, Notice } from "obsidian";
+import {
+	ObsidianNoteFactory as LibFactory,
+	NoteType,
+	NoteTemplateConfig,
+	NoteTemplateSection,
+} from "markdown-note-orm";
 import { ZettelkastenSettings } from "../../types";
 
 export class ResearchManager {
@@ -8,6 +14,42 @@ export class ResearchManager {
 	constructor(app: App, settings: ZettelkastenSettings) {
 		this.app = app;
 		this.settings = settings;
+	}
+
+	/**
+	 * Creates a note using markdown-note-orm with proper Zettelkasten type and subtype tag.
+	 * @param filePath Full path to the note file
+	 * @param title Note title
+	 * @param baseType Base Zettelkasten type (fleeting, literature, atom, permanent)
+	 * @param subtype Subtype tag (e.g., "research-objective")
+	 * @param extraProps Additional frontmatter properties
+	 * @param sections Content sections for the note body (NoteTemplateSection format)
+	 */
+	private async createNote(
+		filePath: string,
+		title: string,
+		baseType: NoteType,
+		subtype: string,
+		extraProps: Record<string, any> = {},
+		sections: NoteTemplateSection[] = [],
+	): Promise<TFile> {
+		const config: NoteTemplateConfig = {
+			properties: {
+				tags: [`type/${subtype}`],
+				...extraProps,
+			},
+			sections: sections,
+		};
+
+		const note = await LibFactory.createByType(
+			this.app,
+			filePath,
+			baseType,
+			title,
+			config,
+		);
+		await note.save();
+		return this.app.vault.getAbstractFileByPath(filePath) as TFile;
 	}
 
 	private sanitizeSegment(input: string): string {
@@ -37,6 +79,7 @@ export class ResearchManager {
 		await this.ensureFolder(`${folderPath}/steps`);
 		await this.ensureFolder(`${folderPath}/experiments`);
 		await this.ensureFolder(`${folderPath}/materials`);
+		await this.ensureFolder(`${folderPath}/requirements`);
 
 		const projectId = folderName.toLowerCase().replace(/\s+/g, "_");
 		const content = this.buildDashboardTemplate(projectId, folderName, folderPath);
@@ -79,6 +122,7 @@ export class ResearchManager {
 		await this.ensureFolder(`${projectFolder}/steps`);
 		await this.ensureFolder(`${projectFolder}/experiments`);
 		await this.ensureFolder(`${projectFolder}/materials`);
+		await this.ensureFolder(`${projectFolder}/requirements`);
 
 		const dashboardPath = `${projectFolder}/Dashboard.md`;
 		const dashboardFile = this.app.vault.getAbstractFileByPath(dashboardPath);
@@ -98,30 +142,55 @@ export class ResearchManager {
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Objective already exists.");
 		}
-		const content = [
-			"---",
-			"type: research-objective",
-			`project: "[[${projectFile.path}|Dashboard]]"`,
-			`title: ${safeTitle}`,
-			"status: active",
-			"start: ",
-			"end: ",
-			"done: false",
-			"---",
-			"",
-			`# ${safeTitle}`,
-			"",
-			"## Steps",
-			"",
-			"```dataview",
-			`TABLE file.link as Step, status, done`,
-			`FROM "${projectFolder}/steps"`,
-			`WHERE objective = [[${filePath}]]`,
-			"SORT file.name ASC",
-			"```",
-			"",
-		].join("\n");
-		return await this.app.vault.create(filePath, content);
+		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"permanent",
+			"research-objective",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				title: safeTitle,
+				status: "planned",
+				start: "",
+				end: "",
+			},
+			[
+				{
+					title: "Steps",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-objective-steps",
+						`objectivePath: "${filePath}"`,
+						"```",
+					],
+				},
+			],
+		);
+	}
+
+	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
+		const projectFolder = this.getProjectFolder(projectFile);
+		const folder = `${projectFolder}/requirements`;
+		await this.ensureFolder(folder);
+		const safeTitle = this.sanitizeSegment(title);
+		const filePath = `${folder}/${safeTitle}.md`;
+		if (this.app.vault.getAbstractFileByPath(filePath)) {
+			throw new Error("Requirement already exists.");
+		}
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"permanent",
+			"research-requirement",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				title: safeTitle,
+				status: "proposed",
+				priority: "medium",
+			},
+		);
 	}
 
 	async createStep(projectFile: TFile, objectiveFile: TFile, title: string): Promise<TFile> {
@@ -133,20 +202,18 @@ export class ResearchManager {
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Step already exists.");
 		}
-		const content = [
-			"---",
-			"type: research-step",
-			`project: "[[${projectFile.path}|Dashboard]]"`,
-			`objective: [[${objectiveFile.path}]]`,
-			`title: ${safeTitle}`,
-			"status: todo",
-			"done: false",
-			"---",
-			"",
-			`# ${safeTitle}`,
-			"",
-		].join("\n");
-		return await this.app.vault.create(filePath, content);
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"permanent",
+			"research-step",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				objective: `[[${objectiveFile.path}]]`,
+				title: safeTitle,
+				status: "todo",
+			},
+		);
 	}
 
 	async createExperiment(projectFile: TFile, title: string): Promise<TFile> {
@@ -158,18 +225,17 @@ export class ResearchManager {
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Experiment already exists.");
 		}
-		const content = [
-			"---",
-			"type: research-experiment",
-			`project: "[[${projectFile.path}|Dashboard]]"`,
-			`title: ${safeTitle}`,
-			"status: planned",
-			"---",
-			"",
-			`# ${safeTitle}`,
-			"",
-		].join("\n");
-		return await this.app.vault.create(filePath, content);
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"permanent",
+			"research-experiment",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				title: safeTitle,
+				status: "planned",
+			},
+		);
 	}
 
 	async openFile(file: TFile): Promise<void> {
@@ -181,10 +247,12 @@ export class ResearchManager {
 	}
 
 	private buildDashboardTemplate(projectId: string, projectName: string, projectFolder: string): string {
-		const libraryRoot = "00_Library";
+		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
 		return [
 			"---",
-			"type: research-project",
+			"type: permanent",
+			"tags:",
+			"  - type/research-project",
 			`project_id: ${projectId}`,
 			`project_name: ${projectName}`,
 			"status: active",
@@ -198,47 +266,8 @@ export class ResearchManager {
 			"",
 			"## Quick Actions",
 			"",
-			"```dataviewjs",
-			"const zk = window.ZettelkastenOperator;",
-			"if (!zk) {",
-			"  dv.paragraph('ZettelkastenOperator not available.');",
-			"} else {",
-			"  const projectPath = dv.current().file.path;",
-			`  const objectivesPath = "${projectFolder}/objectives";`,
-			"  const container = dv.el('div', '', { cls: 'zk-dv-actions zk-dv-grid' });",
-			"  const objectiveRow = container.createDiv({ cls: 'zk-dv-row' });",
-			"  objectiveRow.createDiv({ text: 'Objective', cls: 'zk-dv-label' });",
-			"  const objControls = objectiveRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const objInput = objControls.createEl('input', { type: 'text', placeholder: 'Objective title' });",
-			"  const objBtn = objectiveRow.createEl('button', { text: 'Create', cls: 'zk-dv-action' });",
-			"  objBtn.onclick = async () => {",
-			"    if (!objInput.value) return;",
-			"    await zk.createResearchObjective(projectPath, objInput.value);",
-			"  };",
-			"  const stepRow = container.createDiv({ cls: 'zk-dv-row' });",
-			"  stepRow.createDiv({ text: 'Step', cls: 'zk-dv-label' });",
-			"  const stepControls = stepRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const objectives = dv.pages(`\"${objectivesPath}\"`).map(p => p.file).array();",
-			"  const select = stepControls.createEl('select');",
-			"  objectives.forEach(o => {",
-			"    select.createEl('option', { text: o.name, value: o.path });",
-			"  });",
-			"  const stepInput = stepControls.createEl('input', { type: 'text', placeholder: 'Step title' });",
-			"  const stepBtn = stepRow.createEl('button', { text: 'Create', cls: 'zk-dv-action' });",
-			"  stepBtn.onclick = async () => {",
-			"    if (!stepInput.value || !select.value) return;",
-			"    await zk.createResearchStep(projectPath, select.value, stepInput.value);",
-			"  };",
-			"  const expRow = container.createDiv({ cls: 'zk-dv-row' });",
-			"  expRow.createDiv({ text: 'Experiment', cls: 'zk-dv-label' });",
-			"  const expControls = expRow.createDiv({ cls: 'zk-dv-controls' });",
-			"  const expInput = expControls.createEl('input', { type: 'text', placeholder: 'Experiment title' });",
-			"  const expBtn = expRow.createEl('button', { text: 'Create', cls: 'zk-dv-action' });",
-			"  expBtn.onclick = async () => {",
-			"    if (!expInput.value) return;",
-			"    await zk.createResearchExperiment(projectPath, expInput.value);",
-			"  };",
-			"}",
+			"```" + blockType,
+			"zk-research-quick-actions",
 			"```",
 			"",
 			"## 0. Data Pipeline Visualization",
@@ -253,104 +282,50 @@ export class ResearchManager {
 			"",
 			"## 1. AI Pipeline Tracking (Raw to Processed)",
 			"",
-			"```dataviewjs",
-			`const ZOTERO_FOLDER = "${libraryRoot}/Zotero_Imports";`,
-			`const AI_REPORT_FOLDER = "${libraryRoot}/AI_Reports";`,
-			"const PROJECT_ID = dv.current().project_id;",
-			"let papers = dv.pages(`\"${ZOTERO_FOLDER}\"`).where(p => p.projects && p.projects.includes(PROJECT_ID));",
-			"dv.table([\"Paper Title\", \"AI Data Extract\", \"AI Deep Report\", \"Status\"],",
-			"  papers.map(p => {",
-			"    let paperName = p.file.name;",
-			"    let hasData = dv.page(`${AI_REPORT_FOLDER}/Data_${paperName}`) ? \"✅\" : \"⬜\";",
-			"    let hasDeep = dv.page(`${AI_REPORT_FOLDER}/Deep_${paperName}`) ? \"✅\" : \"⬜\";",
-			"    return [p.file.link, hasData, hasDeep, (hasDeep === \"✅\" ? \"Ready\" : \"Processing\")];",
-			"  })",
-			");",
+			"```" + blockType,
+			"zk-research-ai-pipeline",
 			"```",
 			"",
 			"## 2. Atomic Intelligence (The Ingredients)",
 			"",
-			"```dataviewjs",
-			`const ATOMIC_FOLDER = "${libraryRoot}/Atomic_Notes";`,
-			"const PROJECT_ID = dv.current().project_id;",
-			"let atoms = dv.pages(`\"${ATOMIC_FOLDER}\"`).where(p => p.projects && p.projects.includes(PROJECT_ID));",
-			"dv.table([\"Concept Note\", \"Tags\", \"Linked Source\", \"Last Updated\"],",
-			"  atoms.map(p => [p.file.link, p.tags, p.source ? p.source : \"-\", p.file.mtime.toFormat(\"yyyy-MM-dd\")])",
-			");",
+			"```" + blockType,
+			"zk-research-atomic-notes",
 			"```",
 			"",
 			"## 3. Production Staging (The V9.0 Inputs)",
 			"",
-			"```dataview",
-			`TABLE file.mtime as "Modified", length(file.content) as "Size"`,
-			`FROM "${projectFolder}/materials"`,
-			`SORT file.name ASC`,
+			"```" + blockType,
+			"zk-research-materials",
 			"```",
 			"",
 			"## 4. Objectives Timeline (PlantUML Gantt)",
 			"",
-			"```dataviewjs",
-			`const objectives = dv.pages(\"\\\"${projectFolder}/objectives\\\"\");`,
-			"const toDateStr = (val) => {",
-			"  if (!val) return null;",
-			"  try {",
-			"    if (typeof val === 'string') {",
-			"      return val.slice(0, 10);",
-			"    }",
-			"    if (val && typeof val.toISODate === 'function') {",
-			"      return val.toISODate();",
-			"    }",
-			"    if (val instanceof Date) {",
-			"      return val.toISOString().slice(0, 10);",
-			"    }",
-			"    return String(val).slice(0, 10);",
-			"  } catch {",
-			"    return null;",
-			"  }",
-			"};",
-			"const startDates = objectives",
-			"  .map(o => toDateStr(o.start))",
-			"  .where(d => d)",
-			"  .array();",
-			"const projectStart = startDates.length ? startDates.sort()[0] : new Date().toISOString().slice(0, 10);",
-			"const startStr = projectStart;",
-			"const lines = [];",
-			"lines.push(\"@startgantt\");",
-			"lines.push(`Project starts ${startStr}`);",
-			"objectives.forEach(o => {",
-			"  const start = toDateStr(o.start);",
-			"  const end = toDateStr(o.end);",
-			"  if (!start || !end) return;",
-			"  const rawName = o.title || o.file.name;",
-			"  const name = String(rawName).replace(/[\\[\\]]/g, '').trim() || 'Objective';",
-			"  lines.push(`[${name}] starts ${start} and ends ${end}`);",
-			"});",
-			"lines.push(\"@endgantt\");",
-			"dv.paragraph(\"```plantuml\\n\" + lines.join(\"\\n\") + \"\\n```\");",
+			"```" + blockType,
+			"zk-research-gantt",
 			"```",
 			"",
 			"## 5. Objectives",
 			"",
-			"```dataview",
-			"TABLE file.link as Objective, status, start, end, done",
-			`FROM "${projectFolder}/objectives"`,
-			"SORT start ASC",
+			"```" + blockType,
+			"zk-research-objectives",
 			"```",
 			"",
 			"## 6. Steps",
 			"",
-			"```dataview",
-			"TABLE file.link as Step, objective, status, done",
-			`FROM "${projectFolder}/steps"`,
-			"SORT file.name ASC",
+			"```" + blockType,
+			"zk-research-steps",
 			"```",
 			"",
 			"## 7. Experiments",
 			"",
-			"```dataview",
-			"TABLE file.link as Experiment, status",
-			`FROM "${projectFolder}/experiments"`,
-			"SORT file.name ASC",
+			"```" + blockType,
+			"zk-research-experiments",
+			"```",
+			"",
+			"## 8. Requirements",
+			"",
+			"```" + blockType,
+			"zk-research-requirements",
 			"```",
 			"",
 		].join("\n");

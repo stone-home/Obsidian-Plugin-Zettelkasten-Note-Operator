@@ -22,6 +22,15 @@ export interface INoteOption {
 	extraInfo?: INoteOptionExtraParams;
 }
 
+/**
+ * Mapping of status values to PlantUML colors for Gantt chart.
+ * Format: { "status": "ForegroundColor/BackgroundColor" }
+ * Example: { "completed": "LightGreen/Green", "active": "Gold/Orange" }
+ */
+export interface IGanttStatusColorMap {
+	[status: string]: string;
+}
+
 export interface ZettelkastenSettings {
 	dateFormat: string;
 	fleetingPath: string;
@@ -38,6 +47,7 @@ export interface ZettelkastenSettings {
 	dataviewQueryPath: string;
 	dataviewCodeBlockType: string;
 	githubTokenKeys: string;
+	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
 }
 
