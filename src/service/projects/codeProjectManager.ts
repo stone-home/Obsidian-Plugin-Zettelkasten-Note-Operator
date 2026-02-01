@@ -58,7 +58,11 @@ export class CodeProjectManager {
 	private async ensureFolder(path: string): Promise<void> {
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (!existing) {
-			await this.app.vault.createFolder(path);
+			try {
+				await this.app.vault.createFolder(path);
+			} catch {
+				// Folder may already exist due to race condition, ignore
+			}
 		}
 	}
 
@@ -73,8 +77,7 @@ export class CodeProjectManager {
 		await this.ensureFolder(`${folderPath}/releases`);
 		await this.ensureFolder(`${folderPath}/commits`);
 		await this.ensureFolder(`${folderPath}/requirements`);
-		const content = this.buildDashboardTemplate(folderName, folderPath);
-		return await this.app.vault.create(dashboardPath, content);
+		return await this.createDashboard(dashboardPath, folderName);
 	}
 
 	async listProjects(): Promise<TFile[]> {
@@ -105,8 +108,7 @@ export class CodeProjectManager {
 		const existing = this.app.vault.getAbstractFileByPath(dashboardPath);
 		if (existing instanceof TFile) return existing;
 
-		const content = this.buildDashboardTemplate(safeName, projectFolder);
-		return await this.app.vault.create(dashboardPath, content);
+		return await this.createDashboard(dashboardPath, safeName);
 	}
 
 	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
@@ -186,47 +188,62 @@ export class CodeProjectManager {
 		await this.app.vault.modify(file, newContent);
 	}
 
-	private buildDashboardTemplate(projectName: string, projectFolder: string): string {
+	/**
+	 * Creates a code project dashboard using createNote() for unified entry.
+	 */
+	private async createDashboard(filePath: string, projectName: string): Promise<TFile> {
 		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
-		return [
-			"---",
-			"type: permanent",
-			"tags:",
-			"  - type/code-project",
-			`project_name: ${projectName}`,
-			"repo: owner/name",
-			"defaultBranch: trunk",
-			"github_token_key: ",
-			"public_repo: true",
-			"---",
-			"",
-			"# Code Project Dashboard",
-			"",
-			"## Quick Actions",
-			"",
-			"```" + blockType,
-			"zk-project-quick-actions",
-			"```",
-			"",
-			"## Requirements",
-			"",
-			"```" + blockType,
-			"zk-project-requirements",
-			"```",
-			"",
-			"## Releases",
-			"",
-			"```" + blockType,
-			"zk-project-releases",
-			"```",
-			"",
-			"## Unreleased Commits",
-			"",
-			"```" + blockType,
-			"zk-project-commits",
-			"```",
-			"",
-		].join("\n");
+		return await this.createNote(
+			filePath,
+			"Code Project Dashboard",
+			"permanent",
+			"code-project",
+			{
+				project_name: projectName,
+				repo: "owner/name",
+				defaultBranch: "trunk",
+				github_token_key: "",
+				public_repo: true,
+			},
+			[
+				{
+					title: "Quick Actions",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-project-quick-actions",
+						"```",
+					],
+				},
+				{
+					title: "Requirements",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-project-requirements",
+						"```",
+					],
+				},
+				{
+					title: "Releases",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-project-releases",
+						"```",
+					],
+				},
+				{
+					title: "Unreleased Commits",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-project-commits",
+						"```",
+					],
+				},
+			],
+		);
 	}
 
 	async refreshProject(projectFile: TFile, tokenKey?: string): Promise<void> {
@@ -304,23 +321,38 @@ export class CodeProjectManager {
 		const tag = release.tag_name;
 		if (!tag) return;
 		const filePath = `${projectFolder}/releases/${tag}.md`;
-		const content = [
-			"---",
-			"type: permanent",
-			"tags:",
-			"  - type/project-release",
-			`project: "[[${projectFile.path}|Dashboard]]"`,
-			`version: ${tag}`,
-			`url: ${release.html_url || ""}`,
-			`date: ${release.published_at || ""}`,
-			"---",
-			"",
-			`# ${tag}`,
-			"",
-			`${release.body || ""}`,
-			"",
-		].join("\n");
-		await this.upsertFile(filePath, content);
+		const existing = this.app.vault.getAbstractFileByPath(filePath);
+
+		if (existing instanceof TFile) {
+			// Update existing file, preserve id/create via processFrontMatter
+			await this.app.fileManager.processFrontMatter(existing, (fm) => {
+				fm.project = `[[${projectFile.path}|Dashboard]]`;
+				fm.version = tag;
+				fm.url = release.html_url || "";
+				fm.date = release.published_at || "";
+			});
+		} else {
+			// Create new file via unified createNote
+			await this.createNote(
+				filePath,
+				tag,
+				"permanent",
+				"project-release",
+				{
+					project: `[[${projectFile.path}|Dashboard]]`,
+					version: tag,
+					url: release.html_url || "",
+					date: release.published_at || "",
+				},
+				[
+					{
+						title: "",
+						level: 0,
+						content: [release.body || ""],
+					},
+				],
+			);
+		}
 	}
 
 	private async upsertCommit(
@@ -332,33 +364,44 @@ export class CodeProjectManager {
 		if (!sha) return;
 		const filePath = `${projectFolder}/commits/${sha}.md`;
 		const message = commit.commit?.message?.split("\n")[0] || "";
-		const content = [
-			"---",
-			"type: permanent",
-			"tags:",
-			"  - type/project-commit",
-			`project: "[[${projectFile.path}|Dashboard]]"`,
-			`sha: ${sha}`,
-			`message: ${message.replace(/:/g, "")}`,
-			`url: ${commit.html_url || ""}`,
-			`date: ${commit.commit?.author?.date || ""}`,
-			"released: false",
-			"---",
-			"",
-			`# ${sha}`,
-			"",
-			message,
-			"",
-		].join("\n");
-		await this.upsertFile(filePath, content);
-	}
+		const existing = this.app.vault.getAbstractFileByPath(filePath);
 
-	private async upsertFile(path: string, content: string): Promise<void> {
-		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) {
-			await this.app.vault.modify(existing, content);
+			// Update existing file, preserve id/create via processFrontMatter
+			await this.app.fileManager.processFrontMatter(existing, (fm) => {
+				fm.project = `[[${projectFile.path}|Dashboard]]`;
+				fm.sha = sha;
+				fm.message = message.replace(/:/g, "");
+				fm.url = commit.html_url || "";
+				fm.date = commit.commit?.author?.date || "";
+				// Don't overwrite released status if already set
+				if (fm.released === undefined) {
+					fm.released = false;
+				}
+			});
 		} else {
-			await this.app.vault.create(path, content);
+			// Create new file via unified createNote
+			await this.createNote(
+				filePath,
+				sha,
+				"permanent",
+				"project-commit",
+				{
+					project: `[[${projectFile.path}|Dashboard]]`,
+					sha: sha,
+					message: message.replace(/:/g, ""),
+					url: commit.html_url || "",
+					date: commit.commit?.author?.date || "",
+					released: false,
+				},
+				[
+					{
+						title: "",
+						level: 0,
+						content: [message],
+					},
+				],
+			);
 		}
 	}
 

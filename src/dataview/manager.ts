@@ -27,7 +27,11 @@ export class DataviewJSManager extends Component {
 	private async initializeScriptsFolder(): Promise<void> {
 		const folder = this.app.vault.getAbstractFileByPath(this.scriptsFolder);
 		if (!folder) {
-			await this.app.vault.createFolder(this.scriptsFolder);
+			try {
+				await this.app.vault.createFolder(this.scriptsFolder);
+			} catch {
+				// Folder may already exist due to race condition, ignore
+			}
 		}
 	}
 

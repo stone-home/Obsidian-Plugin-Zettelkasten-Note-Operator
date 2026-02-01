@@ -63,7 +63,11 @@ export class ResearchManager {
 	private async ensureFolder(path: string): Promise<void> {
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (!existing) {
-			await this.app.vault.createFolder(path);
+			try {
+				await this.app.vault.createFolder(path);
+			} catch {
+				// Folder may already exist due to race condition, ignore
+			}
 		}
 	}
 
@@ -82,8 +86,7 @@ export class ResearchManager {
 		await this.ensureFolder(`${folderPath}/requirements`);
 
 		const projectId = folderName.toLowerCase().replace(/\s+/g, "_");
-		const content = this.buildDashboardTemplate(projectId, folderName, folderPath);
-		return await this.app.vault.create(dashboardPath, content);
+		return await this.createDashboard(dashboardPath, projectId, folderName, folderPath);
 	}
 
 	async listProjects(): Promise<TFile[]> {
@@ -129,8 +132,7 @@ export class ResearchManager {
 		if (dashboardFile instanceof TFile) return dashboardFile;
 
 		const projectId = safeName.toLowerCase().replace(/\s+/g, "_");
-		const content = this.buildDashboardTemplate(projectId, safeName, projectFolder);
-		return await this.app.vault.create(dashboardPath, content);
+		return await this.createDashboard(dashboardPath, projectId, safeName, projectFolder);
 	}
 
 	async createObjective(projectFile: TFile, title: string): Promise<TFile> {
@@ -246,89 +248,130 @@ export class ResearchManager {
 		return projectFile.path.replace(/\/Dashboard\.md$/, "");
 	}
 
-	private buildDashboardTemplate(projectId: string, projectName: string, projectFolder: string): string {
+	/**
+	 * Creates a research project dashboard using createNote() for unified entry.
+	 */
+	private async createDashboard(
+		filePath: string,
+		projectId: string,
+		projectName: string,
+		projectFolder: string,
+	): Promise<TFile> {
 		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
-		return [
-			"---",
-			"type: permanent",
-			"tags:",
-			"  - type/research-project",
-			`project_id: ${projectId}`,
-			`project_name: ${projectName}`,
-			"status: active",
-			"start: ",
-			"end: ",
-			"---",
-			"",
-			"# Research Command Center",
-			"",
-			"> **Current Goal**: ",
-			"",
-			"## Quick Actions",
-			"",
-			"```" + blockType,
-			"zk-research-quick-actions",
-			"```",
-			"",
-			"## 0. Data Pipeline Visualization",
-			"",
-			"```mermaid",
-			"graph LR",
-			"    Library[(00_Library)] -->|\"Filter by project_id\"| Dashboard{DashboardView}",
-			"    Dashboard -->|\"Select and Synthesize\"| User((You))",
-			"    User -->|\"Snapshot Action\"| Mat(materials/*.md)",
-			"    Mat -->|\"V9.0 Script\"| PDF[FinalPDF]",
-			"```",
-			"",
-			"## 1. AI Pipeline Tracking (Raw to Processed)",
-			"",
-			"```" + blockType,
-			"zk-research-ai-pipeline",
-			"```",
-			"",
-			"## 2. Atomic Intelligence (The Ingredients)",
-			"",
-			"```" + blockType,
-			"zk-research-atomic-notes",
-			"```",
-			"",
-			"## 3. Production Staging (The V9.0 Inputs)",
-			"",
-			"```" + blockType,
-			"zk-research-materials",
-			"```",
-			"",
-			"## 4. Objectives Timeline (PlantUML Gantt)",
-			"",
-			"```" + blockType,
-			"zk-research-gantt",
-			"```",
-			"",
-			"## 5. Objectives",
-			"",
-			"```" + blockType,
-			"zk-research-objectives",
-			"```",
-			"",
-			"## 6. Steps",
-			"",
-			"```" + blockType,
-			"zk-research-steps",
-			"```",
-			"",
-			"## 7. Experiments",
-			"",
-			"```" + blockType,
-			"zk-research-experiments",
-			"```",
-			"",
-			"## 8. Requirements",
-			"",
-			"```" + blockType,
-			"zk-research-requirements",
-			"```",
-			"",
-		].join("\n");
+		return await this.createNote(
+			filePath,
+			"Research Command Center",
+			"permanent",
+			"research-project",
+			{
+				project_id: projectId,
+				project_name: projectName,
+				status: "active",
+				start: "",
+				end: "",
+			},
+			[
+				{
+					title: "",
+					level: 0,
+					content: ["> **Current Goal**: "],
+				},
+				{
+					title: "Quick Actions",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-quick-actions",
+						"```",
+					],
+				},
+				{
+					title: "0. Data Pipeline Visualization",
+					level: 2,
+					content: [
+						"```mermaid",
+						"graph LR",
+						"    Library[(00_Library)] -->|\"Filter by project_id\"| Dashboard{DashboardView}",
+						"    Dashboard -->|\"Select and Synthesize\"| User((You))",
+						"    User -->|\"Snapshot Action\"| Mat(materials/*.md)",
+						"    Mat -->|\"V9.0 Script\"| PDF[FinalPDF]",
+						"```",
+					],
+				},
+				{
+					title: "1. AI Pipeline Tracking (Raw to Processed)",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-ai-pipeline",
+						"```",
+					],
+				},
+				{
+					title: "2. Atomic Intelligence (The Ingredients)",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-atomic-notes",
+						"```",
+					],
+				},
+				{
+					title: "3. Production Staging (The V9.0 Inputs)",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-materials",
+						"```",
+					],
+				},
+				{
+					title: "4. Objectives Timeline (PlantUML Gantt)",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-gantt",
+						"```",
+					],
+				},
+				{
+					title: "5. Objectives",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-objectives",
+						"```",
+					],
+				},
+				{
+					title: "6. Steps",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-steps",
+						"```",
+					],
+				},
+				{
+					title: "7. Experiments",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-experiments",
+						"```",
+					],
+				},
+				{
+					title: "8. Requirements",
+					level: 2,
+					content: [
+						"```" + blockType,
+						"zk-research-requirements",
+						"```",
+					],
+				},
+			],
+		);
 	}
 }
 
