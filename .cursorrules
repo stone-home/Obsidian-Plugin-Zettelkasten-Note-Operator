@@ -9,7 +9,7 @@
 - Use TypeScript **Strict Mode**.
 - Prefer `type` over `interface` for consistency unless extending.
 - Use **ES6+ features** (optional chaining, nullish coalescing).
-- Framework preference: [此处可填写如 Next.js 或 React]，使用函数式组件。
+- Framework preference: ESNext
 - Documentation: Use JSDoc for complex logic.
 
 ## Python Rules
