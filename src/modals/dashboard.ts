@@ -228,6 +228,12 @@ export class Dashboard extends Modal {
 				return;
 			}
 
+			const activeFile = this.app.workspace.getActiveFile();
+			if (!activeFile || activeFile.extension !== 'md') {
+				new Notice('No active note to move.');
+				return;
+			}
+
 			// 1. Get current type (handle lowercase as requested)
 			const rawType = activeNote.properties.get('type') as string;
 			const currentType = (rawType ? rawType.toLowerCase() : 'fleeting') as keyof NoteTypeMap;
@@ -249,7 +255,8 @@ export class Dashboard extends Modal {
 			// 3. Open Folder Selection Modal restricted to allowedRoot
 			new FolderFuzzyModal(this.app, allowedRoot, async (folder) => {
 				try {
-					const fileName = activeNote.title
+					// Use activeFile.name so the .md extension is preserved (title is display name without extension)
+					const fileName = activeFile.name;
 					const newPath = `${folder.path}/${fileName}`;
 
 					// 4. Move
