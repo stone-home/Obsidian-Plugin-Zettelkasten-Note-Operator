@@ -1,7 +1,7 @@
 {
 	"id": "zettelkasten-operator",
 	"name": "Zettelkasten Notes Operator",
-	"version": "1.3.2",
+	"version": "1.3.3",
 	"minAppVersion": "0.15.0",
 	"description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
 	"author": "Stone",
