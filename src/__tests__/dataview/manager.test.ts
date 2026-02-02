@@ -8,7 +8,10 @@ import {
 	clearVault,
 	populateVault,
 } from "../../__mocks__/testHelpers";
-import { DataviewJSManager } from "../../dataview/manager";
+import {
+	DataviewJSManager,
+	getDefaultScriptContent,
+} from "../../dataview/manager";
 
 describe("DataviewJSManager", () => {
 	let app: App;
@@ -257,5 +260,142 @@ describe("DataviewJSManager", () => {
 
 			expect(() => manager.unload()).not.toThrow();
 		});
+	});
+
+	// ==================== getScripts ====================
+
+	describe("getScripts", () => {
+		beforeEach(async () => {
+			await manager.onload();
+		});
+
+		it("should return all scripts when no category", () => {
+			const scripts = manager.getScripts();
+			expect(Array.isArray(scripts)).toBe(true);
+			expect(scripts.length).toBeGreaterThan(0);
+		});
+
+		it("should filter by category when provided", () => {
+			const scripts = manager.getScripts("research");
+			expect(Array.isArray(scripts)).toBe(true);
+		});
+	});
+
+	// ==================== exportScriptsManifest ====================
+
+	describe("exportScriptsManifest", () => {
+		beforeEach(async () => {
+			await manager.onload();
+		});
+
+		it("should return JSON string of scripts", () => {
+			const manifest = manager.exportScriptsManifest();
+			expect(typeof manifest).toBe("string");
+			const parsed = JSON.parse(manifest);
+			expect(Array.isArray(parsed)).toBe(true);
+		});
+	});
+
+	// ==================== executeScript ====================
+
+	describe("executeScript", () => {
+		beforeEach(async () => {
+			await manager.onload();
+		});
+
+		it("should set error text when script not found", async () => {
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
+			await manager.executeScript("nonexistent-script", el, {});
+			expect(el.textContent).toContain("not found");
+		});
+
+		it("should set error text when Dataview plugin not available", async () => {
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
+			(app as any).plugins = { plugins: {} };
+			await manager.executeScript("zk-research-quick-actions", el, {});
+			expect(el.textContent).toContain("Dataview");
+		});
+
+		it("should call executeJs when Dataview API available", async () => {
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
+			const executeJs = jest.fn().mockResolvedValue(undefined);
+			(app as any).plugins = {
+				plugins: {
+					dataview: { api: { executeJs } },
+				},
+			};
+			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			expect(executeJs).toHaveBeenCalled();
+		});
+	});
+
+	// ==================== createScript (overwrite) ====================
+
+	describe("createScript overwrite", () => {
+		beforeEach(async () => {
+			await manager.onload();
+		});
+
+		it("should overwrite existing script when overwrite true", async () => {
+			await manager.createScript(
+				"zk-research-quick-actions",
+				"Overwritten",
+				"return 42;",
+				{ overwrite: true }
+			);
+			const script = manager.getScript("zk-research-quick-actions");
+			expect(script?.name).toBe("Overwritten");
+			const content = (app.vault as any)._getContent(
+				`${scriptsFolder}/zk-research-quick-actions.js`
+			);
+			expect(content).toContain("return 42;");
+		});
+	});
+
+	// ==================== createScriptBuilder ====================
+
+	describe("createScriptBuilder", () => {
+		it("should return a builder instance", async () => {
+			await manager.onload();
+			const builder = manager.createScriptBuilder();
+			expect(builder).toBeDefined();
+			expect(typeof builder.build).toBe("function");
+		});
+	});
+});
+
+// ==================== getDefaultScriptContent ====================
+
+describe("getDefaultScriptContent", () => {
+	beforeAll(async () => {
+		const app = createMockApp();
+		const m = new DataviewJSManager(app, "dataview-scripts");
+		await m.onload();
+	});
+
+	it("should return content for predefined script id", () => {
+		const content = getDefaultScriptContent("zk-research-quick-actions");
+		expect(content).toBeTruthy();
+		expect(typeof content).toBe("string");
+	});
+
+	it("should return null for non-predefined id", () => {
+		const content = getDefaultScriptContent("user-custom-script");
+		expect(content).toBeNull();
 	});
 });

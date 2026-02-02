@@ -331,3 +331,76 @@
 	width: 100%;
 	max-width: 300px;
 }
+
+/* Dataview script list */
+.zettel-script-actions {
+	margin-bottom: 12px;
+}
+
+.zettel-script-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zettel-script-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: var(--background-modifier-hover);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.zettel-script-name {
+	font-weight: 600;
+	min-width: 120px;
+}
+
+.zettel-script-id {
+	font-size: 0.9em;
+	color: var(--text-muted);
+	flex: 1;
+}
+
+.zettel-script-row-actions {
+	display: flex;
+	gap: 4px;
+}
+
+.zettel-script-preview {
+	margin: 4px 0 8px 0;
+	padding: 8px;
+	border-radius: 6px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.zettel-script-preview-code {
+	margin: 0;
+	font-size: 0.85em;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 240px;
+	overflow: auto;
+}
+
+/* Script edit modal (code-friendly window) */
+.zettel-script-edit-wrapper {
+	width: 100%;
+	margin: 12px 0;
+}
+
+.zettel-script-edit-code {
+	width: 100%;
+	min-height: 360px;
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+	line-height: 1.4;
+	resize: vertical;
+	padding: 10px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}

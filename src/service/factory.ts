@@ -14,8 +14,9 @@ import { Dashboard } from '../modals/dashboard';
 /**
  * Resolves built-in prefix placeholders ($date, $datetime, $year, $month, $day) to actual values.
  * If prefix is not a known placeholder, returns it as-is.
+ * Exported for testing.
  */
-function resolvePrefix(prefix: string, dateFormat: string): string {
+export function resolvePrefix(prefix: string, dateFormat: string): string {
 	const now = new Date();
 	switch (prefix) {
 		case '$date':
