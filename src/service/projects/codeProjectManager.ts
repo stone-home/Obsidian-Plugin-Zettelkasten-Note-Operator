@@ -323,13 +323,16 @@ export class CodeProjectManager {
 		const filePath = `${projectFolder}/releases/${tag}.md`;
 		const existing = this.app.vault.getAbstractFileByPath(filePath);
 
+		const releaseUrl = release.html_url ?? release.url ?? "";
+		const releaseDate = release.published_at ?? "";
+
 		if (existing instanceof TFile) {
 			// Update existing file, preserve id/create via processFrontMatter
 			await this.app.fileManager.processFrontMatter(existing, (fm) => {
 				fm.project = `[[${projectFile.path}|Dashboard]]`;
 				fm.version = tag;
-				fm.url = release.html_url || "";
-				fm.date = release.published_at || "";
+				fm.url = releaseUrl;
+				fm.date = releaseDate;
 			});
 		} else {
 			// Create new file via unified createNote
@@ -341,8 +344,8 @@ export class CodeProjectManager {
 				{
 					project: `[[${projectFile.path}|Dashboard]]`,
 					version: tag,
-					url: release.html_url || "",
-					date: release.published_at || "",
+					url: releaseUrl,
+					date: releaseDate,
 				},
 				[
 					{
