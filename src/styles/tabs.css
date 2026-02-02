@@ -1,11 +1,18 @@
 /* Modern Tab Navigation */
 .zettel-tab-nav {
 	display: flex;
-	gap: 4px;
-	padding: 8px;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 10px 12px;
 	background: var(--background-secondary);
 	border-radius: 12px;
-	margin-bottom: 24px;
+	margin-bottom: 28px;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.zettel-tab-content {
+	padding: 4px 0;
+	min-height: 200px;
 }
 
 .zettel-tab-button {

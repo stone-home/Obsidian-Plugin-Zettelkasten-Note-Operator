@@ -122,8 +122,8 @@ class PropertyCreationModal extends Modal {
 export class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
-	// [STATE]: Tracks which top-level tab is active (General vs Templates)
-	private activeTab: 'general' | 'templates' = 'general';
+	// [STATE]: Tracks which top-level tab is active
+	private activeTab: 'general' | 'projects' | 'dataview' | 'templates' = 'general';
 
 	// [STATE]: Tracks which template is being edited (null = list view, number = detail view)
 	private editingIndex: number | null = null;
@@ -149,14 +149,20 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		// 1. Render Top Tab Navigation
 		const navContainer = containerEl.createDiv({ cls: 'zettel-tab-nav' });
-		this.renderTabButton(navContainer, 'General', 'general');
-		this.renderTabButton(navContainer, 'Templates', 'templates');
+		this.renderTabButton(navContainer, 'General', 'settings', 'general');
+		this.renderTabButton(navContainer, 'Project Management', 'folder-tree', 'projects');
+		this.renderTabButton(navContainer, 'Dataview', 'database', 'dataview');
+		this.renderTabButton(navContainer, 'Templates', 'file-text', 'templates');
 
 		// 2. Render Main Content Area
 		const contentContainer = containerEl.createDiv({ cls: 'zettel-tab-content' });
 
 		if (this.activeTab === 'general') {
 			this.renderGeneralSettings(contentContainer);
+		} else if (this.activeTab === 'projects') {
+			this.renderProjectManagementSettings(contentContainer);
+		} else if (this.activeTab === 'dataview') {
+			this.renderDataviewSettings(contentContainer);
 		} else {
 			// [LOGIC]: Router for Template View
 			if (this.editingIndex !== null) {
@@ -174,16 +180,19 @@ export class SampleSettingTab extends PluginSettingTab {
 		}
 	}
 
-	// [UI]: Helper to create top navigation tabs
+	// [UI]: Helper to create top navigation tabs (with optional icon)
 	private renderTabButton(
 		parent: HTMLElement,
 		text: string,
-		tab: 'general' | 'templates'
+		iconName: string,
+		tab: 'general' | 'projects' | 'dataview' | 'templates'
 	) {
 		const btn = parent.createEl('button', {
-			text: text,
 			cls: `zettel-tab-button ${this.activeTab === tab ? 'active' : ''}`,
 		});
+		const iconSpan = btn.createSpan({ cls: 'zettel-tab-icon' });
+		setIcon(iconSpan, iconName);
+		btn.createSpan({ text, cls: 'zettel-tab-text' });
 		btn.onclick = () => {
 			this.activeTab = tab;
 			this.editingIndex = null;
@@ -192,47 +201,63 @@ export class SampleSettingTab extends PluginSettingTab {
 	}
 
 	private renderGeneralSettings(containerEl: HTMLElement) {
-		containerEl.createEl('h2', { text: 'General Configuration' });
-		// Default folder configuration for each type of note
-		new Setting(containerEl).setName("Fleeting Default Path").addText(t => {
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const header = card.createDiv({ cls: 'zettel-section-header' });
+		const iconSpan = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(iconSpan, 'folder');
+		const textDiv = header.createDiv({ cls: 'zettel-section-text' });
+		textDiv.createEl('h2', { text: 'General Configuration', cls: 'zettel-section-title' });
+		textDiv.createEl('p', { text: 'Default folder paths for each Zettelkasten note type.', cls: 'zettel-section-desc' });
+
+		new Setting(card).setName("Fleeting Default Path").addText(t => {
 			t.setValue(this.plugin.settings.fleetingPath).onChange(async (v) => {
 				this.plugin.settings.fleetingPath = v;
 				await this.plugin.saveSettings();
-			})
-		})
-		new Setting(containerEl).setName("Literature Default Path").addText(t => {
+			});
+		});
+		new Setting(card).setName("Literature Default Path").addText(t => {
 			t.setValue(this.plugin.settings.literaturePath).onChange(async (v) => {
 				this.plugin.settings.literaturePath = v;
 				await this.plugin.saveSettings();
-			})
-		})
-		new Setting(containerEl).setName("Atom Default Path").addText(t => {
+			});
+		});
+		new Setting(card).setName("Atom Default Path").addText(t => {
 			t.setValue(this.plugin.settings.atomPath).onChange(async (v) => {
 				this.plugin.settings.atomPath = v;
 				await this.plugin.saveSettings();
-			})
-		})
-		new Setting(containerEl).setName("Permanent Default Path").addText(t => {
+			});
+		});
+		new Setting(card).setName("Permanent Default Path").addText(t => {
 			t.setValue(this.plugin.settings.permanentPath).onChange(async (v) => {
 				this.plugin.settings.permanentPath = v;
 				await this.plugin.saveSettings();
-			})
-		})
-		new Setting(containerEl).setName("Lexicon Default Path").addText(t => {
+			});
+		});
+		new Setting(card).setName("Lexicon Default Path").addText(t => {
 			t.setValue(this.plugin.settings.lexiconPath).onChange(async (v) => {
 				this.plugin.settings.lexiconPath = v;
 				await this.plugin.saveSettings();
-			})
-		})
-		new Setting(containerEl).setName("Hub/MoC Default Path").addText(t => {
+			});
+		});
+		new Setting(card).setName("Hub/MoC Default Path").addText(t => {
 			t.setValue(this.plugin.settings.hubPath).onChange(async (v) => {
 				this.plugin.settings.hubPath = v;
 				await this.plugin.saveSettings();
-			})
-		})
+			});
+		});
+	}
 
-		containerEl.createEl('h2', { text: 'Project Management' });
-		new Setting(containerEl).setName("Research Root Path").addText(t => {
+	private renderProjectManagementSettings(containerEl: HTMLElement) {
+		// Card: Root paths
+		const pathsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const pathsHeader = pathsCard.createDiv({ cls: 'zettel-section-header' });
+		const pathsIcon = pathsHeader.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(pathsIcon, 'folder-tree');
+		const pathsText = pathsHeader.createDiv({ cls: 'zettel-section-text' });
+		pathsText.createEl('h2', { text: 'Project Management', cls: 'zettel-section-title' });
+		pathsText.createEl('p', { text: 'Root folders for Research and Code projects.', cls: 'zettel-section-desc' });
+
+		new Setting(pathsCard).setName("Research Root Path").addText(t => {
 			t.setPlaceholder("Research")
 				.setValue(this.plugin.settings.researchRootPath)
 				.onChange(async (v) => {
@@ -240,7 +265,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 		});
-		new Setting(containerEl).setName("Projects Root Path").addText(t => {
+		new Setting(pathsCard).setName("Projects Root Path").addText(t => {
 			t.setPlaceholder("Projects")
 				.setValue(this.plugin.settings.projectRootPath)
 				.onChange(async (v) => {
@@ -249,41 +274,33 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		// Gantt Status Colors Configuration
-		containerEl.createEl('h3', { text: 'Gantt Chart Status Colors' });
-		containerEl.createEl('p', {
+		// Card: Gantt status colors
+		const ganttCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const ganttHeader = ganttCard.createDiv({ cls: 'zettel-section-header' });
+		const ganttIcon = ganttHeader.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(ganttIcon, 'palette');
+		const ganttText = ganttHeader.createDiv({ cls: 'zettel-section-text' });
+		ganttText.createEl('h2', { text: 'Gantt Chart Status Colors', cls: 'zettel-section-title' });
+		ganttText.createEl('p', {
 			text: 'Define colors for each status in PlantUML Gantt charts. Format: ForegroundColor/BackgroundColor',
-			cls: 'setting-item-description',
+			cls: 'zettel-section-desc',
 		});
 
-		// Ensure ganttStatusColors exists
 		if (!this.plugin.settings.ganttStatusColors) {
 			this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
 		}
-
 		const colorMap = this.plugin.settings.ganttStatusColors;
-		const colorContainer = containerEl.createDiv({ cls: 'zettel-gantt-colors' });
-
-		// Render existing status-color pairs
+		const colorContainer = ganttCard.createDiv({ cls: 'zettel-gantt-colors' });
 		this.renderGanttColorList(colorContainer, colorMap);
 
-		// Add new status section
-		const addStatusContainer = containerEl.createDiv({ cls: 'zettel-add-status-row' });
+		const addStatusContainer = ganttCard.createDiv({ cls: 'zettel-add-status-row' });
 		addStatusContainer.style.cssText = 'display:flex; align-items:center; gap:10px; margin:16px 0;';
-
-		// Status name input
 		const statusInput = new TextComponent(addStatusContainer);
 		statusInput.setPlaceholder("status name (e.g. review)");
 		statusInput.inputEl.style.flex = '1';
-
-		// Color dropdown for new status
 		const newColorDropdown = new DropdownComponent(addStatusContainer);
-		GANTT_COLOR_OPTIONS.forEach(opt => {
-			newColorDropdown.addOption(opt.value, opt.label);
-		});
+		GANTT_COLOR_OPTIONS.forEach(opt => newColorDropdown.addOption(opt.value, opt.label));
 		newColorDropdown.setValue(GANTT_COLOR_OPTIONS[0].value);
-
-		// Add button
 		new ButtonComponent(addStatusContainer)
 			.setButtonText("Add")
 			.setCta()
@@ -297,8 +314,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				}
 			});
 
-		// Reset to defaults button
-		new Setting(containerEl)
+		new Setting(ganttCard)
 			.addButton(btn => {
 				btn.setButtonText("Reset to Defaults")
 					.setWarning()
@@ -308,9 +324,9 @@ export class SampleSettingTab extends PluginSettingTab {
 						this.display();
 					});
 			});
+	}
 
-		containerEl.createEl('h2', { text: 'Dataview Integration' });
-
+	private renderDataviewSettings(containerEl: HTMLElement) {
 		const refreshDataview = async () => {
 			if (!this.plugin.settings.dataviewEnabled) {
 				this.plugin.dataview?.unload();
@@ -322,19 +338,26 @@ export class SampleSettingTab extends PluginSettingTab {
 			await this.plugin.dataview.initialize();
 		};
 
-		new Setting(containerEl)
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const header = card.createDiv({ cls: 'zettel-section-header' });
+		const iconSpan = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(iconSpan, 'database');
+		const textDiv = header.createDiv({ cls: 'zettel-section-text' });
+		textDiv.createEl('h2', { text: 'Dataview Integration', cls: 'zettel-section-title' });
+		textDiv.createEl('p', { text: 'Load and run Dataview JS scripts from your vault.', cls: 'zettel-section-desc' });
+
+		new Setting(card)
 			.setName("Enable Dataview scripts")
 			.setDesc("Load Dataview JS scripts from a vault folder.")
 			.addToggle(t => {
-				t.setValue(this.plugin.settings.dataviewEnabled)
-					.onChange(async (v) => {
-						this.plugin.settings.dataviewEnabled = v;
-						await this.plugin.saveSettings();
-						await refreshDataview();
-					});
+				t.setValue(this.plugin.settings.dataviewEnabled).onChange(async (v) => {
+					this.plugin.settings.dataviewEnabled = v;
+					await this.plugin.saveSettings();
+					await refreshDataview();
+				});
 			});
 
-		new Setting(containerEl)
+		new Setting(card)
 			.setName("Dataview scripts folder")
 			.setDesc("Vault-relative folder that stores Dataview JS scripts.")
 			.addText(t => {
@@ -347,7 +370,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					});
 			});
 
-		new Setting(containerEl)
+		new Setting(card)
 			.setName("Dataview code block type")
 			.setDesc("Language name used in code blocks (e.g. zettelkasten-query).")
 			.addText(t => {
@@ -359,7 +382,6 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
-
 	}
 
 	// --- [HELPER]: Get preview color for a PlantUML color value ---

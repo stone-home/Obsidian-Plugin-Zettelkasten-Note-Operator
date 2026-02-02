@@ -1,7 +1,21 @@
 .zettel-settings-wrapper {
-	padding: 10px 5px;
-	max-width: 800px;
+	padding: 16px 12px 24px;
+	max-width: 720px;
 	margin: 0 auto;
+}
+
+.zettel-settings-wrapper .zettel-section-header {
+	margin: 0 0 16px 0;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.zettel-settings-wrapper .zettel-settings-card {
+	margin-bottom: 24px;
+}
+
+.zettel-settings-wrapper .zettel-settings-card:last-child {
+	margin-bottom: 0;
 }
 
 .zettel-view-header {
