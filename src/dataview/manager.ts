@@ -4,6 +4,8 @@ import { DataviewScriptBuilder } from "./builder";
 import { Logger } from "../logger";
 
 export class DataviewJSManager extends Component {
+	static defaultContentById: Map<string, string> = new Map();
+
 	private app: App;
 	private fileWatcherRef: EventRef[] = [];
 	private scripts: Map<string, IDataviewScript> = new Map();
@@ -439,6 +441,9 @@ export class DataviewJSManager extends Component {
 			await this.createScript(script.id, script.name, script.script, {
 				overwrite: script.overwrite,
 			});
+			const fullContent =
+				this.buildScriptHeader(script.id, script.name) + script.script;
+			DataviewJSManager.defaultContentById.set(script.id, fullContent);
 		}
 	}
 
@@ -576,6 +581,36 @@ export class DataviewJSManager extends Component {
 		return !!this.app.vault.getAbstractFileByPath(path);
 	}
 
+	private buildScriptHeader(
+		id: string,
+		name: string,
+		options: {
+			description?: string;
+			category?: string;
+			parameters?: IDataviewParameter[];
+			tags?: string[];
+		} = {},
+	): string {
+		let header = `/**\n * @id ${id}\n * @name ${name}\n`;
+		if (options.description) {
+			header += ` * @description ${options.description}\n`;
+		}
+		if (options.category) header += ` * @category ${options.category}\n`;
+
+		if (options.parameters) {
+			options.parameters.forEach((param) => {
+				header += ` * @param {${param.type}} ${param.name} - ${param.description || ""}\n`;
+			});
+		}
+
+		if (options.tags) {
+			header += ` * @tags ${options.tags.join(", ")}\n`;
+		}
+
+		header += " */\n\n";
+		return header;
+	}
+
 	async createScript(
 		id: string,
 		name: string,
@@ -605,24 +640,7 @@ export class DataviewJSManager extends Component {
 			}
 		}
 
-		let header = `/**\n * @id ${id}\n * @name ${name}\n`;
-		if (options.description) {
-			header += ` * @description ${options.description}\n`;
-		}
-		if (options.category) header += ` * @category ${options.category}\n`;
-
-		if (options.parameters) {
-			options.parameters.forEach((param) => {
-				header += ` * @param {${param.type}} ${param.name} - ${param.description || ""}\n`;
-			});
-		}
-
-		if (options.tags) {
-			header += ` * @tags ${options.tags.join(", ")}\n`;
-		}
-
-		header += " */\n\n";
-
+		const header = this.buildScriptHeader(id, name, options);
 		const fullContent = header + scriptContent;
 		if (this.fileExists(filePath)) {
 			const existingFile = this.app.vault.getAbstractFileByPath(
@@ -737,4 +755,12 @@ export class DataviewJSManager extends Component {
 		const scripts = Array.from(this.scripts.values());
 		return JSON.stringify(scripts, null, 2);
 	}
+}
+
+/**
+ * Returns the default (predefined) script content for a given id, or null if not predefined.
+ * Used by settings to offer Reset for predefined scripts.
+ */
+export function getDefaultScriptContent(id: string): string | null {
+	return DataviewJSManager.defaultContentById.get(id) ?? null;
 }

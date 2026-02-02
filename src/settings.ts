@@ -9,11 +9,15 @@ import {
 	Modal,
 	ToggleComponent,
 	setIcon,
+	Notice,
+	TFile,
+	TFolder,
 } from 'obsidian';
 import MyPlugin from './main';
 import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
+import { getDefaultScriptContent } from "./dataview/manager";
 import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS, PREFIX_PLACEHOLDERS } from "./constants";
 
 /**
@@ -116,6 +120,60 @@ class PropertyCreationModal extends Modal {
 }
 
 /**
+ * [Class]: DataviewScriptCreateModal
+ * [Purpose]: Modal for creating a new Dataview JS script (id + name).
+ */
+class DataviewScriptCreateModal extends Modal {
+	private idInput!: TextComponent;
+	private nameInput!: TextComponent;
+	private onSubmit: (id: string, name: string) => Promise<void>;
+
+	constructor(app: App, onSubmit: (id: string, name: string) => Promise<void>) {
+		super(app);
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.addClass('zettelkasten-modal');
+		contentEl.createEl('h2', { text: 'Create Dataview Script', cls: 'modal-title' });
+
+		const container = contentEl.createDiv();
+		container.setAttr('style', 'display:flex; flex-direction:column; gap:15px;');
+
+		const idDiv = container.createDiv();
+		idDiv.createEl('label', { text: 'Script ID (filename without .js)', cls: 'setting-item-name', attr: { style: 'display:block; margin-bottom:4px;' } });
+		const idComp = new TextComponent(idDiv);
+		idComp.setPlaceholder('e.g. zk-my-script');
+		idComp.inputEl.style.width = '100%';
+		this.idInput = idComp;
+
+		const nameDiv = container.createDiv();
+		nameDiv.createEl('label', { text: 'Script name (display name)', cls: 'setting-item-name', attr: { style: 'display:block; margin-bottom:4px;' } });
+		const nameComp = new TextComponent(nameDiv);
+		nameComp.setPlaceholder('e.g. My Script');
+		nameComp.inputEl.style.width = '100%';
+		this.nameInput = nameComp;
+
+		const buttonDiv = contentEl.createDiv({ cls: 'modal-button-container' });
+		new ButtonComponent(buttonDiv).setButtonText('Cancel').onClick(() => this.close());
+		new ButtonComponent(buttonDiv).setButtonText('Create').setCta().onClick(() => this.submit());
+	}
+
+	private async submit() {
+		const id = (this.idInput?.getValue() ?? '').trim().replace(/[\\/.#]/g, '-').replace(/\.js$/i, '');
+		const name = (this.nameInput?.getValue() ?? '').trim() || id;
+		if (!id) return;
+		await this.onSubmit(id, name);
+		this.close();
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+/**
  * [Class]: SampleSettingTab
  * [Purpose]: The main Settings Page logic.
  */
@@ -130,6 +188,9 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	// [STATE]: Keeps track of which accordions are open so they stay open during re-renders
 	private expandedCategories: Record<string, boolean> = {};
+
+	// [STATE]: Expanded script paths in Dataview tab (show script content)
+	private expandedScriptPaths: Set<string> = new Set();
 
 	constructor(app: App, plugin: MyPlugin) {
 		super(app, plugin);
@@ -326,16 +387,30 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 	}
 
+	private parseScriptDocstring(content: string): { id?: string; name?: string } {
+		const block = content.match(/\/\*\*\s*([\s\S]*?)\*\//);
+		if (!block) return {};
+		const text = block[1];
+		const idMatch = text.match(/@id\s+(\S+)/);
+		const nameMatch = text.match(/@name\s+([\s\S]+?)(?=\n\s*\*|$)/);
+		return {
+			id: idMatch ? idMatch[1].trim() : undefined,
+			name: nameMatch ? nameMatch[1].trim() : undefined,
+		};
+	}
+
 	private renderDataviewSettings(containerEl: HTMLElement) {
 		const refreshDataview = async () => {
 			if (!this.plugin.settings.dataviewEnabled) {
 				this.plugin.dataview?.unload();
-				this.plugin.dataview = undefined;
 				return;
 			}
-			this.plugin.dataview?.unload();
-			this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
-			await this.plugin.dataview.initialize();
+			if (this.plugin.dataview) {
+				await this.plugin.dataview.refresh();
+			} else {
+				this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
+				await this.plugin.dataview.initialize();
+			}
 		};
 
 		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
@@ -382,6 +457,112 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
+
+		// Scripts card: list, remove, create, expand
+		const scriptsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const scriptsHeader = scriptsCard.createDiv({ cls: 'zettel-section-header' });
+		const scriptsIcon = scriptsHeader.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(scriptsIcon, 'file-code');
+		const scriptsText = scriptsHeader.createDiv({ cls: 'zettel-section-text' });
+		scriptsText.createEl('h2', { text: 'Scripts', cls: 'zettel-section-title' });
+		scriptsText.createEl('p', { text: 'Dataview JS scripts in the folder above. Add, remove, or expand to view source.', cls: 'zettel-section-desc' });
+
+		const createBtnRow = scriptsCard.createDiv({ cls: 'zettel-script-actions' });
+		new ButtonComponent(createBtnRow)
+			.setButtonText('Create new script')
+			.setCta()
+			.onClick(() => {
+				new DataviewScriptCreateModal(this.app, async (id, name) => {
+					const folderPath = this.plugin.settings.dataviewQueryPath.trim() || 'dataview-scripts';
+					const existingFolder = this.app.vault.getAbstractFileByPath(folderPath);
+					if (!existingFolder) {
+						await this.app.vault.createFolder(folderPath);
+					}
+					const filePath = `${folderPath}/${id}.js`;
+					if (this.app.vault.getAbstractFileByPath(filePath)) {
+						new Notice('Script already exists.');
+						return;
+					}
+					const docstring = `/**\n * @id ${id}\n * @name ${name}\n * @params (optional - add parameters here)\n */\n\n// Your code here\n`;
+					await this.app.vault.create(filePath, docstring);
+					this.display();
+					await refreshDataview();
+				}).open();
+			});
+
+		const listContainer = scriptsCard.createDiv({ cls: 'zettel-script-list' });
+		const loadScripts = async () => {
+			listContainer.empty();
+			const folderPath = this.plugin.settings.dataviewQueryPath.trim() || 'dataview-scripts';
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!folder || !(folder instanceof TFolder)) {
+				listContainer.createEl('p', { text: 'No scripts folder. Create a script to create the folder.', cls: 'setting-item-description' });
+				return;
+			}
+			const scriptFiles = folder.children.filter((f): f is TFile => f instanceof TFile && f.extension === 'js');
+			if (scriptFiles.length === 0) {
+				listContainer.createEl('p', { text: 'No scripts. Create one to get started.', cls: 'setting-item-description' });
+				return;
+			}
+			for (const file of scriptFiles) {
+				let id = file.basename;
+				let name = file.basename;
+				try {
+					const content = await this.app.vault.read(file);
+					const parsed = this.parseScriptDocstring(content);
+					if (parsed.id) id = parsed.id;
+					if (parsed.name) name = parsed.name;
+				} catch (_) {}
+				const row = listContainer.createDiv({ cls: 'zettel-script-row' });
+				row.createSpan({ text: name, cls: 'zettel-script-name' });
+				row.createSpan({ text: id, cls: 'zettel-script-id' });
+				const actions = row.createDiv({ cls: 'zettel-script-row-actions' });
+				const expandBtn = new ButtonComponent(actions);
+				expandBtn.setIcon(this.expandedScriptPaths.has(file.path) ? 'chevron-down' : 'chevron-right');
+				expandBtn.setTooltip('Show script');
+				expandBtn.setClass('clickable-icon');
+				expandBtn.onClick(() => {
+					if (this.expandedScriptPaths.has(file.path)) {
+						this.expandedScriptPaths.delete(file.path);
+					} else {
+						this.expandedScriptPaths.add(file.path);
+					}
+					this.display();
+				});
+				const defaultContent = getDefaultScriptContent(file.basename);
+				if (defaultContent !== null) {
+					const resetBtn = new ButtonComponent(actions);
+					resetBtn.setIcon('undo');
+					resetBtn.setTooltip('Reset to default');
+					resetBtn.setClass('clickable-icon');
+					resetBtn.onClick(async () => {
+						if (!confirm(`Reset "${name}" to the predefined version?`)) return;
+						await this.app.vault.modify(file, defaultContent);
+						this.display();
+						await refreshDataview();
+					});
+				}
+				const removeBtn = new ButtonComponent(actions);
+				removeBtn.setIcon('trash');
+				removeBtn.setTooltip('Remove script');
+				removeBtn.setClass('clickable-icon');
+				removeBtn.onClick(async () => {
+					if (!confirm(`Remove script "${name}"?`)) return;
+					await this.app.vault.delete(file);
+					this.expandedScriptPaths.delete(file.path);
+					this.display();
+					await refreshDataview();
+				});
+				if (this.expandedScriptPaths.has(file.path)) {
+					const preview = listContainer.createDiv({ cls: 'zettel-script-preview' });
+					this.app.vault.read(file).then((content) => {
+						const pre = preview.createEl('pre', { cls: 'zettel-script-preview-code' });
+						pre.setText(content);
+					});
+				}
+			}
+		};
+		loadScripts();
 	}
 
 	// --- [HELPER]: Get preview color for a PlantUML color value ---

@@ -74,11 +74,11 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
-		// Wait for vault cache to be ready before initializing dataview scripts
+		// Create dataview instance immediately when enabled so settings/refresh never create a second one (avoids "already registered").
 		if (this.settings.dataviewEnabled) {
+			this.dataview = new DataviewCommand(this.app, this);
 			this.app.workspace.onLayoutReady(async () => {
-				this.dataview = new DataviewCommand(this.app, this);
-				await this.dataview.initialize();
+				await this.dataview!.initialize();
 			});
 		}
 

@@ -402,4 +402,72 @@ describe("ResearchManager", () => {
 			).toBeTruthy();
 		});
 	});
+
+	// ==================== updateDashboardProperties ====================
+
+	describe("updateDashboardProperties", () => {
+		it("should do nothing when file does not exist", async () => {
+			await manager.updateDashboardProperties("Research/Nonexistent/Dashboard.md", {
+				github_token_key: "key",
+			});
+			expect(app.vault.getAbstractFileByPath("Research/Nonexistent/Dashboard.md")).toBeFalsy();
+		});
+
+		it("should update github_token_key in dashboard frontmatter", async () => {
+			const projectFile = await manager.createProject("UpdateProject");
+			await manager.updateDashboardProperties(projectFile.path, {
+				github_token_key: "my-token-key",
+			});
+			const content = (app.vault as any)._getContent(projectFile.path);
+			const fm = extractFrontmatter(content);
+			expect(fm.github_token_key).toBe("my-token-key");
+		});
+
+		it("should update public_repo boolean", async () => {
+			const projectFile = await manager.createProject("PublicProject");
+			await manager.updateDashboardProperties(projectFile.path, {
+				public_repo: true,
+			});
+			const content = (app.vault as any)._getContent(projectFile.path);
+			const fm = extractFrontmatter(content);
+			expect(fm.public_repo).toBe(true);
+		});
+
+		it("should update repo string", async () => {
+			const projectFile = await manager.createProject("RepoProject");
+			await manager.updateDashboardProperties(projectFile.path, {
+				repo: "owner/repo",
+			});
+			const content = (app.vault as any)._getContent(projectFile.path);
+			const fm = extractFrontmatter(content);
+			expect(fm.repo).toBe("owner/repo");
+		});
+
+		it("should update multiple properties at once", async () => {
+			const projectFile = await manager.createProject("MultiUpdate");
+			await manager.updateDashboardProperties(projectFile.path, {
+				github_token_key: "key",
+				public_repo: false,
+				repo: "user/research",
+			});
+			const content = (app.vault as any)._getContent(projectFile.path);
+			const fm = extractFrontmatter(content);
+			expect(fm.github_token_key).toBe("key");
+			expect(fm.public_repo).toBe(false);
+			expect(fm.repo).toBe("user/research");
+		});
+
+		it("should do nothing when file has no frontmatter block", async () => {
+			await app.vault.createFolder("Research");
+			await (app.vault as any).create(
+				"Research/NoFm/Dashboard.md",
+				"no frontmatter here\njust content"
+			);
+			await manager.updateDashboardProperties("Research/NoFm/Dashboard.md", {
+				repo: "x/y",
+			});
+			const content = (app.vault as any)._getContent("Research/NoFm/Dashboard.md");
+			expect(content).toBe("no frontmatter here\njust content");
+		});
+	});
 });

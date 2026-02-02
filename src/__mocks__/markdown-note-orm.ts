@@ -92,6 +92,11 @@ export class ObsidianNoteFactory {
 			title,
 		} as NoteTypeMap[K]);
 
+		// Support factory's batchUpdate branch in tests
+		(note.properties as any).batchUpdate = function (params: Record<string, any>) {
+			Object.assign(this, params);
+		};
+
 		if (config) {
 			note.applyConfigTemplate(config);
 		}

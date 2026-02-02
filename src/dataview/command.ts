@@ -6,6 +6,7 @@ export class DataviewCommand {
 	private app: App;
 	private plugin: MyPlugin;
 	private dataviewManager: DataviewJSManager;
+	private processorRegistered = false;
 
 	constructor(app: App, plugin: MyPlugin) {
 		this.app = app;
@@ -18,14 +19,27 @@ export class DataviewCommand {
 
 	public async initialize(): Promise<void> {
 		await this.dataviewManager.onload();
-		this.registerCodeBlockProcessor();
+		if (!this.processorRegistered) {
+			this.registerCodeBlockProcessor();
+			this.processorRegistered = true;
+		}
+	}
+
+	/** Reload scripts without re-registering the code block processor. */
+	public async refresh(): Promise<void> {
+		await this.dataviewManager.onload();
 	}
 
 	private registerCodeBlockProcessor(): void {
-		this.plugin.registerMarkdownCodeBlockProcessor(
-			this.plugin.settings.dataviewCodeBlockType,
-			(source, el, ctx) => this.processDvjsBlock(source, el, ctx),
-		);
+		try {
+			this.plugin.registerMarkdownCodeBlockProcessor(
+				this.plugin.settings.dataviewCodeBlockType,
+				(source, el, ctx) => this.processDvjsBlock(source, el, ctx),
+			);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (!msg.includes("already registered")) throw e;
+		}
 	}
 
 	public unload(): void {

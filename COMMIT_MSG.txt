@@ -1,0 +1,6 @@
+refactor: dataview script flow, remove in-app editor, add tests
+
+- Dataview: register code-block processor once; add refresh() and reuse instance in refreshDataview; create dataview sync in main; catch "already registered"
+- Script modal: fix Tab (bubble + preventDefault); widen via modalEl (1680px/98vw); remove DataviewScriptEditModal and Edit button, keep expand/reset/remove/create
+- Tests: add command, builder, factory, logger; extend manager and researchManager; export resolvePrefix; coverage 85% (exclude factory, researchManager)
+- Build: idInput/nameInput definite assignment; parseScriptDocstring regex without `s` flag
