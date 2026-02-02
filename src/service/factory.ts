@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import { App, Component, Notice } from 'obsidian';
 import {
 	ObsidianNoteFactory as LibFactory,
@@ -9,6 +10,31 @@ import {
 import { ZettelkastenSettings } from '../types';
 import { Logger } from '../logger';
 import { Dashboard } from '../modals/dashboard';
+
+/**
+ * Resolves built-in prefix placeholders ($date, $datetime, $year, $month, $day) to actual values.
+ * If prefix is not a known placeholder, returns it as-is.
+ */
+function resolvePrefix(prefix: string, dateFormat: string): string {
+	const now = new Date();
+	switch (prefix) {
+		case '$date':
+			// Use dateFormat (YYYY-MM-DD → yyyy-MM-dd for date-fns); default to yyyy-MM-dd
+			const fmt =
+				dateFormat?.replace(/YYYY/g, 'yyyy').replace(/DD/g, 'dd').trim() || 'yyyy-MM-dd';
+			return format(now, fmt);
+		case '$datetime':
+			return format(now, 'yyyyMMdd-HHmm');
+		case '$year':
+			return format(now, 'yyyy');
+		case '$month':
+			return format(now, 'MM');
+		case '$day':
+			return format(now, 'dd');
+		default:
+			return prefix;
+	}
+}
 
 export class NoteFactory extends Component {
 	private app: App;
@@ -46,9 +72,11 @@ export class NoteFactory extends Component {
 			async (option, title) => {
 				try {
 					if (option.extraInfo?.prefix) {
-						title = `option.extraInfo.prefix-${title}`
+						const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
+						title = `${resolved}-${title}`;
 					}
 					let targetFolder = option.specificFolder;
+					// Dashboard passes a one-off option: Create New Note has sources: [], Upgrade has sources: [link]
 					const note = await this.createZettel(
 						option.type,
 						title,

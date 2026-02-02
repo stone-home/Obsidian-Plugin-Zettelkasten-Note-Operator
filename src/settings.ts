@@ -14,7 +14,7 @@ import MyPlugin from './main';
 import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
-import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS } from "./constants";
+import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS, PREFIX_PLACEHOLDERS } from "./constants";
 
 /**
  * [Class]: PropertyCreationModal
@@ -642,16 +642,21 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		new Setting(containerEl).setName('Prefix').addText((t) =>
-			t.setValue(option.extraInfo?.prefix || '$date')
-				.onChange(async (v) => {
+		new Setting(containerEl)
+			.setName('Prefix')
+			.setDesc(
+				'Placeholders: ' +
+					PREFIX_PLACEHOLDERS.map((p) => `${p.value} (${p.description})`).join(', ')
+			)
+			.addText((t) =>
+				t.setValue(option.extraInfo?.prefix || '$date').onChange(async (v) => {
 					if (!option.extraInfo) {
 						option.extraInfo = {};
 					}
 					option.extraInfo.prefix = v;
 					await this.plugin.saveSettings();
 				})
-		);
+			);
 
 		// [SECTION]: Properties Editor (Grid)
 		containerEl.createEl('h3', { text: 'Frontmatter Properties' });

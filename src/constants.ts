@@ -32,6 +32,17 @@ export const DEFAULT_GANTT_STATUS_COLORS: Record<string, string> = {
 	cancelled: 'Silver/DarkGray',
 };
 
+/**
+ * Built-in prefix placeholders for note titles. Use in template Prefix (e.g. $date → today).
+ */
+export const PREFIX_PLACEHOLDERS: Array<{ value: string; description: string }> = [
+	{ value: '$date', description: 'Today (YYYY-MM-DD)' },
+	{ value: '$datetime', description: 'Date and time (YYYYMMDD-HHmm)' },
+	{ value: '$year', description: 'Current year (YYYY)' },
+	{ value: '$month', description: 'Current month (MM)' },
+	{ value: '$day', description: 'Day of month (DD)' },
+];
+
 export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	dateFormat: 'YYYY-MM-DD',
 	fleetingPath: '001-Fleeting',

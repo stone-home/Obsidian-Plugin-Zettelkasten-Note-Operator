@@ -147,10 +147,21 @@ export class Dashboard extends Modal {
 					(selectedOption) => {
 						new FileNameModal(this.app, selectedOption.specificFolder, async (title) => {
 							try {
-								if (noteExtraParams) {
-									selectedOption.extraInfo = noteExtraParams;
-								}
-								await this.onComplete(selectedOption, title);
+								// Do not mutate selectedOption (templates in settings). Build a one-off option
+								// so Upgrade gets sources for this create only, and Create New Note always gets sources: [].
+								const optionToPass = noteExtraParams
+									? { ...selectedOption, extraInfo: noteExtraParams }
+									: {
+											...selectedOption,
+											extraInfo: {
+												...selectedOption.extraInfo,
+												properties: {
+													...selectedOption.extraInfo?.properties,
+													sources: [] as string[],
+												},
+											},
+										};
+								await this.onComplete(optionToPass, title);
 								this.close();
 							} catch (e) {
 								this.logger.error('Error creating note', e);
@@ -200,7 +211,7 @@ export class Dashboard extends Modal {
 				{
 					properties: {
 						sources: [
-							`[[${activeNote.title}}]]`
+							`[[${activeNote.title}]]`
 						]
 					}
 				}
