@@ -136,6 +136,12 @@ export default class MyPlugin extends Plugin {
 				if (!file) throw new Error("Project not found");
 				return await manager.createExperiment(file, title);
 			},
+			createResearchDraft: async (projectPath: string, title: string) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				return await manager.createDraft(file, title);
+			},
 			createResearchRequirement: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;

@@ -96,6 +96,7 @@ describe("DataviewJSManager", () => {
 
 			const expectedScripts = [
 				"zk-research-quick-actions.js",
+				"zk-research-ai-pipeline-tracking.js",
 				"zk-research-ai-pipeline.js",
 				"zk-research-atomic-notes.js",
 				"zk-research-materials.js",

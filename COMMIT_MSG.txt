@@ -1,6 +1,11 @@
-refactor: dataview script flow, remove in-app editor, add tests
+feat(research): draft tracking dataview and quick-actions draft creation
 
-- Dataview: register code-block processor once; add refresh() and reuse instance in refreshDataview; create dataview sync in main; catch "already registered"
-- Script modal: fix Tab (bubble + preventDefault); widen via modalEl (1680px/98vw); remove DataviewScriptEditModal and Edit button, keep expand/reset/remove/create
-- Tests: add command, builder, factory, logger; extend manager and researchManager; export resolvePrefix; coverage 85% (exclude factory, researchManager)
-- Build: idInput/nameInput definite assignment; parseScriptDocstring regex without `s` flag
+- Add zk-research-ai-pipeline-tracking dataview script for draft status
+  - Table: Draft (link), Title, Status, Section, Modified
+  - Queries project drafts folder, sorted by mtime
+- Add Draft row to zk-research-quick-actions: text field + Create button
+  - Calls createResearchDraft(projectPath, title) to create note in drafts/
+- Expose createResearchDraft on ZettelkastenOperator for dataview scripts
+- Dashboard already has section "1. AI Pipeline Tracking (Draft Status)"
+  and "2. Atomic Intelligence" with ai-pipeline + atomic-notes
+- Tests: include zk-research-ai-pipeline-tracking in manager expected scripts
