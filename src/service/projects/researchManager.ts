@@ -199,6 +199,32 @@ export class ResearchManager {
 		);
 	}
 
+	/**
+	 * Create a draft note in the project's drafts folder (for AI pipeline / writing).
+	 */
+	async createDraft(projectFile: TFile, title: string): Promise<TFile> {
+		const projectFolder = this.getProjectFolder(projectFile);
+		const folder = `${projectFolder}/drafts`;
+		await this.ensureFolder(folder);
+		const safeTitle = this.sanitizeSegment(title);
+		const filePath = `${folder}/${safeTitle}.md`;
+		if (this.app.vault.getAbstractFileByPath(filePath)) {
+			throw new Error("Draft with this title already exists.");
+		}
+		return await this.createNote(
+			filePath,
+			safeTitle,
+			"fleeting",
+			"research-draft",
+			{
+				project: `[[${projectFile.path}|Dashboard]]`,
+				title: safeTitle,
+				section_title: safeTitle,
+				status: "draft",
+			},
+		);
+	}
+
 	async createStep(projectFile: TFile, objectiveFile: TFile, title: string): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const folder = `${projectFolder}/steps`;
@@ -477,11 +503,11 @@ export class ResearchManager {
 					],
 				},
 				{
-					title: "1. AI Pipeline Tracking (Raw to Processed)",
+					title: "1. AI Pipeline Tracking (Draft Status)",
 					level: 2,
 					content: [
 						"```" + blockType,
-						"zk-research-ai-pipeline",
+						"zk-research-ai-pipeline-tracking",
 						"```",
 					],
 				},
@@ -489,6 +515,10 @@ export class ResearchManager {
 					title: "2. Atomic Intelligence (The Ingredients)",
 					level: 2,
 					content: [
+						"```" + blockType,
+						"zk-research-ai-pipeline",
+						"```",
+						"",
 						"```" + blockType,
 						"zk-research-atomic-notes",
 						"```",
@@ -536,15 +566,6 @@ export class ResearchManager {
 					content: [
 						"```" + blockType,
 						"zk-research-experiments",
-						"```",
-					],
-				},
-				{
-					title: "8. Requirements",
-					level: 2,
-					content: [
-						"```" + blockType,
-						"zk-research-requirements",
 						"```",
 					],
 				},
