@@ -77,6 +77,8 @@ export class CodeProjectsModal extends Modal {
 	private selectedProject?: TFile;
 	private selectedTokenKey?: string;
 	private tokenKeys: string[] = [];
+	/** After Refresh, hold parsed frontmatter so Repo/URL show immediately before cache updates */
+	private freshFrontmatter: Record<string, any> | null = null;
 
 	constructor(app: App, settings: ZettelkastenSettings) {
 		super(app);
@@ -211,7 +213,9 @@ export class CodeProjectsModal extends Modal {
 
 	private renderProjectInfo(container: HTMLElement): void {
 		const info = container.createDiv("zk-project-info");
-		const cache = this.getFrontmatter(this.selectedProject as TFile);
+		const cache =
+			this.freshFrontmatter ?? this.getFrontmatter(this.selectedProject as TFile);
+		if (this.freshFrontmatter) this.freshFrontmatter = null;
 		info.createDiv({ text: `Repo: ${cache.repo || "owner/name"}` });
 		info.createDiv({ text: `Branch: ${cache.defaultBranch || "trunk"}` });
 	}
@@ -231,6 +235,8 @@ export class CodeProjectsModal extends Modal {
 				this.selectedTokenKey ||
 				this.getFrontmatter(this.selectedProject as TFile).github_token_key;
 			await this.manager.refreshProject(this.selectedProject as TFile, tokenKey);
+			this.freshFrontmatter = await this.readFrontmatterFromVault(this.selectedProject as TFile);
+			await this.refresh();
 			new Notice("Project data refreshed.");
 		};
 	}
@@ -256,6 +262,24 @@ export class CodeProjectsModal extends Modal {
 		selectEl.addEventListener("change", () => {
 			this.selectedTokenKey = selectEl.value;
 		});
+	}
+
+	private async readFrontmatterFromVault(file: TFile): Promise<Record<string, any>> {
+		try {
+			const content = await this.app.vault.read(file);
+			const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+			if (match) {
+				const fm: Record<string, any> = {};
+				for (const line of match[1].split(/\r?\n/)) {
+					const kv = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
+					if (kv) fm[kv[1]] = kv[2].trim();
+				}
+				return fm;
+			}
+		} catch {
+			// ignore
+		}
+		return {};
 	}
 
 	private getFrontmatter(file: TFile): Record<string, any> {
