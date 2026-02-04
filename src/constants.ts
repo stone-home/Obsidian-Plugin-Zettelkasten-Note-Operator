@@ -62,6 +62,7 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	dataviewCodeBlockType: 'zettelkasten-query',
 	ganttStatusColors: { ...DEFAULT_GANTT_STATUS_COLORS },
 	createNoteOptions: [],
+	searchDefaultPath: '002-Literature',
 };
 
 

@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "./constants"
 import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
+import { SearchModal } from "./modals/searchModal";
 import { ResearchManager } from "./service/projects/researchManager";
 import { CodeProjectManager } from "./service/projects/codeProjectManager";
 import { DraftCompiler } from "./service/compiler/draftCompiler";
@@ -31,6 +32,14 @@ export default class MyPlugin extends Plugin {
 			name: 'Create New Zettel Note',
 			callback: () => {
 				this.factory.openCreationModal();
+			}
+		});
+
+		this.addCommand({
+			id: 'open-zettelkasten-search',
+			name: 'Open Zettelkasten Search',
+			callback: () => {
+				new SearchModal(this.app, this.settings, this.factory).open();
 			}
 		});
 

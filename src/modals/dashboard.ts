@@ -8,6 +8,7 @@ import { TemplateGridModal } from './template';
 import { FileNameModal } from './filename';
 import { ResearchProjectsModal } from './researchProjectsModal';
 import { CodeProjectsModal } from './codeProjectsModal';
+import { SearchModal } from './searchModal';
 
 export type OnNoteCreateCallback = (
 	option: INoteOption,
@@ -92,11 +93,19 @@ export class Dashboard extends Modal {
 
 		const buttonGroup = section.createDiv('quick-access-grid');
 		const buttons = [
-			{ label: 'Kanban', icon: 'trello', callback: async () => {} },
+			{
+				label: 'Search',
+				icon: 'search',
+				callback: () => {
+					this.close();
+					new SearchModal(this.app, this.settings, this.factory).open();
+				},
+			},
 			{
 				label: 'Research',
 				icon: 'atom',
 				callback: async () => {
+					this.close();
 					new ResearchProjectsModal(this.app, this.settings).open();
 				},
 			},
@@ -104,6 +113,7 @@ export class Dashboard extends Modal {
 				label: 'Projects',
 				icon: 'folder-tree',
 				callback: async () => {
+					this.close();
 					new CodeProjectsModal(this.app, this.settings).open();
 				},
 			},
@@ -119,7 +129,6 @@ export class Dashboard extends Modal {
 			buttonEl.createSpan({ text: label, cls: 'btn-label' });
 
 			buttonEl.addEventListener('click', async () => {
-				new Notice(`Quick Action: ${label}`);
 				await callback();
 			});
 		});
