@@ -242,7 +242,7 @@ Research projects help manage academic papers with a structured hierarchy.
 
 ### Project Structure
 
-```
+```plain-text
 Research/
 └── MyProject/
     ├── Dashboard.md          # Project overview with Gantt chart
@@ -293,7 +293,6 @@ zk-research-quick-actions
 ```zettelkasten-query
 zk-research-gantt
 ```
-```
 
 ### Gantt Chart Status Colors
 
@@ -313,7 +312,7 @@ Manage code projects with GitHub integration for tracking releases and commits.
 
 ### Project Structure
 
-```
+```plain-text
 Projects/
 └── MyCodeProject/
     ├── Dashboard.md          # Project overview
@@ -348,6 +347,7 @@ defaultBranch: trunk
 github_token_key: github_token
 public_repo: false
 ---
+```
 
 # Code Project Dashboard
 
@@ -384,7 +384,7 @@ The plugin provides a custom Dataview code block processor for loading reusable 
 
 Scripts are stored in the configurable scripts folder (default: `dataview-scripts/`):
 
-```
+```plain-text
 dataview-scripts/
 ├── zk-research-quick-actions.js
 ├── zk-research-gantt.js
@@ -396,7 +396,7 @@ dataview-scripts/
 
 Load a script by ID in a code block:
 
-````
+````plain-text
 ```zettelkasten-query
 script-id
 param1: value1
