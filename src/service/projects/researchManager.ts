@@ -201,8 +201,13 @@ export class ResearchManager {
 
 	/**
 	 * Create a draft note in the project's drafts folder (for AI pipeline / writing).
+	 * @param templateConfig Optional template configuration to apply to the draft
 	 */
-	async createDraft(projectFile: TFile, title: string): Promise<TFile> {
+	async createDraft(
+		projectFile: TFile,
+		title: string,
+		templateConfig?: NoteTemplateConfig,
+	): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const folder = `${projectFolder}/drafts`;
 		await this.ensureFolder(folder);
@@ -211,17 +216,24 @@ export class ResearchManager {
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Draft with this title already exists.");
 		}
+		const baseProps = {
+			project: `[[${projectFile.path}|Dashboard]]`,
+			title: safeTitle,
+			section_title: safeTitle,
+			status: "draft",
+		};
+		// Merge template config properties if provided
+		const finalProps = templateConfig?.properties
+			? { ...baseProps, ...templateConfig.properties }
+			: baseProps;
+		const finalSections = templateConfig?.sections || [];
 		return await this.createNote(
 			filePath,
 			safeTitle,
 			"fleeting",
 			"research-draft",
-			{
-				project: `[[${projectFile.path}|Dashboard]]`,
-				title: safeTitle,
-				section_title: safeTitle,
-				status: "draft",
-			},
+			finalProps,
+			finalSections,
 		);
 	}
 

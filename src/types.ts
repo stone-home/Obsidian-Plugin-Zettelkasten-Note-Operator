@@ -50,6 +50,7 @@ export interface ZettelkastenSettings {
 	dataviewCodeBlockType: string;
 	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
+	searchDefaultPath: string;
 }
 
 export interface NoteCategory {

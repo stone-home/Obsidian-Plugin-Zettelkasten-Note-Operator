@@ -9,16 +9,12 @@ import {
 	Modal,
 	ToggleComponent,
 	setIcon,
-	Notice,
-	TFile,
-	TFolder,
 } from 'obsidian';
 import MyPlugin from './main';
 import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
-import { getDefaultScriptContent } from "./dataview/manager";
-import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS, PREFIX_PLACEHOLDERS } from "./constants";
+import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS } from "./constants";
 
 /**
  * [Class]: PropertyCreationModal
@@ -120,60 +116,6 @@ class PropertyCreationModal extends Modal {
 }
 
 /**
- * [Class]: DataviewScriptCreateModal
- * [Purpose]: Modal for creating a new Dataview JS script (id + name).
- */
-class DataviewScriptCreateModal extends Modal {
-	private idInput!: TextComponent;
-	private nameInput!: TextComponent;
-	private onSubmit: (id: string, name: string) => Promise<void>;
-
-	constructor(app: App, onSubmit: (id: string, name: string) => Promise<void>) {
-		super(app);
-		this.onSubmit = onSubmit;
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.addClass('zettelkasten-modal');
-		contentEl.createEl('h2', { text: 'Create Dataview Script', cls: 'modal-title' });
-
-		const container = contentEl.createDiv();
-		container.setAttr('style', 'display:flex; flex-direction:column; gap:15px;');
-
-		const idDiv = container.createDiv();
-		idDiv.createEl('label', { text: 'Script ID (filename without .js)', cls: 'setting-item-name', attr: { style: 'display:block; margin-bottom:4px;' } });
-		const idComp = new TextComponent(idDiv);
-		idComp.setPlaceholder('e.g. zk-my-script');
-		idComp.inputEl.style.width = '100%';
-		this.idInput = idComp;
-
-		const nameDiv = container.createDiv();
-		nameDiv.createEl('label', { text: 'Script name (display name)', cls: 'setting-item-name', attr: { style: 'display:block; margin-bottom:4px;' } });
-		const nameComp = new TextComponent(nameDiv);
-		nameComp.setPlaceholder('e.g. My Script');
-		nameComp.inputEl.style.width = '100%';
-		this.nameInput = nameComp;
-
-		const buttonDiv = contentEl.createDiv({ cls: 'modal-button-container' });
-		new ButtonComponent(buttonDiv).setButtonText('Cancel').onClick(() => this.close());
-		new ButtonComponent(buttonDiv).setButtonText('Create').setCta().onClick(() => this.submit());
-	}
-
-	private async submit() {
-		const id = (this.idInput?.getValue() ?? '').trim().replace(/[\\/.#]/g, '-').replace(/\.js$/i, '');
-		const name = (this.nameInput?.getValue() ?? '').trim() || id;
-		if (!id) return;
-		await this.onSubmit(id, name);
-		this.close();
-	}
-
-	onClose() {
-		this.contentEl.empty();
-	}
-}
-
-/**
  * [Class]: SampleSettingTab
  * [Purpose]: The main Settings Page logic.
  */
@@ -188,9 +130,6 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	// [STATE]: Keeps track of which accordions are open so they stay open during re-renders
 	private expandedCategories: Record<string, boolean> = {};
-
-	// [STATE]: Expanded script paths in Dataview tab (show script content)
-	private expandedScriptPaths: Set<string> = new Set();
 
 	constructor(app: App, plugin: MyPlugin) {
 		super(app, plugin);
@@ -210,10 +149,10 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		// 1. Render Top Tab Navigation
 		const navContainer = containerEl.createDiv({ cls: 'zettel-tab-nav' });
-		this.renderTabButton(navContainer, 'General', 'settings', 'general');
-		this.renderTabButton(navContainer, 'Project Management', 'folder-tree', 'projects');
-		this.renderTabButton(navContainer, 'Dataview', 'database', 'dataview');
-		this.renderTabButton(navContainer, 'Templates', 'file-text', 'templates');
+		this.renderTabButton(navContainer, 'General', 'general', 'folder');
+		this.renderTabButton(navContainer, 'Projects', 'projects', 'folder-tree');
+		this.renderTabButton(navContainer, 'Dataview', 'dataview', 'file-search');
+		this.renderTabButton(navContainer, 'Templates', 'templates', 'file-text');
 
 		// 2. Render Main Content Area
 		const contentContainer = containerEl.createDiv({ cls: 'zettel-tab-content' });
@@ -221,7 +160,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		if (this.activeTab === 'general') {
 			this.renderGeneralSettings(contentContainer);
 		} else if (this.activeTab === 'projects') {
-			this.renderProjectManagementSettings(contentContainer);
+			this.renderProjectsSettings(contentContainer);
 		} else if (this.activeTab === 'dataview') {
 			this.renderDataviewSettings(contentContainer);
 		} else {
@@ -241,18 +180,20 @@ export class SampleSettingTab extends PluginSettingTab {
 		}
 	}
 
-	// [UI]: Helper to create top navigation tabs (with optional icon)
+	// [UI]: Helper to create top navigation tabs
 	private renderTabButton(
 		parent: HTMLElement,
 		text: string,
-		iconName: string,
-		tab: 'general' | 'projects' | 'dataview' | 'templates'
+		tab: 'general' | 'projects' | 'dataview' | 'templates',
+		iconName?: string
 	) {
 		const btn = parent.createEl('button', {
 			cls: `zettel-tab-button ${this.activeTab === tab ? 'active' : ''}`,
 		});
-		const iconSpan = btn.createSpan({ cls: 'zettel-tab-icon' });
-		setIcon(iconSpan, iconName);
+		if (iconName) {
+			const iconSpan = btn.createSpan('zettel-tab-icon');
+			setIcon(iconSpan, iconName);
+		}
 		btn.createSpan({ text, cls: 'zettel-tab-text' });
 		btn.onclick = () => {
 			this.activeTab = tab;
@@ -262,14 +203,14 @@ export class SampleSettingTab extends PluginSettingTab {
 	}
 
 	private renderGeneralSettings(containerEl: HTMLElement) {
-		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		const header = card.createDiv({ cls: 'zettel-section-header' });
-		const iconSpan = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(iconSpan, 'folder');
-		const textDiv = header.createDiv({ cls: 'zettel-section-text' });
-		textDiv.createEl('h2', { text: 'General Configuration', cls: 'zettel-section-title' });
-		textDiv.createEl('p', { text: 'Default folder paths for each Zettelkasten note type.', cls: 'zettel-section-desc' });
+		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
+		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(iconWrap, 'folder');
+		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
+		textWrap.createEl('h2', { text: 'General Configuration', cls: 'zettel-section-title' });
+		textWrap.createEl('p', { text: 'Default paths for note types and search.', cls: 'zettel-section-desc' });
 
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		new Setting(card).setName("Fleeting Default Path").addText(t => {
 			t.setValue(this.plugin.settings.fleetingPath).onChange(async (v) => {
 				this.plugin.settings.fleetingPath = v;
@@ -306,19 +247,26 @@ export class SampleSettingTab extends PluginSettingTab {
 				await this.plugin.saveSettings();
 			});
 		});
+		new Setting(card).setName("Search default folder").addText(t => {
+			t.setPlaceholder("002-Literature")
+				.setValue(this.plugin.settings.searchDefaultPath)
+				.onChange(async (v) => {
+					this.plugin.settings.searchDefaultPath = v.trim();
+					await this.plugin.saveSettings();
+				});
+		});
 	}
 
-	private renderProjectManagementSettings(containerEl: HTMLElement) {
-		// Card: Root paths
-		const pathsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		const pathsHeader = pathsCard.createDiv({ cls: 'zettel-section-header' });
-		const pathsIcon = pathsHeader.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(pathsIcon, 'folder-tree');
-		const pathsText = pathsHeader.createDiv({ cls: 'zettel-section-text' });
-		pathsText.createEl('h2', { text: 'Project Management', cls: 'zettel-section-title' });
-		pathsText.createEl('p', { text: 'Root folders for Research and Code projects.', cls: 'zettel-section-desc' });
+	private renderProjectsSettings(containerEl: HTMLElement) {
+		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
+		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(iconWrap, 'folder-tree');
+		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
+		textWrap.createEl('h2', { text: 'Project Management', cls: 'zettel-section-title' });
+		textWrap.createEl('p', { text: 'Research and code project roots, and Gantt chart status colors.', cls: 'zettel-section-desc' });
 
-		new Setting(pathsCard).setName("Research Root Path").addText(t => {
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		new Setting(card).setName("Research Root Path").addText(t => {
 			t.setPlaceholder("Research")
 				.setValue(this.plugin.settings.researchRootPath)
 				.onChange(async (v) => {
@@ -326,7 +274,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 		});
-		new Setting(pathsCard).setName("Projects Root Path").addText(t => {
+		new Setting(card).setName("Projects Root Path").addText(t => {
 			t.setPlaceholder("Projects")
 				.setValue(this.plugin.settings.projectRootPath)
 				.onChange(async (v) => {
@@ -335,26 +283,21 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		// Card: Gantt status colors
-		const ganttCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		const ganttHeader = ganttCard.createDiv({ cls: 'zettel-section-header' });
+		const ganttHeader = containerEl.createDiv({ cls: 'zettel-section-header' });
 		const ganttIcon = ganttHeader.createDiv({ cls: 'zettel-section-icon' });
 		setIcon(ganttIcon, 'palette');
 		const ganttText = ganttHeader.createDiv({ cls: 'zettel-section-text' });
 		ganttText.createEl('h2', { text: 'Gantt Chart Status Colors', cls: 'zettel-section-title' });
-		ganttText.createEl('p', {
-			text: 'Define colors for each status in PlantUML Gantt charts. Format: ForegroundColor/BackgroundColor',
-			cls: 'zettel-section-desc',
-		});
+		ganttText.createEl('p', { text: 'Define colors for each status in PlantUML Gantt charts.', cls: 'zettel-section-desc' });
 
 		if (!this.plugin.settings.ganttStatusColors) {
 			this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
 		}
-		const colorMap = this.plugin.settings.ganttStatusColors;
-		const colorContainer = ganttCard.createDiv({ cls: 'zettel-gantt-colors' });
-		this.renderGanttColorList(colorContainer, colorMap);
+		const colorCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const colorContainer = colorCard.createDiv({ cls: 'zettel-gantt-colors' });
+		this.renderGanttColorList(colorContainer, this.plugin.settings.ganttStatusColors);
 
-		const addStatusContainer = ganttCard.createDiv({ cls: 'zettel-add-status-row' });
+		const addStatusContainer = colorCard.createDiv({ cls: 'zettel-add-status-row' });
 		addStatusContainer.style.cssText = 'display:flex; align-items:center; gap:10px; margin:16px 0;';
 		const statusInput = new TextComponent(addStatusContainer);
 		statusInput.setPlaceholder("status name (e.g. review)");
@@ -375,7 +318,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				}
 			});
 
-		new Setting(ganttCard)
+		new Setting(colorCard)
 			.addButton(btn => {
 				btn.setButtonText("Reset to Defaults")
 					.setWarning()
@@ -387,51 +330,37 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 	}
 
-	private parseScriptDocstring(content: string): { id?: string; name?: string } {
-		const block = content.match(/\/\*\*\s*([\s\S]*?)\*\//);
-		if (!block) return {};
-		const text = block[1];
-		const idMatch = text.match(/@id\s+(\S+)/);
-		const nameMatch = text.match(/@name\s+([\s\S]+?)(?=\n\s*\*|$)/);
-		return {
-			id: idMatch ? idMatch[1].trim() : undefined,
-			name: nameMatch ? nameMatch[1].trim() : undefined,
-		};
-	}
-
 	private renderDataviewSettings(containerEl: HTMLElement) {
+		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
+		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(iconWrap, 'file-search');
+		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
+		textWrap.createEl('h2', { text: 'Dataview Integration', cls: 'zettel-section-title' });
+		textWrap.createEl('p', { text: 'Load and run Dataview JS scripts from a vault folder.', cls: 'zettel-section-desc' });
+
 		const refreshDataview = async () => {
 			if (!this.plugin.settings.dataviewEnabled) {
 				this.plugin.dataview?.unload();
+				this.plugin.dataview = undefined;
 				return;
 			}
-			if (this.plugin.dataview) {
-				await this.plugin.dataview.refresh();
-			} else {
-				this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
-				await this.plugin.dataview.initialize();
-			}
+			this.plugin.dataview?.unload();
+			this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
+			await this.plugin.dataview.initialize();
 		};
 
 		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		const header = card.createDiv({ cls: 'zettel-section-header' });
-		const iconSpan = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(iconSpan, 'database');
-		const textDiv = header.createDiv({ cls: 'zettel-section-text' });
-		textDiv.createEl('h2', { text: 'Dataview Integration', cls: 'zettel-section-title' });
-		textDiv.createEl('p', { text: 'Load and run Dataview JS scripts from your vault.', cls: 'zettel-section-desc' });
-
 		new Setting(card)
 			.setName("Enable Dataview scripts")
 			.setDesc("Load Dataview JS scripts from a vault folder.")
 			.addToggle(t => {
-				t.setValue(this.plugin.settings.dataviewEnabled).onChange(async (v) => {
-					this.plugin.settings.dataviewEnabled = v;
-					await this.plugin.saveSettings();
-					await refreshDataview();
-				});
+				t.setValue(this.plugin.settings.dataviewEnabled)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewEnabled = v;
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
 			});
-
 		new Setting(card)
 			.setName("Dataview scripts folder")
 			.setDesc("Vault-relative folder that stores Dataview JS scripts.")
@@ -444,7 +373,6 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
-
 		new Setting(card)
 			.setName("Dataview code block type")
 			.setDesc("Language name used in code blocks (e.g. zettelkasten-query).")
@@ -457,112 +385,6 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
-
-		// Scripts card: list, remove, create, expand
-		const scriptsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		const scriptsHeader = scriptsCard.createDiv({ cls: 'zettel-section-header' });
-		const scriptsIcon = scriptsHeader.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(scriptsIcon, 'file-code');
-		const scriptsText = scriptsHeader.createDiv({ cls: 'zettel-section-text' });
-		scriptsText.createEl('h2', { text: 'Scripts', cls: 'zettel-section-title' });
-		scriptsText.createEl('p', { text: 'Dataview JS scripts in the folder above. Add, remove, or expand to view source.', cls: 'zettel-section-desc' });
-
-		const createBtnRow = scriptsCard.createDiv({ cls: 'zettel-script-actions' });
-		new ButtonComponent(createBtnRow)
-			.setButtonText('Create new script')
-			.setCta()
-			.onClick(() => {
-				new DataviewScriptCreateModal(this.app, async (id, name) => {
-					const folderPath = this.plugin.settings.dataviewQueryPath.trim() || 'dataview-scripts';
-					const existingFolder = this.app.vault.getAbstractFileByPath(folderPath);
-					if (!existingFolder) {
-						await this.app.vault.createFolder(folderPath);
-					}
-					const filePath = `${folderPath}/${id}.js`;
-					if (this.app.vault.getAbstractFileByPath(filePath)) {
-						new Notice('Script already exists.');
-						return;
-					}
-					const docstring = `/**\n * @id ${id}\n * @name ${name}\n * @params (optional - add parameters here)\n */\n\n// Your code here\n`;
-					await this.app.vault.create(filePath, docstring);
-					this.display();
-					await refreshDataview();
-				}).open();
-			});
-
-		const listContainer = scriptsCard.createDiv({ cls: 'zettel-script-list' });
-		const loadScripts = async () => {
-			listContainer.empty();
-			const folderPath = this.plugin.settings.dataviewQueryPath.trim() || 'dataview-scripts';
-			const folder = this.app.vault.getAbstractFileByPath(folderPath);
-			if (!folder || !(folder instanceof TFolder)) {
-				listContainer.createEl('p', { text: 'No scripts folder. Create a script to create the folder.', cls: 'setting-item-description' });
-				return;
-			}
-			const scriptFiles = folder.children.filter((f): f is TFile => f instanceof TFile && f.extension === 'js');
-			if (scriptFiles.length === 0) {
-				listContainer.createEl('p', { text: 'No scripts. Create one to get started.', cls: 'setting-item-description' });
-				return;
-			}
-			for (const file of scriptFiles) {
-				let id = file.basename;
-				let name = file.basename;
-				try {
-					const content = await this.app.vault.read(file);
-					const parsed = this.parseScriptDocstring(content);
-					if (parsed.id) id = parsed.id;
-					if (parsed.name) name = parsed.name;
-				} catch (_) {}
-				const row = listContainer.createDiv({ cls: 'zettel-script-row' });
-				row.createSpan({ text: name, cls: 'zettel-script-name' });
-				row.createSpan({ text: id, cls: 'zettel-script-id' });
-				const actions = row.createDiv({ cls: 'zettel-script-row-actions' });
-				const expandBtn = new ButtonComponent(actions);
-				expandBtn.setIcon(this.expandedScriptPaths.has(file.path) ? 'chevron-down' : 'chevron-right');
-				expandBtn.setTooltip('Show script');
-				expandBtn.setClass('clickable-icon');
-				expandBtn.onClick(() => {
-					if (this.expandedScriptPaths.has(file.path)) {
-						this.expandedScriptPaths.delete(file.path);
-					} else {
-						this.expandedScriptPaths.add(file.path);
-					}
-					this.display();
-				});
-				const defaultContent = getDefaultScriptContent(file.basename);
-				if (defaultContent !== null) {
-					const resetBtn = new ButtonComponent(actions);
-					resetBtn.setIcon('undo');
-					resetBtn.setTooltip('Reset to default');
-					resetBtn.setClass('clickable-icon');
-					resetBtn.onClick(async () => {
-						if (!confirm(`Reset "${name}" to the predefined version?`)) return;
-						await this.app.vault.modify(file, defaultContent);
-						this.display();
-						await refreshDataview();
-					});
-				}
-				const removeBtn = new ButtonComponent(actions);
-				removeBtn.setIcon('trash');
-				removeBtn.setTooltip('Remove script');
-				removeBtn.setClass('clickable-icon');
-				removeBtn.onClick(async () => {
-					if (!confirm(`Remove script "${name}"?`)) return;
-					await this.app.vault.delete(file);
-					this.expandedScriptPaths.delete(file.path);
-					this.display();
-					await refreshDataview();
-				});
-				if (this.expandedScriptPaths.has(file.path)) {
-					const preview = listContainer.createDiv({ cls: 'zettel-script-preview' });
-					this.app.vault.read(file).then((content) => {
-						const pre = preview.createEl('pre', { cls: 'zettel-script-preview-code' });
-						pre.setText(content);
-					});
-				}
-			}
-		};
-		loadScripts();
 	}
 
 	// --- [HELPER]: Get preview color for a PlantUML color value ---
@@ -845,21 +667,16 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		new Setting(containerEl)
-			.setName('Prefix')
-			.setDesc(
-				'Placeholders: ' +
-					PREFIX_PLACEHOLDERS.map((p) => `${p.value} (${p.description})`).join(', ')
-			)
-			.addText((t) =>
-				t.setValue(option.extraInfo?.prefix || '$date').onChange(async (v) => {
+		new Setting(containerEl).setName('Prefix').addText((t) =>
+			t.setValue(option.extraInfo?.prefix || '$date')
+				.onChange(async (v) => {
 					if (!option.extraInfo) {
 						option.extraInfo = {};
 					}
 					option.extraInfo.prefix = v;
 					await this.plugin.saveSettings();
 				})
-			);
+		);
 
 		// [SECTION]: Properties Editor (Grid)
 		containerEl.createEl('h3', { text: 'Frontmatter Properties' });
