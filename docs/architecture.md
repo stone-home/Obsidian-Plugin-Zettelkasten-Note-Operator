@@ -157,15 +157,13 @@ All project/draft/requirement creation from **within a note** (e.g. Research Das
 
 ## 6. Diagram Index
 
-Detailed PlantUML diagrams are in `docs/diagrams/`:
+**All diagrams with explanations are in [diagrams.md](diagrams.md).** That document includes:
 
-| Diagram | File | Description |
-|---------|------|-------------|
-| Class (overview) | [class.puml](diagrams/class.puml) | Main classes and their relationships |
-| Sequence: Create note | [sequence-create-note.puml](diagrams/sequence-create-note.puml) | From Dashboard to vault note creation |
-| Sequence: Dataview block | [sequence-dataview-execute.puml](diagrams/sequence-dataview-execute.puml) | Code block → manager → Dataview API → script |
-| Sequence: Research create | [sequence-research-create.puml](diagrams/sequence-research-create.puml) | Quick Action → ZettelkastenOperator → ResearchManager |
-| Sequence: Code project refresh | [sequence-code-refresh.puml](diagrams/sequence-code-refresh.puml) | Refresh → GitHubClient → upsert releases/commits |
-| Sequence: Compile draft | [sequence-compile-draft.puml](diagrams/sequence-compile-draft.puml) | Compile command → DraftCompiler → materials + manifest |
+- **Class Diagram**: Complete class structure and relationships
+- **Sequence: Create Note**: Flow from ribbon click to vault creation
+- **Sequence: Dataview Execution**: How code blocks trigger scripts and call back to plugin
+- **Sequence: Research Create Draft**: Quick Action flow from dashboard to vault
+- **Sequence: Code Project Refresh**: GitHub API integration and file sync
+- **Sequence: Compile Draft**: Wiki link expansion and materials generation
 
-Render with [PlantUML](https://plantuml.com/) (CLI, VS Code extension, or online) to view as images.
+Each diagram includes PlantUML source code (render with [PlantUML](https://plantuml.com/) CLI, VS Code extension, or online) and explanations of when to reference it for debugging.

@@ -42,7 +42,7 @@ Examples of common workflows:
 
 ## Architecture
 
-High-level: the plugin has a **core** (main, settings, types), a **service layer** (note factory, research/code managers, draft compiler, prompt generator, GitHub client), a **Dataview layer** (code-block processor + script manager), and a **UI layer** (dashboard, search, template/filename/project modals). Entry points are the ribbon, commands, and `window.ZettelkastenOperator`; Dataview blocks in notes call that API to create items. **For detailed architecture, component descriptions, call flows, and a debugging guide for new maintainers, see [docs/architecture.md](docs/architecture.md).** PlantUML diagrams (class and sequences) are in [docs/diagrams/](docs/diagrams/).
+High-level: the plugin has a **core** (main, settings, types), a **service layer** (note factory, research/code managers, draft compiler, prompt generator, GitHub client), a **Dataview layer** (code-block processor + script manager), and a **UI layer** (dashboard, search, template/filename/project modals). Entry points are the ribbon, commands, and `window.ZettelkastenOperator`; Dataview blocks in notes call that API to create items. **For detailed architecture, component descriptions, call flows, and a debugging guide for new maintainers, see [docs/architecture.md](docs/architecture.md).** **For all PlantUML diagrams (class diagram and sequence diagrams), see [docs/diagrams.md](docs/diagrams.md).**
 
 ### Class Hierarchy (quick reference)
 
