@@ -1,4 +1,5 @@
 import { Plugin, TFile, Notice } from 'obsidian';
+import { NoteTemplateConfig } from 'markdown-note-orm';
 import { ZettelkastenSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./constants"
 import { SampleSettingTab } from "./settings";
@@ -145,11 +146,25 @@ export default class MyPlugin extends Plugin {
 				if (!file) throw new Error("Project not found");
 				return await manager.createExperiment(file, title);
 			},
-			createResearchDraft: async (projectPath: string, title: string) => {
+			createResearchDraft: async (
+				projectPath: string,
+				title: string,
+				templateOptionIndex?: number,
+			) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
-				return await manager.createDraft(file, title);
+				let templateConfig: NoteTemplateConfig | undefined;
+				if (
+					templateOptionIndex !== undefined &&
+					templateOptionIndex >= 0 &&
+					plugin.settings.createNoteOptions &&
+					plugin.settings.createNoteOptions[templateOptionIndex]
+				) {
+					templateConfig = plugin.settings.createNoteOptions[templateOptionIndex]
+						.templateConfig;
+				}
+				return await manager.createDraft(file, title, templateConfig);
 			},
 			createResearchRequirement: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
