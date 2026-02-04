@@ -6,6 +6,7 @@ An Obsidian plugin for managing Zettelkasten notes with integrated project manag
 
 - [Features](#features)
 - [Installation](#installation)
+- [Usage](#usage)
 - [Architecture](#architecture)
 - [Zettelkasten Notes](#zettelkasten-notes)
 - [Research Project Management](#research-project-management)
@@ -29,9 +30,21 @@ An Obsidian plugin for managing Zettelkasten notes with integrated project manag
 2. Extract to your vault's `.obsidian/plugins/` folder
 3. Enable the plugin in Obsidian Settings → Community Plugins
 
+## Usage
+
+Examples of common workflows:
+
+- **Create a new note**: Click the **+** ribbon icon or run command *Create New Zettel Note* → choose note type (Fleeting / Literature / Atom / Permanent) → pick a template → enter title. The note is created in the folder set for that type (e.g. `004-Permanent/`).
+- **Search and link**: Run *Open Zettelkasten Search* (or click Search in the dashboard). Set target folder, type to filter, then **Open** a result or **Insert** a `[[path|name]]` wikilink at the cursor. Double-click a result to add the current note to that note’s `sources` frontmatter.
+- **Research project**: From the dashboard click **Research** → create or open a project. In the project’s `Dashboard.md`, use the Quick Actions block (objectives, steps, experiments, drafts). Create a draft, then use *Compile current draft to materials* and *Generate AI Prompt from current draft* with a draft file active.
+- **Code project**: From the dashboard click **Projects** → create or open a project. In `Dashboard.md` set `repo` (e.g. `owner/repo`), choose PAT if private, then **Refresh** to sync releases and unreleased commits. Create requirements and link them to releases in the Requirements table.
+- **Call plugin from a script**: In a Dataview JS block you can use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`. See [API Reference](#api-reference) and [docs/architecture.md](docs/architecture.md).
+
 ## Architecture
 
-### Class Hierarchy
+High-level: the plugin has a **core** (main, settings, types), a **service layer** (note factory, research/code managers, draft compiler, prompt generator, GitHub client), a **Dataview layer** (code-block processor + script manager), and a **UI layer** (dashboard, search, template/filename/project modals). Entry points are the ribbon, commands, and `window.ZettelkastenOperator`; Dataview blocks in notes call that API to create items. **For detailed architecture, component descriptions, call flows, and a debugging guide for new maintainers, see [docs/architecture.md](docs/architecture.md).** PlantUML diagrams (class and sequences) are in [docs/diagrams/](docs/diagrams/).
+
+### Class Hierarchy (quick reference)
 
 ```mermaid
 classDiagram
@@ -105,7 +118,7 @@ classDiagram
     CodeProjectManager --> GitHubClient
 ```
 
-### Module Structure
+### Module Structure (quick reference)
 
 ```mermaid
 graph TB
@@ -383,13 +396,13 @@ dataview-scripts/
 
 Load a script by ID in a code block:
 
-```
+````
 ```zettelkasten-query
 script-id
 param1: value1
 param2: value2
 ```
-```
+````
 
 ### Built-in Scripts
 
@@ -462,15 +475,23 @@ interface ZettelkastenOperator {
   createResearchStep(projectPath: string, objectivePath: string, title: string): Promise<TFile>
   createResearchExperiment(projectPath: string, title: string): Promise<TFile>
   createResearchRequirement(projectPath: string, title: string): Promise<TFile>
-  
+  createResearchDraft(projectPath: string, title: string, templateOptionIndex?: number): Promise<TFile>
+  updateResearchDashboardProperties(projectPath: string, updates: object): Promise<void>
+  pushToGitHub(projectPath: string, tokenKey?: string): Promise<void>
+
   // Code Project Methods
   createCodeRequirement(projectPath: string, title: string): Promise<TFile>
   refreshCodeProject(projectPath: string, tokenKey?: string): Promise<void>
   updateProjectDashboardProperties(projectPath: string, updates: object): Promise<void>
-  
-  // Utility Methods
+
+  // Draft / AI Pipeline
+  compileDraft(draftPath: string): Promise<string>
+  generateAIPrompt(draftFileOrPath: TFile | string): Promise<string>
+
+  // Utility
   getGithubTokenKeys(): Promise<string[]>
   getGanttStatusColors(): Record<string, string>
+  getSettings(): ZettelkastenSettings
 }
 ```
 

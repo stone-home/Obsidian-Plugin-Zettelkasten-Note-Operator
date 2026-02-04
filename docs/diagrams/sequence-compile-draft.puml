@@ -1,0 +1,69 @@
+@startuml sequence-compile-draft
+!theme plain
+title Sequence: Compile Current Draft to Materials
+
+actor User
+participant "Command\ncompile-current-draft" as Cmd
+participant "MyPlugin" as Plugin
+participant "DraftCompiler" as Compiler
+participant "Vault" as Vault
+participant "metadataCache" as Cache
+
+User -> Cmd : Run "Compile current draft to materials"
+Cmd -> Plugin : (callback)
+Plugin -> Plugin : getActiveFile()
+alt No active file or path does not include "/drafts/"
+  Plugin -> User : Notice("No active file." or "Active file is not in a drafts folder.")
+end
+Plugin -> Compiler : new DraftCompiler(app, settings)\nresolveConfig(activeFile)
+activate Compiler
+
+Compiler -> Compiler : pathParts = draftFile.path.split("/")\ndraftsIndex = pathParts.indexOf("drafts")
+alt draftsIndex < 1
+  Compiler -> User : Notice("Draft file must be in a /drafts/ folder")
+  Compiler --> Plugin : null
+end
+Compiler -> Compiler : projectFolder = pathParts.slice(0, draftsIndex).join("/")\ndashboardPath = projectFolder + "/Dashboard.md"
+Compiler -> Vault : getAbstractFileByPath(dashboardPath)
+alt Dashboard not found
+  Compiler -> User : Notice("Dashboard not found at ...")
+  Compiler --> Plugin : null
+end
+Compiler -> Cache : getFileCache(dashboardFile).frontmatter
+Compiler --> Plugin : CompileConfig { repoRoot, materialsDir, manifestPath }
+deactivate Compiler
+
+Plugin -> Compiler : compileDraft(activeFile, cfg)
+activate Compiler
+Compiler -> Vault : read(draft)
+Compiler -> Compiler : Split lines; skip frontmatter
+loop for each body line
+  Compiler -> Compiler : processWikiLinks(line)\n  - ![[x]] -> expandNote(x) -> blockquote\n  - [[x]] -> "[See: name]"
+  Compiler -> Vault : getFirstLinkpathDest(noteName) for transclusion
+  Compiler -> Vault : read(file) for excerpt
+end
+Compiler -> Compiler : getSectionBase(draft) -> sectionBase (e.g. intro)\ngetNextVersion(cfg, sectionBase, date) -> version
+Compiler -> Compiler : fileName = sectionBase + "_v" + date + "_" + version + ".md"\noutputPath = repoRoot + "/materials/" + fileName
+Compiler -> Vault : createFolder(materials) if needed
+alt outputPath exists
+  Compiler -> Vault : modify(existing, compiledContent)
+else
+  Compiler -> Vault : create(outputPath, compiledContent)
+end
+Compiler -> User : Notice("Compiled to ..." or "Compiled (updated) ...")
+Compiler --> Plugin : relative path (materials/...)
+deactivate Compiler
+
+Plugin -> Compiler : updateManifest(cfg, sectionBase, outputPath)
+activate Compiler
+Compiler -> Vault : getAbstractFileByPath(manifestPath) e.g. config/paper_manifest.json
+Compiler -> Compiler : manifest.sections[sectionId].input_source = newPath
+alt manifest exists
+  Compiler -> Vault : modify(manifestFile, JSON.stringify(manifest))
+else
+  Compiler -> Vault : createFolder(config); create(manifestPath, content)
+end
+Compiler --> Plugin : (void)
+deactivate Compiler
+
+@enduml

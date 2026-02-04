@@ -1,0 +1,55 @@
+@startuml sequence-dataview-execute
+!theme plain
+title Sequence: Dataview Code Block Execution
+
+actor User
+participant "Note (markdown)" as Note
+participant "Obsidian\nMarkdown render" as Render
+participant "DataviewCommand" as Cmd
+participant "DataviewJSManager" as Mgr
+participant "Dataview plugin\napi.executeJs" as DV
+participant "Script (JS)" as Script
+participant "window.ZettelkastenOperator" as API
+participant "ResearchManager\nor CodeProjectManager" as Manager
+participant "Vault" as Vault
+
+User -> Note : Open note containing\n``` zettelkasten-query\nzk-research-quick-actions\n```
+Note -> Render : Render code block (language = zettelkasten-query)
+
+Render -> Cmd : registerMarkdownCodeBlockProcessor callback\nprocessDvjsBlock(source, el, ctx)
+activate Cmd
+Cmd -> Cmd : Parse source: scriptId = first line\nparams = key: value lines
+Cmd -> Mgr : executeScript(scriptId, el, params, ctx)
+
+activate Mgr
+Mgr -> Mgr : getScript(scriptId)
+alt Script not found
+  Mgr -> Mgr : container.setText("Error: Script '...' not found")
+  Mgr --> Cmd : return
+end
+Mgr -> Mgr : scriptContent = scriptCache.get(scriptId)\nor read from vault
+Mgr -> Mgr : cleanCode = strip header comment\ncodeWithParams = "const input = " + JSON.stringify(params) + ";\n" + cleanCode
+Mgr -> DV : dataviewApi.executeJs(codeWithParams, container, this, sourcePath)
+deactivate Mgr
+
+activate DV
+DV -> Script : Run script in Dataview JS context\n(dv, input, app, ... available)
+activate Script
+note right of Script : Script uses dv.current().file.path\nand may call ZettelkastenOperator
+Script -> API : e.g. createResearchDraft(projectPath, title)
+API -> Manager : new ResearchManager(app, settings)\nmanager.createDraft(projectFile, title)
+activate Manager
+Manager -> Vault : ensureFolder(drafts); createNote(...)
+Vault --> Manager : TFile
+Manager --> API : TFile
+deactivate Manager
+API --> Script : (return)
+Script -> Script : Render UI (buttons, tables) into container
+Script --> DV : (done)
+deactivate Script
+DV --> Mgr : (done)
+deactivate DV
+Mgr --> Cmd : (done)
+deactivate Cmd
+
+@enduml

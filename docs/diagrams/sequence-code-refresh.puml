@@ -1,0 +1,69 @@
+@startuml sequence-code-refresh
+!theme plain
+title Sequence: Code Project Refresh (GitHub releases + unreleased commits)
+
+actor User
+participant "Code Dashboard\nQuick Actions" as Block
+participant "window.ZettelkastenOperator" as API
+participant "MyPlugin" as Plugin
+participant "CodeProjectManager" as CM
+participant "GitHubClient" as GH
+participant "GitHub API" as GitHub
+participant "Vault" as Vault
+
+User -> Block : Click "Refresh" (with PAT selected)
+Block -> API : refreshCodeProject(projectPath, tokenKey?)
+activate API
+API -> Plugin : (closure)
+Plugin -> Plugin : getAbstractFileByPath(projectPath) -> projectFile
+Plugin -> CM : new CodeProjectManager(app, settings)\n.refreshProject(projectFile, tokenKey?)
+activate CM
+
+CM -> CM : metadataCache.getFileCache(projectFile).frontmatter\nrepo, defaultBranch, github_token_key, public_repo
+CM -> CM : Resolve token: SecretStorage.getSecret(resolvedKey) or "" for public
+alt tokenKey provided and != frontmatter
+  CM -> Vault : processFrontMatter(projectFile, fm => fm.github_token_key = tokenKey)
+end
+CM -> CM : [owner, repoName] = repo.split("/")
+CM -> GH : new GitHubClient(token)\nlistReleases(owner, repoName)
+activate GH
+GH -> GitHub : GET /repos/{owner}/{repo}/releases
+GitHub --> GH : releases[]
+GH --> CM : releases
+deactivate GH
+
+CM -> CM : ensureFolder(projectFolder/releases), ensureFolder(projectFolder/commits)
+loop for each release
+  CM -> CM : upsertRelease(projectFolder, projectFile, rel)
+  alt release file exists
+    CM -> Vault : processFrontMatter(existing, fm => version, url, date, project)
+  else
+    CM -> CM : createNote(filePath, tag, "permanent", "project-release", {...})
+    CM -> Vault : create releases/{tag}.md
+  end
+end
+
+CM -> GH : compareCommits(owner, repoName, latestRelease.tag_name, defaultBranch)
+activate GH
+GH -> GitHub : GET /repos/.../compare/{base}...{head}
+GitHub --> GH : compare result (commits[])
+GH --> CM : { commits }
+deactivate GH
+
+loop for each commit
+  CM -> CM : upsertCommit(projectFolder, projectFile, commit)
+  alt commit file exists
+    CM -> Vault : processFrontMatter(existing, fm => sha, message, url, date, released)
+  else
+    CM -> CM : createNote(filePath, sha, "permanent", "project-commit", {...})
+    CM -> Vault : create commits/{sha}.md
+  end
+end
+
+CM --> API : (void)
+deactivate CM
+API --> Block : (done)
+deactivate API
+Block -> User : Notice or UI update
+
+@enduml

@@ -1,0 +1,49 @@
+@startuml sequence-research-create
+!theme plain
+title Sequence: Research Quick Action — Create Draft (from Dashboard note)
+
+actor User
+participant "Research Dashboard\n(markdown note)" as Note
+participant "Dataview block\nzk-research-quick-actions" as Block
+participant "window.ZettelkastenOperator" as API
+participant "MyPlugin\nregisterGlobalActions" as Plugin
+participant "ResearchManager" as RM
+participant "markdown-note-orm\nLibFactory" as Lib
+participant "Vault" as Vault
+
+User -> Note : Open Research project Dashboard
+Note -> Block : Render block (script runs in Dataview context)
+activate Block
+Block -> Block : projectPath = dv.current().file.path\n(e.g. Research/MyProject/Dashboard.md)
+User -> Block : Enter "Draft title", click Create
+Block -> API : createResearchDraft(projectPath, title, templateOptionIndex?)
+
+activate API
+API -> Plugin : (closure over plugin instance)
+Plugin -> Plugin : getAbstractFileByPath(projectPath) -> projectFile
+alt Project file not found
+  API --> Block : throw new Error("Project not found")
+end
+Plugin -> RM : new ResearchManager(app, settings)\n.createDraft(projectFile, title, templateConfig)
+activate RM
+
+RM -> RM : getProjectFolder(projectFile) -> projectFolder\nfolder = projectFolder + "/drafts"
+RM -> Vault : ensureFolder(folder)
+RM -> RM : sanitizeSegment(title) -> safeTitle\nfilePath = folder + "/" + safeTitle + ".md"
+alt File already exists
+  RM --> API : throw new Error("Draft with this title already exists.")
+end
+RM -> Lib : createByType(app, filePath, "fleeting", safeTitle, config)\nconfig: tags type/research-draft, project, title, section_title, status
+Lib -> Vault : create file
+Vault --> Lib : (file)
+Lib --> RM : (note)
+RM -> RM : note.save()
+RM --> API : TFile (draft)
+deactivate RM
+API --> Block : TFile
+deactivate API
+
+Block -> Block : Clear input; (optional) refresh view
+deactivate Block
+
+@enduml

@@ -1,0 +1,60 @@
+@startuml sequence-create-note
+!theme plain
+title Sequence: Create New Note (Dashboard → Vault)
+
+actor User
+participant "Ribbon / Command" as Cmd
+participant "MyPlugin" as Plugin
+participant "NoteFactory" as Factory
+participant "Dashboard" as Dashboard
+participant "TemplateGridModal" as Template
+participant "FileNameModal" as Filename
+participant "markdown-note-orm\nLibFactory" as Lib
+participant "Vault" as Vault
+
+User -> Cmd : Click ribbon or "Create New Zettel Note"
+Cmd -> Plugin : (callback)
+Plugin -> Factory : openCreationModal()
+
+Factory -> Dashboard : new Dashboard(app, settings, factory, onComplete)\n.open()
+activate Dashboard
+Dashboard -> User : Show "Zettelkasten Control" (Quick Actions, Create New Note, Active Context)
+
+User -> Dashboard : Click note type (e.g. Permanent)
+Dashboard -> Template : new TemplateGridModal(noteType, options, onChoose)\n.open()
+activate Template
+Template -> User : Show template cards
+User -> Template : Click template
+Template -> Dashboard : onChoose(selectedOption)
+deactivate Template
+
+Dashboard -> Filename : new FileNameModal(folder, onSubmit)\n.open()
+activate Filename
+Filename -> User : "New Note in: 004-Permanent"
+User -> Filename : Enter title
+Filename -> Dashboard : onSubmit(title)
+deactivate Filename
+
+Dashboard -> Factory : onComplete(optionToPass, title)
+note right: optionToPass includes template + prefix; title may be prefixed
+
+Factory -> Factory : resolvePrefix(option.extraInfo.prefix) if set
+Factory -> Lib : createByType(app, fullPath, type, title, specificConfig)
+activate Lib
+Lib -> Vault : create / modify file at fullPath
+Vault --> Lib : file
+Lib --> Factory : ZettelNoteModel
+deactivate Lib
+
+Factory -> Factory : note.properties.batchUpdate(noteExtraParams) if any
+Factory -> Factory : note.save()
+Factory -> Vault : write frontmatter + body
+Factory -> User : Notice("Created: ...")
+opt openAfterCreation
+  Factory -> Vault : workspace.openLinkText(fullPath, ...)
+end
+Factory -> Dashboard : (callback done)
+Dashboard -> Dashboard : close()
+deactivate Dashboard
+
+@enduml

@@ -1,0 +1,250 @@
+@startuml class
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+
+title Zettelkasten Operator — Class Overview
+
+package "Plugin Core" {
+  class MyPlugin {
+    + settings: ZettelkastenSettings
+    + factory: NoteFactory
+    + dataview?: DataviewCommand
+    --
+    + onload(): Promise<void>
+    + loadSettings(): Promise<void>
+    + saveSettings(): Promise<void>
+    - registerGlobalActions(): void
+    + onunload(): void
+  }
+
+  class SampleSettingTab {
+    - plugin: MyPlugin
+    - activeTab: general | projects | dataview | templates
+    - editingIndex: number | null
+    --
+    + display(): void
+    - renderGeneralSettings(container)
+    - renderProjectsSettings(container)
+    - renderDataviewSettings(container)
+    - renderSummaryView(container)
+    - renderDetailView(container, index)
+  }
+
+  class ZettelkastenSettings <<interface>> {
+    dateFormat
+    fleetingPath
+    literaturePath
+    atomPath
+    permanentPath
+    researchRootPath
+    projectRootPath
+    dataviewEnabled
+    dataviewQueryPath
+    dataviewCodeBlockType
+    searchDefaultPath
+    ganttStatusColors
+    createNoteOptions
+  }
+}
+
+package "Service Layer" {
+  class NoteFactory {
+    - app: App
+    - settings: ZettelkastenSettings
+    --
+    + initialize(settings): Promise<void>
+    + openCreationModal(): void
+    + createZettel(type, title, folder, config?, extra?): Promise<ZettelNoteModel>
+    + loadNote(path): Promise<ZettelNoteModel>
+    + loadActiveNote(): Promise<ZettelNoteModel>
+  }
+
+  class ResearchManager {
+    - app: App
+    - settings: ZettelkastenSettings
+    --
+    + createProject(name): Promise<TFile>
+    + createObjective(projectFile, title): Promise<TFile>
+    + createStep(projectFile, objectiveFile, title): Promise<TFile>
+    + createExperiment(projectFile, title): Promise<TFile>
+    + createRequirement(projectFile, title): Promise<TFile>
+    + createDraft(projectFile, title, templateConfig?): Promise<TFile>
+    + listProjects(): Promise<TFile[]>
+    + updateDashboardProperties(filePath, updates): Promise<void>
+    + pushToGitHub(projectFile, tokenKey?): Promise<void>
+    - createNote(...): Promise<TFile>
+    - ensureFolder(path): Promise<void>
+  }
+
+  class CodeProjectManager {
+    - app: App
+    - settings: ZettelkastenSettings
+    --
+    + createProject(name): Promise<TFile>
+    + createRequirement(projectFile, title): Promise<TFile>
+    + refreshProject(projectFile, tokenKey?): Promise<void>
+    + updateDashboardProperties(filePath, updates): Promise<void>
+    + listProjects(): Promise<TFile[]>
+    - createNote(...): Promise<TFile>
+    - upsertRelease(folder, projectFile, release): Promise<void>
+    - upsertCommit(folder, projectFile, commit): Promise<void>
+  }
+
+  class DraftCompiler {
+    - app: App
+    - settings: ZettelkastenSettings
+    --
+    + resolveConfig(draftFile): Promise<CompileConfig | null>
+    + compileDraft(draft, cfg): Promise<string>
+    + updateManifest(cfg, sectionId, newPath): Promise<void>
+    - processWikiLinks(line): Promise<string>
+    - expandNote(noteName, fullContent): Promise<string>
+  }
+
+  class PromptGenerator {
+    - app: App
+    - settings: ZettelkastenSettings
+    --
+    + generatePrompt(draft): Promise<string>
+    - extractLinks(content): string[]
+    - classifyLinks(links): Promise<ClassifiedLinks>
+    - cleanNarrative(content): string
+    - buildPrompt(...): string
+  }
+
+  class GitHubClient {
+    - token: string
+    --
+    + listReleases(owner, repo): Promise<any[]>
+    + compareCommits(owner, repo, base, head): Promise<any>
+    - getJson<T>(url): Promise<T>
+  }
+}
+
+package "Dataview Layer" {
+  class DataviewCommand {
+    - app: App
+    - plugin: MyPlugin
+    - dataviewManager: DataviewJSManager
+    - processorRegistered: boolean
+    --
+    + initialize(): Promise<void>
+    + refresh(): Promise<void>
+    + unload(): void
+    - registerCodeBlockProcessor(): void
+    - processDvjsBlock(source, el, ctx): Promise<void>
+  }
+
+  class DataviewJSManager {
+    - scripts: Map<string, IDataviewScript>
+    - scriptCache: Map<string, string>
+    - scriptsFolder: string
+    - fileWatcherRef: EventRef[]
+    --
+    + onload(): Promise<void>
+    + getScript(id): IDataviewScript | undefined
+    + executeScript(scriptId, container, params, ctx?): Promise<void>
+    + cleanUpFileWatchers(): void
+    - createDefaultScripts(): Promise<void>
+    - loadAllScripts(): Promise<void>
+    - loadScript(file): Promise<void>
+    - registerFileWatchers(): void
+    - createScript(id, name, content, options?): Promise<IDataviewScript>
+  }
+
+  class DataviewScriptBuilder {
+    - manager: DataviewJSManager
+    - script: Partial<IDataviewScript>
+    --
+    + id(id): this
+    + name(name): this
+    + description(desc): this
+    + content(scriptContent): this
+    + build(): Promise<IDataviewScript>
+  }
+}
+
+package "UI Layer (Modals)" {
+  class Dashboard {
+    - settings: ZettelkastenSettings
+    - factory: NoteFactory
+    - onComplete: OnNoteCreateCallback
+    --
+    + onOpen(): void
+    - renderQuickAccess(container)
+    - renderNewNoteSection(container)
+    - renderActiveNoteSection(container)
+    - renderUpgradeSection(container)
+    - renderCategoryGrid(container, types)
+  }
+
+  class SearchModal {
+    - settings: ZettelkastenSettings
+    - factory: NoteFactory
+    - targetDirectory: string
+    - searchResults: ISearchResult[]
+    --
+    + onOpen(): void
+    - refreshAllResults(): void
+    - performSearch(): void
+    - handleCreateOpen(name): void
+  }
+
+  class TemplateGridModal {
+    - noteType: NoteType
+    - options: INoteOption[]
+    - onChoose: (item: INoteOption) => void
+    --
+    + onOpen(): void
+  }
+
+  class FileNameModal {
+    - referencePath: string
+    - onSubmit: (title: string) => Promise<void> | void
+    --
+    + onOpen(): void
+  }
+
+  class ResearchProjectsModal {
+    - settings: ZettelkastenSettings
+    --
+    + onOpen(): void
+  }
+
+  class CodeProjectsModal {
+    - settings: ZettelkastenSettings
+    --
+    + onOpen(): void
+  }
+}
+
+' Relationships
+MyPlugin --> NoteFactory : holds
+MyPlugin --> DataviewCommand : holds (optional)
+MyPlugin --> SampleSettingTab : adds tab
+MyPlugin ..> ZettelkastenSettings : uses
+MyPlugin ..> ResearchManager : creates on demand
+MyPlugin ..> CodeProjectManager : creates on demand
+MyPlugin ..> DraftCompiler : creates on demand
+MyPlugin ..> PromptGenerator : creates on demand
+
+SampleSettingTab --> MyPlugin : plugin
+SampleSettingTab ..> ZettelkastenSettings : edits
+
+NoteFactory --> Dashboard : opens
+NoteFactory ..> ZettelkastenSettings : uses
+Dashboard --> TemplateGridModal : opens
+Dashboard --> FileNameModal : opens
+Dashboard --> SearchModal : opens
+Dashboard --> ResearchProjectsModal : opens
+Dashboard --> CodeProjectsModal : opens
+Dashboard --> NoteFactory : uses
+
+DataviewCommand --> DataviewJSManager : holds
+DataviewJSManager --> DataviewScriptBuilder : createScriptBuilder()
+DataviewJSManager ..> MyPlugin : plugin.settings
+
+CodeProjectManager --> GitHubClient : uses
+
+@enduml
