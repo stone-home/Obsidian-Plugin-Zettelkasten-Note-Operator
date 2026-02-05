@@ -159,7 +159,16 @@ export class Dashboard extends Modal {
 								// Do not mutate selectedOption (templates in settings). Build a one-off option
 								// so Upgrade gets sources for this create only, and Create New Note always gets sources: [].
 								const optionToPass = noteExtraParams
-									? { ...selectedOption, extraInfo: noteExtraParams }
+									? {
+											...selectedOption,
+											extraInfo: {
+												...selectedOption.extraInfo,
+												properties: {
+													...selectedOption.extraInfo?.properties,
+													...noteExtraParams?.properties,
+												},
+											},
+										}
 									: {
 											...selectedOption,
 											extraInfo: {

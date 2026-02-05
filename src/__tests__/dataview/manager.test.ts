@@ -378,6 +378,37 @@ describe("DataviewJSManager", () => {
 			expect(typeof builder.build).toBe("function");
 		});
 	});
+
+	// ==================== setScriptsFolder ====================
+
+	describe("setScriptsFolder", () => {
+		it("should clear scripts and cache so getScripts returns empty", async () => {
+			await manager.onload();
+			expect(manager.getScripts().length).toBeGreaterThan(0);
+			manager.setScriptsFolder("other-folder");
+			expect(manager.getScripts().length).toBe(0);
+			expect(manager.getScriptContent("zk-research-quick-actions")).toBeUndefined();
+		});
+	});
+
+	// ==================== getScriptContent ====================
+
+	describe("getScriptContent", () => {
+		beforeEach(async () => {
+			await manager.onload();
+		});
+
+		it("should return cached content after load", () => {
+			const content = manager.getScriptContent("zk-research-quick-actions");
+			expect(content).toBeDefined();
+			expect(typeof content).toBe("string");
+			expect(content!.length).toBeGreaterThan(0);
+		});
+
+		it("should return undefined for unknown id", () => {
+			expect(manager.getScriptContent("nonexistent-id")).toBeUndefined();
+		});
+	});
 });
 
 // ==================== getDefaultScriptContent ====================

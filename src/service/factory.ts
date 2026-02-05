@@ -72,9 +72,10 @@ export class NoteFactory extends Component {
 			this,
 			async (option, title) => {
 				try {
+					console.error("option", option);
 					if (option.extraInfo?.prefix) {
 						const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
-						title = `${resolved}-${title}`;
+						title = `${resolved} - ${title}`;
 					}
 					let targetFolder = option.specificFolder;
 					// Dashboard passes a one-off option: Create New Note has sources: [], Upgrade has sources: [link]

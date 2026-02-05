@@ -1,6 +1,7 @@
 import MyPlugin from "../main";
 import { App, Notice } from "obsidian";
 import { DataviewJSManager } from "./manager";
+import type { IDataviewScript } from "./types";
 
 export class DataviewCommand {
 	private app: App;
@@ -25,8 +26,10 @@ export class DataviewCommand {
 		}
 	}
 
-	/** Reload scripts without re-registering the code block processor. */
+	/** Reload scripts without re-registering the code block processor. Uses current plugin.settings.dataviewQueryPath. */
 	public async refresh(): Promise<void> {
+		this.dataviewManager.cleanUpFileWatchers();
+		this.dataviewManager.setScriptsFolder(this.plugin.settings.dataviewQueryPath);
 		await this.dataviewManager.onload();
 	}
 
@@ -44,6 +47,29 @@ export class DataviewCommand {
 
 	public unload(): void {
 		this.dataviewManager.cleanUpFileWatchers();
+	}
+
+	public getScripts(category?: string): IDataviewScript[] {
+		return this.dataviewManager.getScripts(category);
+	}
+
+	public getScriptContent(scriptId: string): string | undefined {
+		return this.dataviewManager.getScriptContent(scriptId);
+	}
+
+	public async createScript(
+		id: string,
+		name: string,
+		scriptContent: string,
+		options?: {
+			description?: string;
+			category?: string;
+			parameters?: import("./types").IDataviewParameter[];
+			tags?: string[];
+			overwrite?: boolean;
+		}
+	): Promise<IDataviewScript> {
+		return this.dataviewManager.createScript(id, name, scriptContent, options ?? {});
 	}
 
 	private async processDvjsBlock(source: string, el: HTMLElement, ctx: any) {

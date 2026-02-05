@@ -9,12 +9,16 @@ import {
 	Modal,
 	ToggleComponent,
 	setIcon,
+	TFile,
 } from 'obsidian';
 import MyPlugin from './main';
 import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
+import { getDefaultScriptContent } from "./dataview/manager";
 import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS } from "./constants";
+import { DataviewScriptEditorModal } from "./modals/dataviewScriptEditorModal";
+import type { IDataviewScript } from "./dataview/types";
 
 /**
  * [Class]: PropertyCreationModal
@@ -130,6 +134,8 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	// [STATE]: Keeps track of which accordions are open so they stay open during re-renders
 	private expandedCategories: Record<string, boolean> = {};
+
+	private expandedScriptIds: Set<string> = new Set();
 
 	constructor(app: App, plugin: MyPlugin) {
 		super(app, plugin);
@@ -344,7 +350,10 @@ export class SampleSettingTab extends PluginSettingTab {
 				this.plugin.dataview = undefined;
 				return;
 			}
-			this.plugin.dataview?.unload();
+			if (this.plugin.dataview) {
+				await this.plugin.dataview.refresh();
+				return;
+			}
 			this.plugin.dataview = new DataviewCommand(this.app, this.plugin);
 			await this.plugin.dataview.initialize();
 		};
@@ -385,6 +394,124 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
+
+		// Script list: only when Dataview is enabled and we have an instance
+		if (this.plugin.settings.dataviewEnabled && this.plugin.dataview) {
+			const scriptsCard = containerEl.createDiv({ cls: 'zettel-settings-card zk-scripts-card' });
+			const scriptsHeader = scriptsCard.createDiv({ cls: 'zk-scripts-header' });
+			const scriptsHeaderIcon = scriptsHeader.createDiv({ cls: 'zk-scripts-header-icon' });
+			setIcon(scriptsHeaderIcon, 'file-code');
+			const scriptsHeaderText = scriptsHeader.createDiv({ cls: 'zk-scripts-header-text' });
+			scriptsHeaderText.createEl('h3', { text: 'Scripts', cls: 'zk-scripts-title' });
+			scriptsHeaderText.createEl('p', { text: 'Manage Dataview JS scripts. Edit, reset to default, or remove.', cls: 'zk-scripts-desc' });
+			const createWrap = scriptsCard.createDiv({ cls: 'zk-scripts-create-wrap' });
+			new ButtonComponent(createWrap)
+				.setButtonText('Create script')
+				.setCta()
+				.onClick(() => {
+					new DataviewScriptEditorModal(
+						this.app,
+						this.plugin,
+						null,
+						"// Your Dataview JS script here\nconst zk = window.ZettelkastenOperator;\n",
+						async (content, newId, newName) => {
+							if (newId && newName) {
+								await this.plugin.dataview!.createScript(newId, newName, content);
+								await this.plugin.dataview!.refresh();
+								this.display();
+							}
+						}
+					).open();
+				});
+
+			const scriptsList = scriptsCard.createDiv({ cls: 'zk-scripts-list' });
+			const scripts = this.plugin.dataview.getScripts();
+			scripts.forEach((script: IDataviewScript) => {
+				const row = scriptsList.createDiv({ cls: 'zk-dataview-script-row' });
+				const rowMain = row.createDiv({ cls: 'zk-script-row-main' });
+				const titleBlock = rowMain.createDiv({ cls: 'zk-script-title-block' });
+				titleBlock.createSpan({ text: script.name, cls: 'zk-script-name' });
+				titleBlock.createSpan({ text: script.id, cls: 'zk-script-id-pill' });
+				const btnGroup = rowMain.createDiv({ cls: 'zk-script-btn-group' });
+
+				const expandBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-expand' });
+				const expandIcon = expandBtn.createSpan();
+				setIcon(expandIcon, this.expandedScriptIds.has(script.id) ? 'chevron-up' : 'chevron-down');
+				expandBtn.appendText(' Preview');
+				expandBtn.onclick = () => {
+					if (this.expandedScriptIds.has(script.id)) {
+						this.expandedScriptIds.delete(script.id);
+					} else {
+						this.expandedScriptIds.add(script.id);
+					}
+					this.display();
+				};
+
+				const editBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-edit' });
+				setIcon(editBtn.createSpan(), 'pencil');
+				editBtn.appendText(' Edit');
+				editBtn.onclick = async () => {
+					let content = this.plugin.dataview!.getScriptContent(script.id);
+					if (content === undefined) {
+						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
+						if (file) {
+							content = await this.app.vault.read(file);
+						} else {
+							content = '';
+						}
+					}
+					new DataviewScriptEditorModal(
+						this.app,
+						this.plugin,
+						script,
+						content ?? '',
+						async (newContent) => {
+							const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
+							if (file) {
+								await this.app.vault.modify(file, newContent);
+								await this.plugin.dataview!.refresh();
+								this.display();
+							}
+						}
+					).open();
+				};
+
+				const defaultContent = getDefaultScriptContent(script.id);
+				if (defaultContent !== null) {
+					const resetBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-reset' });
+					setIcon(resetBtn.createSpan(), 'undo');
+					resetBtn.appendText(' Reset');
+					resetBtn.onclick = async () => {
+						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
+						if (file) {
+							await this.app.vault.modify(file, defaultContent);
+							await this.plugin.dataview!.refresh();
+							this.display();
+						}
+					};
+				}
+
+				const removeBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-remove' });
+				setIcon(removeBtn.createSpan(), 'trash-2');
+				removeBtn.appendText(' Remove');
+				removeBtn.onclick = async () => {
+					if (confirm(`Remove script "${script.name}"?`)) {
+						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
+						if (file) {
+							await this.app.vault.delete(file);
+							await this.plugin.dataview!.refresh();
+							this.display();
+						}
+					}
+				};
+
+				if (this.expandedScriptIds.has(script.id)) {
+					const snippet = row.createDiv({ cls: 'zk-script-snippet' });
+					const cached = this.plugin.dataview!.getScriptContent(script.id);
+					snippet.textContent = cached ?? '(load script to preview)';
+				}
+			});
+		}
 	}
 
 	// --- [HELPER]: Get preview color for a PlantUML color value ---
