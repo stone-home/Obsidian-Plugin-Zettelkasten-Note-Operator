@@ -19,6 +19,13 @@ export class DataviewJSManager extends Component {
 		this.scriptsFolder = scriptsFolder;
 	}
 
+	/** Update scripts folder and clear cache so next onload() loads from new path. Call cleanUpFileWatchers() before this when refreshing. */
+	public setScriptsFolder(path: string): void {
+		this.scriptsFolder = path;
+		this.scripts.clear();
+		this.scriptCache.clear();
+	}
+
 	async onload(): Promise<void> {
 		await this.initializeScriptsFolder();
 		await this.createDefaultScripts();
@@ -705,6 +712,10 @@ export class DataviewJSManager extends Component {
 
 	getScript(id: string): IDataviewScript | undefined {
 		return this.scripts.get(id);
+	}
+
+	getScriptContent(scriptId: string): string | undefined {
+		return this.scriptCache.get(scriptId);
 	}
 
 	getScripts(category?: string): IDataviewScript[] {

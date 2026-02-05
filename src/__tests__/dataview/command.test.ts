@@ -3,7 +3,7 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings } from "../../__mocks__/testHelpers";
+import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
 import { DataviewCommand } from "../../dataview/command";
 
 function createMockPlugin(registerThrows?: "already registered" | "other") {
@@ -40,6 +40,10 @@ describe("DataviewCommand", () => {
 
 	beforeEach(() => {
 		app = createMockApp();
+	});
+
+	afterEach(() => {
+		clearVault(app.vault);
 	});
 
 	describe("constructor", () => {
@@ -177,6 +181,61 @@ describe("DataviewCommand", () => {
 			el.setText = (s: string) => { el.textContent = s; };
 			await handler("test\nfoo: 1\nbar= 2", el, {});
 			expect(el.textContent).toBeDefined();
+		});
+	});
+
+	describe("getScripts", () => {
+		it("should return scripts from manager after initialize", async () => {
+			const { plugin } = createMockPlugin();
+			plugin.app = app;
+			const cmd = new DataviewCommand(app, plugin as any);
+			await cmd.initialize();
+			const scripts = cmd.getScripts();
+			expect(Array.isArray(scripts)).toBe(true);
+			expect(scripts.length).toBeGreaterThan(0);
+		});
+
+		it("should filter by category when provided", async () => {
+			const { plugin } = createMockPlugin();
+			plugin.app = app;
+			const cmd = new DataviewCommand(app, plugin as any);
+			await cmd.initialize();
+			const scripts = cmd.getScripts("research");
+			expect(Array.isArray(scripts)).toBe(true);
+		});
+	});
+
+	describe("getScriptContent", () => {
+		it("should return content for loaded script", async () => {
+			const { plugin } = createMockPlugin();
+			plugin.app = app;
+			const cmd = new DataviewCommand(app, plugin as any);
+			await cmd.initialize();
+			const content = cmd.getScriptContent("zk-research-quick-actions");
+			expect(typeof content).toBe("string");
+			expect(content!.length).toBeGreaterThan(0);
+		});
+
+		it("should return undefined for unknown script", async () => {
+			const { plugin } = createMockPlugin();
+			plugin.app = app;
+			const cmd = new DataviewCommand(app, plugin as any);
+			await cmd.initialize();
+			expect(cmd.getScriptContent("nonexistent-id")).toBeUndefined();
+		});
+	});
+
+	describe("createScript", () => {
+		it("should create script via manager", async () => {
+			const { plugin } = createMockPlugin();
+			plugin.app = app;
+			const cmd = new DataviewCommand(app, plugin as any);
+			await cmd.initialize();
+			const script = await cmd.createScript("new-script", "New Script", "dv.paragraph('hi');");
+			expect(script).toBeDefined();
+			expect(script.id).toBe("new-script");
+			expect(script.name).toBe("New Script");
+			expect(script.filePath).toContain("new-script.js");
 		});
 	});
 });
