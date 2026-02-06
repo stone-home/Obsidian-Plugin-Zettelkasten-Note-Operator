@@ -4,6 +4,7 @@ import type { NoteFactory } from '../service/factory';
 import {INoteOption, INoteOptionExtraParams, ZettelkastenSettings} from '../types';
 import { DEFAULT_NOTE_CATEGORIES } from "../constants"
 import { Logger } from '../logger';
+import { stripMdExtension } from '../utils/path';
 import { TemplateGridModal } from './template';
 import { FileNameModal } from './filename';
 import { ResearchProjectsModal } from './researchProjectsModal';
@@ -229,7 +230,7 @@ export class Dashboard extends Modal {
 				{
 					properties: {
 						sources: [
-							`[[${activeNote.title}]]`
+							`[[${stripMdExtension(activeNote.title)}]]`
 						]
 					}
 				}

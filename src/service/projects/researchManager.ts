@@ -7,6 +7,7 @@ import {
 } from "markdown-note-orm";
 import { ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
+import { stripMdExtension } from "../../utils/path";
 
 export class ResearchManager {
 	private app: App;
@@ -155,7 +156,7 @@ export class ResearchManager {
 			"permanent",
 			"research-objective",
 			{
-				project: `[[${projectFile.path}|Dashboard]]`,
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 				title: safeTitle,
 				status: "planned",
 				start: "",
@@ -191,7 +192,7 @@ export class ResearchManager {
 			"permanent",
 			"research-requirement",
 			{
-				project: `[[${projectFile.path}|Dashboard]]`,
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 				title: safeTitle,
 				status: "proposed",
 				priority: "medium",
@@ -217,7 +218,7 @@ export class ResearchManager {
 			throw new Error("Draft with this title already exists.");
 		}
 		const baseProps = {
-			project: `[[${projectFile.path}|Dashboard]]`,
+			project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 			title: safeTitle,
 			section_title: safeTitle,
 			status: "draft",
@@ -252,8 +253,8 @@ export class ResearchManager {
 			"permanent",
 			"research-step",
 			{
-				project: `[[${projectFile.path}|Dashboard]]`,
-				objective: `[[${objectiveFile.path}]]`,
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
+				objective: `[[${stripMdExtension(objectiveFile.path)}]]`,
 				title: safeTitle,
 				status: "todo",
 			},
@@ -275,7 +276,7 @@ export class ResearchManager {
 			"permanent",
 			"research-experiment",
 			{
-				project: `[[${projectFile.path}|Dashboard]]`,
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 				title: safeTitle,
 				status: "planned",
 			},

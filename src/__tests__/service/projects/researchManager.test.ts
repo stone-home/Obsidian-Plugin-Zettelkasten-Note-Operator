@@ -147,7 +147,7 @@ describe("ResearchManager", () => {
 			);
 
 			const content = (app.vault as any)._getContent(objectiveFile.path);
-			expect(content).toContain("[[Research/TestProject/Dashboard.md|Dashboard]]");
+			expect(content).toContain("[[Research/TestProject/Dashboard|Dashboard]]");
 		});
 
 		it("should throw error if objective already exists", async () => {
@@ -208,8 +208,8 @@ describe("ResearchManager", () => {
 			);
 
 			const content = (app.vault as any)._getContent(stepFile.path);
-			expect(content).toContain("[[Research/StepTestProject/Dashboard.md|Dashboard]]");
-			expect(content).toContain("[[Research/StepTestProject/objectives/TestObjective.md]]");
+			expect(content).toContain("[[Research/StepTestProject/Dashboard|Dashboard]]");
+			expect(content).toContain("[[Research/StepTestProject/objectives/TestObjective]]");
 		});
 
 		it("should throw error if step already exists", async () => {

@@ -9,6 +9,7 @@ import {
 } from "obsidian";
 import type { NoteFactory } from "../service/factory";
 import type { ZettelkastenSettings } from "../types";
+import { stripMdExtension } from "../utils/path";
 
 export interface ISearchResult {
 	name: string;
@@ -76,7 +77,7 @@ export class SearchModal extends Modal {
 				}
 				tags = [...new Set(tags)];
 				return {
-					name: (fm?.title as string) || note.basename,
+					name: (fm?.title as string) || stripMdExtension(note.basename),
 					basename: note.basename,
 					path: note.path,
 					tags,
@@ -156,7 +157,7 @@ export class SearchModal extends Modal {
 			new Notice("Target file not found.");
 			return;
 		}
-		const link = `[[${activeFile.path}|${activeFile.basename}]]`;
+		const link = `[[${stripMdExtension(activeFile.path)}|${stripMdExtension(activeFile.basename)}]]`;
 		await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
 			if (!fm.sources) (fm as Record<string, unknown>).sources = [];
 			const sources = (fm as Record<string, unknown>).sources as string[];
@@ -267,7 +268,7 @@ export class SearchModal extends Modal {
 				new Notice("No active editor.");
 				return;
 			}
-			const wikilink = `[[${this.selectedResult.path}|${this.selectedResult.name}]]`;
+			const wikilink = `[[${stripMdExtension(this.selectedResult.path)}|${this.selectedResult.name}]]`;
 			view.editor.replaceSelection(wikilink);
 			this.close();
 		};

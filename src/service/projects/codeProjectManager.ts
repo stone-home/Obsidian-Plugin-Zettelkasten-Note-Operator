@@ -7,6 +7,7 @@ import {
 } from "markdown-note-orm";
 import { ZettelkastenSettings } from "../../types";
 import { GitHubClient } from "../github/githubClient";
+import { stripMdExtension } from "../../utils/path";
 
 export class CodeProjectManager {
 	private app: App;
@@ -126,7 +127,7 @@ export class CodeProjectManager {
 			"permanent",
 			"code-requirement",
 			{
-				project: `[[${projectFile.path}|Dashboard]]`,
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 				title: safeTitle,
 				status: "proposed",
 				priority: "medium",
@@ -329,7 +330,7 @@ export class CodeProjectManager {
 		if (existing instanceof TFile) {
 			// Update existing file, preserve id/create via processFrontMatter
 			await this.app.fileManager.processFrontMatter(existing, (fm) => {
-				fm.project = `[[${projectFile.path}|Dashboard]]`;
+				fm.project = `[[${stripMdExtension(projectFile.path)}|Dashboard]]`;
 				fm.version = tag;
 				fm.url = releaseUrl;
 				fm.date = releaseDate;
@@ -342,7 +343,7 @@ export class CodeProjectManager {
 				"permanent",
 				"project-release",
 				{
-					project: `[[${projectFile.path}|Dashboard]]`,
+					project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 					version: tag,
 					url: releaseUrl,
 					date: releaseDate,
@@ -372,7 +373,7 @@ export class CodeProjectManager {
 		if (existing instanceof TFile) {
 			// Update existing file, preserve id/create via processFrontMatter
 			await this.app.fileManager.processFrontMatter(existing, (fm) => {
-				fm.project = `[[${projectFile.path}|Dashboard]]`;
+				fm.project = `[[${stripMdExtension(projectFile.path)}|Dashboard]]`;
 				fm.sha = sha;
 				fm.message = message.replace(/:/g, "");
 				fm.url = commit.html_url || "";
@@ -390,7 +391,7 @@ export class CodeProjectManager {
 				"permanent",
 				"project-commit",
 				{
-					project: `[[${projectFile.path}|Dashboard]]`,
+					project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 					sha: sha,
 					message: message.replace(/:/g, ""),
 					url: commit.html_url || "",

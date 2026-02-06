@@ -318,7 +318,8 @@ export class DataviewJSManager extends Component {
 				name: "Research Objective Steps",
 				overwrite: true,
 				script: join([
-					"const objectivePath = input.objectivePath || dv.current().file.path;",
+					"const rawPath = input.objectivePath || dv.current().file.path;",
+					"const objectivePath = rawPath.replace(/\\.md$/i, '');",
 					"const objectiveLink = `[[${objectivePath}]]`;",
 					"const projectFolder = dv.current().file.folder.replace(/\\/objectives$/, '');",
 					"const stepsFolder = projectFolder + '/steps';",
