@@ -4,30 +4,39 @@
 /* Common styling for the content wrapper of our custom modals */
 .zettelkasten-dashboard-modal,
 .zettelkasten-template-modal {
-	padding: 20px;
+	padding: 24px 28px;
 	max-width: 90vw;
-	min-width: 510px;
+	min-width: 520px;
 	width: fit-content;
+}
+
+.zettelkasten-modal .modal-title {
+	font-size: 1.35rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	color: var(--text-normal);
 }
 
 /* --- Dashboard Specific --- */
 .dashboard-header .modal-title {
 	text-align: center;
-	font-size: 1.4rem;
+	font-size: 1.5rem;
 	font-weight: 700;
 	margin-bottom: 0.5rem;
 	color: var(--text-normal);
+	letter-spacing: -0.02em;
 }
 
 /* --- Generic Sections --- */
 .dashboard-section {
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	padding: 16px;
+	border-radius: 14px;
+	padding: 18px 20px;
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 14px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .section-header {
@@ -65,20 +74,21 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 6px;
-	padding: 8px 10px;
+	gap: 8px;
+	padding: 10px 14px;
 	background-color: var(--background-secondary);
-	border: 1px solid transparent;
-	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
 	cursor: pointer;
-	transition: all 0.2s ease;
-	box-shadow: none;
+	transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .quick-access-btn:hover {
 	background-color: var(--background-modifier-hover);
-	border-color: var(--background-modifier-border);
-	transform: translateY(-1px);
+	border-color: var(--interactive-accent);
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .quick-access-btn .btn-icon svg {
@@ -116,22 +126,23 @@
 .template-card {
 	display: flex;
 	align-items: center;
-	padding: 12px;
+	padding: 14px 16px;
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 10px;
+	border-radius: 12px;
 	cursor: pointer;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 	position: relative;
 	overflow: hidden;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .note-type-card:hover,
 .template-card:hover {
 	background: var(--background-primary);
 	border-color: var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-	transform: translateY(-2px);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+	transform: translateY(-3px);
 }
 
 /* Icon wrappers */
@@ -625,6 +636,22 @@
 
 .zk-dataview-script-row .zk-script-snippet::-webkit-scrollbar-thumb:hover {
 	background: var(--background-modifier-border-hover);
+}
+
+/* --- Modal button row (Cancel / Submit) --- */
+.zettelkasten-modal .modal-button-container {
+	display: flex;
+	justify-content: flex-end;
+	gap: 12px;
+	margin-top: 20px;
+	padding-top: 16px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.zettelkasten-modal .modal-button-container .clickable-icon {
+	border-radius: 8px;
+	padding: 6px;
+	transition: background 0.2s ease, color 0.2s ease;
 }
 
 /* --- Responsive Adjustments --- */

@@ -12,11 +12,12 @@ import {
 	TFile,
 } from 'obsidian';
 import MyPlugin from './main';
-import { ZettelkastenSettings, IGanttStatusColorMap } from "./types";
+import { ZettelkastenSettings, IGanttStatusColorMap, AIPromptRule } from "./types";
 import { NoteType } from 'markdown-note-orm';
 import { DataviewCommand } from "./dataview/command";
 import { getDefaultScriptContent } from "./dataview/manager";
-import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS } from "./constants";
+import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS, DEFAULT_AI_PROMPT_RULES } from "./constants";
+import { normalizePathPrefix } from "./utils/path";
 import { DataviewScriptEditorModal } from "./modals/dataviewScriptEditorModal";
 import type { IDataviewScript } from "./dataview/types";
 
@@ -334,6 +335,132 @@ export class SampleSettingTab extends PluginSettingTab {
 						this.display();
 					});
 			});
+
+		// AI Prompt Generation (Research / drafts)
+		const aiHeader = containerEl.createDiv({ cls: 'zettel-section-header' });
+		const aiIcon = aiHeader.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(aiIcon, 'file-output');
+		const aiText = aiHeader.createDiv({ cls: 'zettel-section-text' });
+		aiText.createEl('h2', { text: 'AI Prompt Generation', cls: 'zettel-section-title' });
+		aiText.createEl('p', { text: 'Rules and limits for generating AI prompts from drafts (linked note types, recursion depth, token cap).', cls: 'zettel-section-desc' });
+
+		const aiCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		if (!this.plugin.settings.aiPromptRules) {
+			this.plugin.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
+		}
+		if (this.plugin.settings.aiPromptMaxDepth === undefined) {
+			this.plugin.settings.aiPromptMaxDepth = 1;
+		}
+		if (this.plugin.settings.aiPromptMaxCharsPerNote === undefined) {
+			this.plugin.settings.aiPromptMaxCharsPerNote = 4000;
+		}
+		if (!this.plugin.settings.aiPromptWrapperStyle) {
+			this.plugin.settings.aiPromptWrapperStyle = 'xml';
+		}
+
+		new Setting(aiCard).setName("Zotero / Literature path").setDesc("Optional; if empty, Literature path from General is used.").addText(t => {
+			t.setPlaceholder("002-Literature").setValue(this.plugin.settings.zoteroPath ?? "").onChange(async (v) => {
+				this.plugin.settings.zoteroPath = v.trim() || undefined;
+				await this.plugin.saveSettings();
+			});
+		});
+		new Setting(aiCard).setName("Max recursion depth").setDesc("Stop following links after this depth (default 1).").addText(t => {
+			t.setPlaceholder("1").setValue(String(this.plugin.settings.aiPromptMaxDepth ?? 1)).onChange(async (v) => {
+				const n = parseInt(v, 10);
+				if (!isNaN(n) && n >= 0) {
+					this.plugin.settings.aiPromptMaxDepth = n;
+					await this.plugin.saveSettings();
+				}
+			});
+			t.inputEl.type = "number";
+		});
+		new Setting(aiCard).setName("Max chars per note").setDesc("Truncate imported note content beyond this (≈ token cap).").addText(t => {
+			t.setPlaceholder("4000").setValue(String(this.plugin.settings.aiPromptMaxCharsPerNote ?? 4000)).onChange(async (v) => {
+				const n = parseInt(v, 10);
+				if (!isNaN(n) && n > 0) {
+					this.plugin.settings.aiPromptMaxCharsPerNote = n;
+					await this.plugin.saveSettings();
+				}
+			});
+			t.inputEl.type = "number";
+		});
+		new Setting(aiCard).setName("Wrapper style").setDesc("Wrap imported content in XML tags (recommended) or Markdown headers.").addDropdown(d => {
+			d.addOption("xml", "XML <source>").addOption("markdown", "Markdown ###").setValue(this.plugin.settings.aiPromptWrapperStyle ?? "xml").onChange(async (v) => {
+				this.plugin.settings.aiPromptWrapperStyle = v as "xml" | "markdown";
+				await this.plugin.saveSettings();
+			});
+		});
+
+		const rulesContainer = aiCard.createDiv({ cls: 'zk-ai-rules-list' });
+		rulesContainer.createEl('h4', { text: 'Rules (match type → action)', cls: 'zk-ai-rules-title' });
+		(this.plugin.settings.aiPromptRules ?? []).forEach((rule, idx) => {
+			const ruleBlock = rulesContainer.createDiv({ cls: 'zk-ai-rule-block' });
+			// Row 1: Label | Match type | Match value (full width for content)
+			const row1 = ruleBlock.createDiv({ cls: 'zk-ai-rule-row zk-ai-rule-row-main' });
+			new Setting(row1).setName("Label").setDesc("").addText(t => {
+				t.setPlaceholder("e.g. Atom").setValue(rule.label).onChange(async (v) => {
+					rule.label = v;
+					await this.plugin.saveSettings();
+				});
+			});
+			new Setting(row1).setName("Match").setDesc("").addDropdown(d => {
+				d.addOption("folder", "Folder").addOption("tag", "Tag").addOption("regex", "Regex").setValue(rule.matchType).onChange(async (v) => {
+					rule.matchType = v as AIPromptRule["matchType"];
+					await this.plugin.saveSettings();
+				});
+			});
+			new Setting(row1).setName("Value").setDesc("").addText(t => {
+				t.setPlaceholder("e.g. 003-Atom").setValue(rule.matchValue).onChange(async (v) => {
+					rule.matchValue = normalizePathPrefix(v);
+					await this.plugin.saveSettings();
+				});
+			});
+			// Row 2: Action (wide dropdown) + Remove (full button text)
+			const row2 = ruleBlock.createDiv({ cls: 'zk-ai-rule-row zk-ai-rule-row-actions' });
+			new Setting(row2).setName("Action").setDesc("").addDropdown(d => {
+				d.addOption("import_full", "Import full").addOption("import_summary", "Import summary").addOption("citation_only", "Citation only").addOption("ignore", "Ignore").setValue(rule.action).onChange(async (v) => {
+					rule.action = v as AIPromptRule["action"];
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
+			const removeWrap = row2.createDiv({ cls: 'zk-ai-rule-remove-wrap' });
+			new ButtonComponent(removeWrap).setButtonText("Remove").setWarning().onClick(async () => {
+				this.plugin.settings.aiPromptRules = this.plugin.settings.aiPromptRules!.filter((_, i) => i !== idx);
+				await this.plugin.saveSettings();
+				this.display();
+			});
+			if (rule.action === "import_summary") {
+				const summaryRow = ruleBlock.createDiv({ cls: 'zk-ai-rule-summary-row' });
+				new Setting(summaryRow).setName("Summary header").setDesc("e.g. Summary or Abstract (optional)").addText(t => {
+					t.setPlaceholder("## Summary").setValue(rule.summaryHeader ?? "").onChange(async (v) => {
+						rule.summaryHeader = v.trim() || undefined;
+						await this.plugin.saveSettings();
+					});
+				}).settingEl.style.flex = "1";
+			}
+		});
+		new Setting(aiCard).addButton(btn => {
+			btn.setButtonText("Add rule").onClick(async () => {
+				this.plugin.settings.aiPromptRules = this.plugin.settings.aiPromptRules ?? [];
+				this.plugin.settings.aiPromptRules.push({
+					id: `rule-${Date.now()}`,
+					label: "New",
+					matchType: "folder",
+					matchValue: "",
+					action: "import_full",
+				});
+				await this.plugin.saveSettings();
+				this.display();
+			});
+		});
+		new Setting(aiCard).addButton(btn => {
+			btn.setButtonText("Reset rules to defaults").setWarning().onClick(async () => {
+				this.plugin.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
+				await this.plugin.saveSettings();
+				this.display();
+			});
+		});
 	}
 
 	private renderDataviewSettings(containerEl: HTMLElement) {

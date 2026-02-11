@@ -1,4 +1,4 @@
-import { ZettelkastenSettings, NoteCategory } from "./types"
+import { ZettelkastenSettings, NoteCategory, AIPromptRule } from "./types"
 
 
 /**
@@ -43,6 +43,16 @@ export const PREFIX_PLACEHOLDERS: Array<{ value: string; description: string }> 
 	{ value: '$day', description: 'Day of month (DD)' },
 ];
 
+/** Default rules for AI prompt generation (mirrors legacy: concepts/literature/hubs import, fleeting summary). */
+export const DEFAULT_AI_PROMPT_RULES: AIPromptRule[] = [
+	{ id: "atom", label: "Atom", matchType: "folder", matchValue: "003-Atom", action: "import_full" },
+	{ id: "permanent", label: "Permanent", matchType: "folder", matchValue: "004-Permanent", action: "import_full" },
+	{ id: "lexicon", label: "Lexicon", matchType: "folder", matchValue: "005-Lexicon", action: "import_full" },
+	{ id: "literature", label: "Literature", matchType: "folder", matchValue: "002-Literature", action: "citation_only" },
+	{ id: "fleeting", label: "Fleeting", matchType: "folder", matchValue: "001-Fleeting", action: "import_summary", summaryHeader: "## Summary" },
+	{ id: "hub", label: "Hubs", matchType: "folder", matchValue: "006-Hubs", action: "import_full" },
+];
+
 export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	dateFormat: 'YYYY-MM-DD',
 	fleetingPath: '001-Fleeting',
@@ -63,6 +73,10 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	ganttStatusColors: { ...DEFAULT_GANTT_STATUS_COLORS },
 	createNoteOptions: [],
 	searchDefaultPath: '002-Literature',
+	aiPromptRules: [...DEFAULT_AI_PROMPT_RULES],
+	aiPromptMaxDepth: 1,
+	aiPromptMaxCharsPerNote: 4000,
+	aiPromptWrapperStyle: 'xml',
 };
 
 

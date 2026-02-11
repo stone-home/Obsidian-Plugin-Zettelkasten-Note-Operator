@@ -36,9 +36,9 @@ Examples of common workflows:
 
 - **Create a new note**: Click the **+** ribbon icon or run command *Create New Zettel Note* → choose note type (Fleeting / Literature / Atom / Permanent) → pick a template → enter title. The note is created in the folder set for that type (e.g. `004-Permanent/`).
 - **Search and link**: Run *Open Zettelkasten Search* (or click Search in the dashboard). Set target folder, type to filter, then **Open** a result or **Insert** a `[[path|name]]` wikilink at the cursor. Double-click a result to add the current note to that note’s `sources` frontmatter.
-- **Research project**: From the dashboard click **Research** → create or open a project. In the project’s `Dashboard.md`, use the Quick Actions block (objectives, steps, experiments, drafts). Create a draft, then use *Compile current draft to materials* and *Generate AI Prompt from current draft* with a draft file active.
+- **Research project**: From the dashboard click **Research** → create or open a project. In the project’s `Dashboard.md`, use the Quick Actions block (objectives, steps, experiments, drafts). The **Drafts** section lists all files in `&lt;project&gt;/drafts` with a **Generate AI Prompt** and **Push to GitHub** button per draft. Create a draft, then click **Generate AI Prompt** for that row (or use the command *Generate AI Prompt from current draft* with a draft file active). **Push to GitHub** uploads the project's `prompts/` folder (generated AI prompts) to the configured repo.
 - **Code project**: From the dashboard click **Projects** → create or open a project. In `Dashboard.md` set `repo` (e.g. `owner/repo`), choose PAT if private, then **Refresh** to sync releases and unreleased commits. Create requirements and link them to releases in the Requirements table.
-- **Call plugin from a script**: In a Dataview JS block you can use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`. See [API Reference](#api-reference) and [docs/architecture.md](docs/architecture.md).
+- **Call plugin from a script**: In a Dataview JS block you can use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`, or `ZettelkastenOperator.renderDraftsTable(container, dv.current().file.path)` to render the drafts table. See [API Reference](#api-reference) and [docs/architecture.md](docs/architecture.md).
 
 ## Architecture
 
@@ -254,7 +254,7 @@ Research/
     │   └── Experiment1.md
     ├── requirements/         # Project requirements
     │   └── Requirement1.md
-    └── materials/            # Supporting materials
+    └── prompts/              # Generated AI prompts (pushed to GitHub)
 ```
 
 ### Dashboard Features
@@ -451,6 +451,8 @@ dv.table(['Name', 'Status'],
 | **Code Block Type** | Custom code block language | `zettelkasten-query` |
 | **GitHub Token Keys** | Comma-separated SecretStorage keys | `github_token` |
 
+**AI Prompt Generation** (Settings → Projects → AI Prompt Generation): Configure how linked notes are used when generating AI prompts from drafts. Options include **Zotero path** (optional override for literature), **max recursion depth** (link-following depth), **max chars per note** (truncation), **wrapper style** (XML or Markdown), and **rules** that match notes by folder/tag/regex and apply actions: *import full*, *import summary*, *citation only*, or *ignore*. A draft section titled `## AI prompt` is moved to the top of the generated prompt. Citation list entries use `citationKey → Title` for Zotero/Pandoc.
+
 ### Template Configuration
 
 Templates can be configured with:
@@ -487,6 +489,7 @@ interface ZettelkastenOperator {
   // Draft / AI Pipeline
   compileDraft(draftPath: string): Promise<string>
   generateAIPrompt(draftFileOrPath: TFile | string): Promise<string>
+  renderDraftsTable(container: HTMLElement, projectPath: string): void
 
   // Utility
   getGithubTokenKeys(): Promise<string[]>
