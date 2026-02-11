@@ -358,6 +358,19 @@ export class SampleSettingTab extends PluginSettingTab {
 			this.plugin.settings.aiPromptWrapperStyle = 'xml';
 		}
 
+		const systemPromptSection = aiCard.createDiv({ cls: "zk-ai-system-prompt-section" });
+		systemPromptSection.createEl("h4", { text: "System prompt", cls: "zk-ai-rules-title" });
+		systemPromptSection.createEl("p", { text: "Optional. Prepended to the top of every generated prompt (before the note-level AI prompt section).", cls: "zk-ai-system-prompt-desc" });
+		const systemPromptRow = systemPromptSection.createDiv({ cls: "zk-ai-system-prompt-row" });
+		const systemPromptTa = new TextAreaComponent(systemPromptRow);
+		systemPromptTa.setPlaceholder("e.g. You are an academic writing assistant...").setValue(this.plugin.settings.aiPromptSystemPrompt ?? "").onChange(async (v) => {
+			this.plugin.settings.aiPromptSystemPrompt = v.trim() || undefined;
+			await this.plugin.saveSettings();
+		});
+		systemPromptTa.inputEl.rows = 12;
+		systemPromptTa.inputEl.style.width = "100%";
+		systemPromptTa.inputEl.style.minHeight = "200px";
+		systemPromptTa.inputEl.style.resize = "vertical";
 		new Setting(aiCard).setName("Zotero / Literature path").setDesc("Optional; if empty, Literature path from General is used.").addText(t => {
 			t.setPlaceholder("002-Literature").setValue(this.plugin.settings.zoteroPath ?? "").onChange(async (v) => {
 				this.plugin.settings.zoteroPath = v.trim() || undefined;
@@ -432,9 +445,11 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 			if (rule.action === "import_summary") {
 				const summaryRow = ruleBlock.createDiv({ cls: 'zk-ai-rule-summary-row' });
-				new Setting(summaryRow).setName("Summary header").setDesc("e.g. Summary or Abstract (optional)").addText(t => {
-					t.setPlaceholder("## Summary").setValue(rule.summaryHeader ?? "").onChange(async (v) => {
-						rule.summaryHeader = v.trim() || undefined;
+				new Setting(summaryRow).setName("Summary headers").setDesc("Comma-separated section names to extract (e.g. Summary, Abstract, Key points). Multiple sections are concatenated.").addText(t => {
+					t.setPlaceholder("Summary, Abstract").setValue(rule.summaryHeaders?.join(", ") ?? rule.summaryHeader ?? "").onChange(async (v) => {
+						const headers = v.split(",").map(s => s.trim()).filter(Boolean);
+						rule.summaryHeaders = headers.length ? headers : undefined;
+						rule.summaryHeader = headers[0]; // keep first for backward compat
 						await this.plugin.saveSettings();
 					});
 				}).settingEl.style.flex = "1";

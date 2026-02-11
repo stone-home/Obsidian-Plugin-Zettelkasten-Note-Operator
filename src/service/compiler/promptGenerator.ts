@@ -8,6 +8,8 @@ const YIELD_NODE_THRESHOLD = 50;
 interface ContextBlock {
 	label: string;
 	content: string;
+	/** Vault path of the source note (for note map and deduplication). */
+	sourcePath?: string;
 }
 
 interface CitationEntry {
@@ -212,14 +214,25 @@ export class PromptGenerator {
 		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 		let body = raw.replace(fmRegex, "").trim();
 
-		if (rule.action === "import_summary" && rule.summaryHeader) {
-			const sections = this.getSectionsFromNote(body);
-			const headerKey = rule.summaryHeader.replace(/^#+\s*/, "").trim();
-			const found = sections.get(headerKey) ?? sections.get(rule.summaryHeader);
-			if (found) body = found;
-			else {
-				const firstPara = body.split(/\n\s*\n/)[0] ?? body;
-				body = firstPara.slice(0, maxChars);
+		if (rule.action === "import_summary") {
+			const headerList = rule.summaryHeaders?.length
+				? rule.summaryHeaders
+				: rule.summaryHeader
+					? [rule.summaryHeader]
+					: [];
+			if (headerList.length) {
+				const sections = this.getSectionsFromNote(body);
+				const parts: string[] = [];
+				for (const h of headerList) {
+					const key = h.replace(/^#+\s*/, "").trim();
+					const found = sections.get(key) ?? sections.get(h);
+					if (found) parts.push(found);
+				}
+				if (parts.length) body = parts.join("\n\n");
+				else {
+					const firstPara = body.split(/\n\s*\n/)[0] ?? body;
+					body = firstPara.slice(0, maxChars);
+				}
 			}
 		} else if (rule.action === "import_full" && rule.sections?.length) {
 			const sections = this.getSectionsFromNote(body);
@@ -279,7 +292,9 @@ export class PromptGenerator {
 		maxChars: number,
 	): Promise<ResolvedContent> {
 		const contextBlocks: ContextBlock[] = [];
+		const contextPaths = new Set<string>();
 		const citationList: CitationEntry[] = [];
+		const citationKeys = new Set<string>();
 		const visited = new Set<string>();
 		let nodeCount = 0;
 
@@ -305,19 +320,25 @@ export class PromptGenerator {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const fm = cache?.frontmatter;
 				const citationKey = (fm?.citationKey as string) ?? file.basename;
-				const title = (fm?.title as string) ?? file.basename;
-				citationList.push({ citationKey, title });
+				if (!citationKeys.has(citationKey)) {
+					citationKeys.add(citationKey);
+					const title = (fm?.title as string) ?? file.basename;
+					citationList.push({ citationKey, title });
+				}
 				return;
 			}
 
 			if (rule.action === "import_full" || rule.action === "import_summary") {
+				if (contextPaths.has(file.path)) return;
+				contextPaths.add(file.path);
 				const body = await this.getNoteBody(file, rule, maxChars, content);
 				const wrapperStyle = this.settings.aiPromptWrapperStyle ?? "xml";
+				const titleLine = `Source: ${file.basename} — ${rule.label} (\`${file.path}\`)`;
 				const wrapped =
 					wrapperStyle === "xml"
-						? `<source id="${file.basename}" type="${rule.label}">\n${body}\n</source>`
-						: `### Context Note: [${file.basename}]\n\n${body}`;
-				contextBlocks.push({ label: rule.label, content: wrapped });
+						? `<source id="${file.basename}" path="${file.path}" type="${rule.label}">\n${titleLine}\n\n${body}\n</source>`
+						: `### Context Note: [${file.basename}]\n**${titleLine}**\n\n${body}`;
+				contextBlocks.push({ label: rule.label, content: wrapped, sourcePath: file.path });
 
 				if (depth > 1) {
 					const links = this.extractLinksInOrder(content);
@@ -382,6 +403,14 @@ export class PromptGenerator {
 	): string {
 		const sections: string[] = [];
 
+		const systemPrompt = this.settings.aiPromptSystemPrompt?.trim();
+		if (systemPrompt) {
+			sections.push(systemPrompt);
+			sections.push("");
+			sections.push("---");
+			sections.push("");
+		}
+
 		sections.push(`# AI Writing Prompt for Section: ${sectionTitle}`);
 		sections.push("");
 
@@ -411,6 +440,20 @@ export class PromptGenerator {
 		sections.push("");
 		sections.push("---");
 		sections.push("");
+
+		// Note map (source index for AI)
+		if (contextBlocks.length > 0) {
+			sections.push("## Note map");
+			sections.push("");
+			for (const block of contextBlocks) {
+				const path = block.sourcePath ?? "";
+				const basename = path ? path.split("/").pop() ?? path : "(unknown)";
+				sections.push(`- **${basename}** (\`${path}\`) — ${block.label}`);
+			}
+			sections.push("");
+			sections.push("---");
+			sections.push("");
+		}
 
 		// Context
 		sections.push("## Context from Linked Notes");

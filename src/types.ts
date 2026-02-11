@@ -47,8 +47,10 @@ export interface AIPromptRule {
 	matchType: AIPromptRuleMatchType;
 	matchValue: string;
 	action: AIPromptRuleAction;
-	/** For import_summary: specific header to extract (e.g. "## Summary"). */
+	/** For import_summary: specific header to extract (e.g. "## Summary"). Kept for backward compat. */
 	summaryHeader?: string;
+	/** For import_summary: section names to extract; multiple sections are concatenated. */
+	summaryHeaders?: string[];
 	/** For import_full: optional list of heading names to include; if missing, full body. */
 	sections?: string[];
 }
@@ -85,6 +87,8 @@ export interface ZettelkastenSettings {
 	aiPromptMaxCharsPerNote?: number;
 	/** Wrap imported content in XML tags (default) or markdown headers. */
 	aiPromptWrapperStyle?: "markdown" | "xml";
+	/** System-level prompt prepended to the top of every generated prompt (before note-level AI prompt). */
+	aiPromptSystemPrompt?: string;
 }
 
 export interface NoteCategory {

@@ -111,6 +111,14 @@ export default class MyPlugin extends Plugin {
 		if (!this.settings.aiPromptWrapperStyle) {
 			this.settings.aiPromptWrapperStyle = DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
 		}
+		// Migrate: summaryHeader -> summaryHeaders for existing rules
+		if (this.settings.aiPromptRules?.length) {
+			for (const rule of this.settings.aiPromptRules) {
+				if (rule.summaryHeader && (!rule.summaryHeaders || rule.summaryHeaders.length === 0)) {
+					rule.summaryHeaders = [rule.summaryHeader];
+				}
+			}
+		}
 	}
 
 	async saveSettings() {

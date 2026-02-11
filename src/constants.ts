@@ -49,7 +49,7 @@ export const DEFAULT_AI_PROMPT_RULES: AIPromptRule[] = [
 	{ id: "permanent", label: "Permanent", matchType: "folder", matchValue: "004-Permanent", action: "import_full" },
 	{ id: "lexicon", label: "Lexicon", matchType: "folder", matchValue: "005-Lexicon", action: "import_full" },
 	{ id: "literature", label: "Literature", matchType: "folder", matchValue: "002-Literature", action: "citation_only" },
-	{ id: "fleeting", label: "Fleeting", matchType: "folder", matchValue: "001-Fleeting", action: "import_summary", summaryHeader: "## Summary" },
+	{ id: "fleeting", label: "Fleeting", matchType: "folder", matchValue: "001-Fleeting", action: "import_summary", summaryHeaders: ["Summary"] },
 	{ id: "hub", label: "Hubs", matchType: "folder", matchValue: "006-Hubs", action: "import_full" },
 ];
 
