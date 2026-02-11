@@ -63,6 +63,76 @@ export class ResearchManager {
 		return this.settings.researchRootPath || "Research";
 	}
 
+	/**
+	 * Render drafts table into container: one row per draft with file name, Generate AI Prompt, and Push to GitHub.
+	 * Callbacks are provided by the global API (generateAIPrompt, pushToGitHub).
+	 */
+	renderDraftsTable(
+		container: HTMLElement,
+		projectPath: string,
+		callbacks: {
+			generateAIPrompt: (draftPath: string) => Promise<string>;
+			pushToGitHub: (projectPath: string, tokenKey?: string) => Promise<void>;
+		},
+	): void {
+		const projectFolder = projectPath.replace(/\/Dashboard\.md$/i, "") || projectPath;
+		const draftsPath = `${projectFolder}/drafts`;
+		const draftsFolder = this.app.vault.getAbstractFileByPath(draftsPath);
+
+		const section = container.createDiv({ cls: "zk-pqa-group" });
+		section.style.cssText = "display:flex; flex-direction:column; gap:8px; width:100%;";
+		section.createSpan({ text: "Drafts", cls: "zk-pqa-label" });
+
+		if (!draftsFolder || !(draftsFolder instanceof TFolder)) {
+			section.createSpan({ text: "No drafts folder found.", cls: "zk-pqa-desc" });
+			return;
+		}
+
+		const drafts = draftsFolder.children.filter(
+			(f): f is TFile => f instanceof TFile && f.extension === "md",
+		);
+
+		for (const draft of drafts) {
+			const row = section.createDiv({ cls: "zk-pqa-draft-row" });
+			row.style.cssText = "display:flex; align-items:center; gap:8px; width:100%;";
+
+			const link = row.createEl("a", { href: draft.path, cls: "zk-pqa-draft-link" });
+			link.setAttribute("data-href", draft.path);
+			link.textContent = draft.basename;
+			link.style.flex = "1";
+			(link as any).onclick = (e: MouseEvent) => {
+				e.preventDefault();
+				this.app.workspace.getLeaf().openFile(draft);
+			};
+
+			const genBtn = row.createEl("button", { text: "Generate AI Prompt", cls: "zk-pqa-btn zk-pqa-btn-primary" });
+			genBtn.type = "button";
+			genBtn.addEventListener("click", async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				try {
+					await callbacks.generateAIPrompt(draft.path);
+					new Notice("AI Prompt generated");
+				} catch (err) {
+					new Notice(err instanceof Error ? err.message : "Failed to generate prompt");
+				}
+			});
+
+			const pushBtn = row.createEl("button", { text: "Push to GitHub", cls: "zk-pqa-btn zk-pqa-btn-primary" });
+			pushBtn.type = "button";
+			pushBtn.addEventListener("click", async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				try {
+					await callbacks.pushToGitHub(projectPath);
+					new Notice("Pushed to GitHub");
+				} catch (err) {
+					new Notice(err instanceof Error ? err.message : "Failed to push");
+				}
+			});
+		}
+	}
+
 	private async ensureFolder(path: string): Promise<void> {
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (!existing) {
@@ -341,12 +411,12 @@ export class ResearchManager {
 	}
 
 	/**
-	 * Push materials folder contents to GitHub repository.
+	 * Push prompts folder contents to GitHub repository.
 	 * Uses GitHub Contents API to upload/update files.
 	 */
 	async pushToGitHub(projectFile: TFile, tokenKey?: string): Promise<void> {
 		const projectFolder = this.getProjectFolder(projectFile);
-		const materialsFolder = `${projectFolder}/materials`;
+		const promptsFolder = `${projectFolder}/prompts`;
 
 		// Read dashboard frontmatter to get repo info
 		const cache = this.app.metadataCache.getFileCache(projectFile);
@@ -373,19 +443,19 @@ export class ResearchManager {
 			}
 		}
 
-		// Get files in materials folder
-		const materialsDir = this.app.vault.getAbstractFileByPath(materialsFolder);
-		if (!materialsDir || !(materialsDir instanceof TFolder)) {
-			new Notice(`Materials folder not found: ${materialsFolder}`);
+		// Get files in prompts folder
+		const promptsDir = this.app.vault.getAbstractFileByPath(promptsFolder);
+		if (!promptsDir || !(promptsDir instanceof TFolder)) {
+			new Notice(`Prompts folder not found: ${promptsFolder}. Generate AI prompts first.`);
 			return;
 		}
 
-		const files = materialsDir.children.filter(
+		const files = promptsDir.children.filter(
 			(f): f is TFile => f instanceof TFile && f.extension === "md"
 		);
 
 		if (files.length === 0) {
-			new Notice("No materials to push. Compile drafts first.");
+			new Notice("No prompts to push. Generate AI prompts first.");
 			return;
 		}
 
@@ -404,7 +474,7 @@ export class ResearchManager {
 			try {
 				const content = await this.app.vault.read(file);
 				const base64Content = btoa(unescape(encodeURIComponent(content)));
-				const path = `materials/${file.name}`;
+				const path = `prompts/${file.name}`;
 
 				// Check if file exists (to get SHA for updates)
 				let sha: string | undefined;
@@ -436,7 +506,7 @@ export class ResearchManager {
 				});
 
 				successCount++;
-				this.logger.info(`Pushed ${file.name} to GitHub`);
+				this.logger.info(`Pushed prompt ${file.name} to GitHub`);
 			} catch (error) {
 				errorCount++;
 				this.logger.logError(`Failed to push ${file.name}:`, error);

@@ -1,21 +1,35 @@
 .zettel-settings-wrapper {
-	padding: 16px 12px 24px;
-	max-width: 720px;
+	padding: 20px 16px 32px;
+	max-width: 760px;
 	margin: 0 auto;
 }
 
 .zettel-settings-wrapper .zettel-section-header {
-	margin: 0 0 16px 0;
-	padding-bottom: 12px;
+	margin: 0 0 18px 0;
+	padding-bottom: 14px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .zettel-settings-wrapper .zettel-settings-card {
-	margin-bottom: 24px;
+	margin-bottom: 28px;
 }
 
 .zettel-settings-wrapper .zettel-settings-card:last-child {
 	margin-bottom: 0;
+}
+
+.zettel-settings-wrapper .setting-item-control input[type="text"],
+.zettel-settings-wrapper .setting-item-control select {
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zettel-settings-wrapper .setting-item-control input[type="text"]:focus,
+.zettel-settings-wrapper .setting-item-control select:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.18);
 }
 
 .zettel-view-header {

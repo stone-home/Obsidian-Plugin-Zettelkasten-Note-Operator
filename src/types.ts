@@ -31,6 +31,28 @@ export interface IGanttStatusColorMap {
 	[status: string]: string;
 }
 
+/** Match type for AI prompt rule (folder path, tag, or regex). */
+export type AIPromptRuleMatchType = "folder" | "tag" | "regex";
+
+/** Action for a linked note in AI prompt generation. */
+export type AIPromptRuleAction =
+	| "import_full"
+	| "import_summary"
+	| "citation_only"
+	| "ignore";
+
+export interface AIPromptRule {
+	id: string;
+	label: string;
+	matchType: AIPromptRuleMatchType;
+	matchValue: string;
+	action: AIPromptRuleAction;
+	/** For import_summary: specific header to extract (e.g. "## Summary"). */
+	summaryHeader?: string;
+	/** For import_full: optional list of heading names to include; if missing, full body. */
+	sections?: string[];
+}
+
 export interface ZettelkastenSettings {
 	dateFormat: string;
 	fleetingPath: string;
@@ -51,6 +73,16 @@ export interface ZettelkastenSettings {
 	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
 	searchDefaultPath: string;
+	/** Optional path for Zotero/literature notes; if unset, literaturePath is used. */
+	zoteroPath?: string;
+	/** Rules for classifying linked notes when generating AI prompts. */
+	aiPromptRules?: AIPromptRule[];
+	/** Max recursion depth when following links (default 1 for backward compat). */
+	aiPromptMaxDepth?: number;
+	/** Soft cap: max chars per imported note (~4 per token); truncate beyond this. */
+	aiPromptMaxCharsPerNote?: number;
+	/** Wrap imported content in XML tags (default) or markdown headers. */
+	aiPromptWrapperStyle?: "markdown" | "xml";
 }
 
 export interface NoteCategory {

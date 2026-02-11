@@ -1,7 +1,7 @@
 import { Plugin, TFile, Notice } from 'obsidian';
 import { NoteTemplateConfig } from 'markdown-note-orm';
 import { ZettelkastenSettings } from "./types";
-import { DEFAULT_SETTINGS } from "./constants"
+import { DEFAULT_SETTINGS, DEFAULT_AI_PROMPT_RULES } from "./constants"
 import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
@@ -96,7 +96,21 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const saved = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+		// Migrate: ensure AI prompt fields exist for existing users
+		if (!this.settings.aiPromptRules?.length) {
+			this.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
+		}
+		if (this.settings.aiPromptMaxDepth === undefined) {
+			this.settings.aiPromptMaxDepth = DEFAULT_SETTINGS.aiPromptMaxDepth ?? 1;
+		}
+		if (this.settings.aiPromptMaxCharsPerNote === undefined) {
+			this.settings.aiPromptMaxCharsPerNote = DEFAULT_SETTINGS.aiPromptMaxCharsPerNote ?? 4000;
+		}
+		if (!this.settings.aiPromptWrapperStyle) {
+			this.settings.aiPromptWrapperStyle = DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
+		}
 	}
 
 	async saveSettings() {
@@ -228,6 +242,23 @@ export default class MyPlugin extends Plugin {
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.pushToGitHub(file, tokenKey);
+			},
+			renderDraftsTable: (container: HTMLElement, projectPath: string) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				manager.renderDraftsTable(container, projectPath, {
+					generateAIPrompt: async (draftPath: string) => {
+						const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
+						if (!file) throw new Error("Draft not found");
+						const generator = new PromptGenerator(plugin.app, plugin.settings);
+						return await generator.generatePrompt(file);
+					},
+					pushToGitHub: async (projPath: string, tokenKey?: string) => {
+						const rm = new ResearchManager(plugin.app, plugin.settings);
+						const file = plugin.app.vault.getAbstractFileByPath(projPath) as TFile;
+						if (!file) throw new Error("Project not found");
+						await rm.pushToGitHub(file, tokenKey);
+					},
+				});
 			},
 		};
 	}

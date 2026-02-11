@@ -1,16 +1,28 @@
 import { App, TFile, Notice } from "obsidian";
-import { ZettelkastenSettings } from "../../types";
+import { ZettelkastenSettings, AIPromptRule } from "../../types";
 import { Logger } from "../../logger";
+import { normalizePathPrefix } from "../../utils/path";
 
-interface ClassifiedLinks {
-	literature: Array<{ name: string; excerpt: string }>;
-	concepts: Array<{ name: string; excerpt: string }>;
-	hubs: Array<{ name: string; excerpt: string }>;
+const YIELD_NODE_THRESHOLD = 50;
+
+interface ContextBlock {
+	label: string;
+	content: string;
+}
+
+interface CitationEntry {
+	citationKey: string;
+	title: string;
+}
+
+interface ResolvedContent {
+	contextBlocks: ContextBlock[];
+	citationList: CitationEntry[];
 }
 
 /**
  * PromptGenerator service
- * Generates AI prompts from draft notes by expanding wiki links and classifying content
+ * Generates AI prompts from draft notes by expanding wiki links and applying configurable rules.
  */
 export class PromptGenerator {
 	private app: App;
@@ -28,34 +40,40 @@ export class PromptGenerator {
 	async generatePrompt(draft: TFile): Promise<string> {
 		const content = await this.app.vault.read(draft);
 
-		// Extract all wiki links
-		const links = this.extractLinks(content);
+		const { aiPromptBlock, restContent } = this.extractAIPromptSection(content);
+		const cleanedNarrative = this.cleanNarrative(restContent);
 
-		// Classify links by type
-		const classified = await this.classifyLinks(links);
+		const rules = this.settings.aiPromptRules ?? [];
+		const maxDepth = this.settings.aiPromptMaxDepth ?? 1;
+		const maxChars = this.settings.aiPromptMaxCharsPerNote ?? 4000;
+		const wrapperStyle = this.settings.aiPromptWrapperStyle ?? "xml";
 
-		// Clean the narrative (remove wiki syntax)
-		const cleanedNarrative = this.cleanNarrative(content);
-
-		// Get section info from frontmatter
-		const cache = this.app.metadataCache.getFileCache(draft);
-		const fm = cache?.frontmatter || {};
-		const sectionTitle = fm.section_title || fm.title || draft.basename;
-		const sectionGoal = fm.section_goal || "TODO: Define section goal";
-
-		// Build the prompt
-		const prompt = this.buildPrompt(
-			sectionTitle,
-			cleanedNarrative,
-			classified,
-			sectionGoal,
+		const { contextBlocks, citationList } = await this.resolveLinksWithRules(
+			draft,
+			content,
+			rules,
+			maxDepth,
+			maxChars,
 		);
 
-		// Save to prompts folder
+		const cache = this.app.metadataCache.getFileCache(draft);
+		const fm = cache?.frontmatter || {};
+		const sectionTitle = (fm.section_title as string) || (fm.title as string) || draft.basename;
+		const sectionGoal = (fm.section_goal as string) || "TODO: Define section goal";
+
+		const prompt = this.buildPrompt(
+			sectionTitle,
+			sectionGoal,
+			aiPromptBlock,
+			cleanedNarrative,
+			contextBlocks,
+			citationList,
+			wrapperStyle,
+		);
+
 		const projectFolder = this.getProjectFolder(draft);
 		const promptsFolder = `${projectFolder}/prompts`;
 
-		// Ensure prompts folder exists
 		if (!this.app.vault.getAbstractFileByPath(promptsFolder)) {
 			await this.app.vault.createFolder(promptsFolder);
 		}
@@ -78,9 +96,66 @@ export class PromptGenerator {
 	}
 
 	/**
-	 * Extract all wiki links from content
+	 * Extract optional "AI prompt" section from draft body; return it and the rest.
 	 */
-	private extractLinks(content: string): string[] {
+	extractAIPromptSection(content: string): { aiPromptBlock: string | null; restContent: string } {
+		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+		const afterFm = content.replace(fmRegex, "").trim();
+		const lines = afterFm.split("\n");
+
+		const targetHeading = "AI prompt";
+		let aiLines: string[] = [];
+		let restLines: string[] = [];
+		let inAiSection = false;
+		let aiSectionLevel = 0;
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			const h2 = line.match(/^##\s+(.+)$/);
+			const h3 = line.match(/^###\s+(.+)$/);
+
+			if (h2) {
+				const title = h2[1].trim().toLowerCase();
+				if (title === targetHeading.toLowerCase()) {
+					inAiSection = true;
+					aiSectionLevel = 2;
+					continue;
+				}
+				if (inAiSection && 2 >= aiSectionLevel) {
+					inAiSection = false;
+				}
+				if (!inAiSection) restLines.push(line);
+				else aiLines.push(line);
+				continue;
+			}
+			if (h3) {
+				const title = h3[1].trim().toLowerCase();
+				if (title === targetHeading.toLowerCase()) {
+					inAiSection = true;
+					aiSectionLevel = 3;
+					continue;
+				}
+				if (inAiSection && 3 >= aiSectionLevel) {
+					inAiSection = false;
+				}
+				if (!inAiSection) restLines.push(line);
+				else aiLines.push(line);
+				continue;
+			}
+
+			if (inAiSection) aiLines.push(line);
+			else restLines.push(line);
+		}
+
+		const aiPromptBlock = aiLines.length ? `## AI prompt\n\n${aiLines.join("\n").trim()}` : null;
+		const restContent = restLines.join("\n").trim() || content.replace(fmRegex, "").trim();
+		return { aiPromptBlock, restContent };
+	}
+
+	/**
+	 * Extract wiki links from content in document order (with order preserved).
+	 */
+	private extractLinksInOrder(content: string): string[] {
 		const links: string[] = [];
 		const regex = /!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 		let match;
@@ -94,105 +169,189 @@ export class PromptGenerator {
 	}
 
 	/**
-	 * Classify links by note type based on path or frontmatter
+	 * Find first matching rule for a file (by folder path, tag, or regex).
 	 */
-	private async classifyLinks(links: string[]): Promise<ClassifiedLinks> {
-		const classified: ClassifiedLinks = {
-			literature: [],
-			concepts: [],
-			hubs: [],
+	private findRule(file: TFile, rules: AIPromptRule[]): AIPromptRule | null {
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		const fm = fileCache?.frontmatter;
+		const path = file.path;
+
+		for (const rule of rules) {
+			const value = normalizePathPrefix(rule.matchValue);
+			if (!value) continue;
+
+			if (rule.matchType === "folder") {
+				const prefix = value.endsWith("/") ? value : value + "/";
+				if (path === value || path.startsWith(prefix)) return rule;
+			} else if (rule.matchType === "tag") {
+				const tags = fm?.tags as string[] | undefined;
+				if (Array.isArray(tags) && tags.some((t: string) => t.includes(value))) return rule;
+				const tag = fm?.tag as string | undefined;
+				if (typeof tag === "string" && tag.includes(value)) return rule;
+			} else if (rule.matchType === "regex") {
+				try {
+					if (new RegExp(value).test(path)) return rule;
+				} catch {
+					// invalid regex, skip
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Get body of note (no frontmatter). Optionally extract specific sections or summary.
+	 */
+	private async getNoteBody(
+		file: TFile,
+		rule: AIPromptRule,
+		maxChars: number,
+		rawContent?: string,
+	): Promise<string> {
+		const raw = rawContent ?? (await this.app.vault.read(file));
+		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+		let body = raw.replace(fmRegex, "").trim();
+
+		if (rule.action === "import_summary" && rule.summaryHeader) {
+			const sections = this.getSectionsFromNote(body);
+			const headerKey = rule.summaryHeader.replace(/^#+\s*/, "").trim();
+			const found = sections.get(headerKey) ?? sections.get(rule.summaryHeader);
+			if (found) body = found;
+			else {
+				const firstPara = body.split(/\n\s*\n/)[0] ?? body;
+				body = firstPara.slice(0, maxChars);
+			}
+		} else if (rule.action === "import_full" && rule.sections?.length) {
+			const sections = this.getSectionsFromNote(body);
+			const parts: string[] = [];
+			for (const name of rule.sections) {
+				const s = sections.get(name);
+				if (s) parts.push(s);
+			}
+			body = parts.length ? parts.join("\n\n") : body;
+		}
+
+		if (body.length > maxChars) {
+			body = body.slice(0, maxChars) + "\n...[Truncated]";
+		}
+		return body;
+	}
+
+	/**
+	 * Parse note body into heading -> content map.
+	 */
+	private getSectionsFromNote(content: string): Map<string, string> {
+		const map = new Map<string, string>();
+		const lines = content.split("\n");
+		let currentHeading: string | null = null;
+		let currentLines: string[] = [];
+
+		const flush = () => {
+			if (currentHeading !== null && currentLines.length) {
+				map.set(currentHeading, currentLines.join("\n").trim());
+			}
 		};
 
-		const literaturePath = this.settings.literaturePath || "002-Literature";
-		const atomPath = this.settings.atomPath || "003-Atom";
-		const permanentPath = this.settings.permanentPath || "004-Permanent";
-		const lexiconPath = this.settings.lexiconPath || "005-Lexicon";
-		const hubPath = this.settings.hubPath || "006-Hubs";
+		for (const line of lines) {
+			const h2 = line.match(/^##\s+(.+)$/);
+			const h3 = line.match(/^###\s+(.+)$/);
+			const h = h2 ?? h3;
+			if (h) {
+				flush();
+				currentHeading = h[1].trim();
+				currentLines = [];
+			} else if (currentHeading !== null) {
+				currentLines.push(line);
+			}
+		}
+		flush();
+		return map;
+	}
 
-		for (const linkName of links) {
-			const file = this.app.metadataCache.getFirstLinkpathDest(linkName, "");
-			if (!file) continue;
+	/**
+	 * Resolve links from draft with rules, recursion, and cycle detection.
+	 */
+	private async resolveLinksWithRules(
+		sourceFile: TFile,
+		sourceContent: string,
+		rules: AIPromptRule[],
+		maxDepth: number,
+		maxChars: number,
+	): Promise<ResolvedContent> {
+		const contextBlocks: ContextBlock[] = [];
+		const citationList: CitationEntry[] = [];
+		const visited = new Set<string>();
+		let nodeCount = 0;
 
-			const excerpt = await this.getExcerpt(file);
-			const entry = { name: file.basename, excerpt };
+		const processFile = async (
+			file: TFile,
+			content: string,
+			depth: number,
+		): Promise<void> => {
+			if (depth <= 0 || visited.has(file.path)) return;
+			visited.add(file.path);
+			nodeCount++;
+			if (nodeCount > YIELD_NODE_THRESHOLD) {
+				await Promise.resolve();
+			}
 
-			// Classify by path
-			if (file.path.startsWith(literaturePath + "/")) {
-				classified.literature.push(entry);
-			} else if (
-				file.path.startsWith(atomPath + "/") ||
-				file.path.startsWith(permanentPath + "/") ||
-				file.path.startsWith(lexiconPath + "/")
-			) {
-				classified.concepts.push(entry);
-			} else if (file.path.startsWith(hubPath + "/")) {
-				classified.hubs.push(entry);
-			} else {
-				// Check frontmatter for note_type
+			const rule = this.findRule(file, rules);
+			// Notes not matching any rule are ignored: skip (no context, no citation, no recursion).
+			if (!rule) return;
+
+			if (rule.action === "ignore") return;
+
+			if (rule.action === "citation_only") {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const fm = cache?.frontmatter;
-				if (fm?.note_type === "literature") {
-					classified.literature.push(entry);
-				} else if (fm?.note_type === "hub" || fm?.note_type === "moc") {
-					classified.hubs.push(entry);
-				} else {
-					// Default to concepts
-					classified.concepts.push(entry);
+				const citationKey = (fm?.citationKey as string) ?? file.basename;
+				const title = (fm?.title as string) ?? file.basename;
+				citationList.push({ citationKey, title });
+				return;
+			}
+
+			if (rule.action === "import_full" || rule.action === "import_summary") {
+				const body = await this.getNoteBody(file, rule, maxChars, content);
+				const wrapperStyle = this.settings.aiPromptWrapperStyle ?? "xml";
+				const wrapped =
+					wrapperStyle === "xml"
+						? `<source id="${file.basename}" type="${rule.label}">\n${body}\n</source>`
+						: `### Context Note: [${file.basename}]\n\n${body}`;
+				contextBlocks.push({ label: rule.label, content: wrapped });
+
+				if (depth > 1) {
+					const links = this.extractLinksInOrder(content);
+					for (const linkName of links) {
+						const linked = this.app.metadataCache.getFirstLinkpathDest(linkName, file.path);
+						if (linked instanceof TFile) {
+							const linkedContent = await this.app.vault.read(linked);
+							await processFile(linked, linkedContent, depth - 1);
+						}
+					}
 				}
 			}
+		};
+
+		const linkNames = this.extractLinksInOrder(sourceContent);
+		for (const linkName of linkNames) {
+			const file = this.app.metadataCache.getFirstLinkpathDest(linkName, sourceFile.path);
+			if (!(file instanceof TFile)) continue;
+			const fileContent = await this.app.vault.read(file);
+			await processFile(file, fileContent, maxDepth);
 		}
 
-		return classified;
+		return { contextBlocks, citationList };
 	}
 
 	/**
-	 * Get a short excerpt from a note
-	 */
-	private async getExcerpt(file: TFile): Promise<string> {
-		const content = await this.app.vault.read(file);
-		const lines = content.split("\n");
-		const bodyLines: string[] = [];
-		let inFrontmatter = false;
-		let frontmatterEnded = false;
-
-		for (const line of lines) {
-			if (line.trim() === "---") {
-				if (!frontmatterEnded) {
-					inFrontmatter = !inFrontmatter;
-					if (!inFrontmatter) frontmatterEnded = true;
-					continue;
-				}
-			}
-			if (inFrontmatter) continue;
-			
-			// Stop at second-level heading
-			if (line.startsWith("## ")) break;
-			
-			if (line.trim()) {
-				bodyLines.push(line);
-				if (bodyLines.length >= 10) break;
-			}
-		}
-
-		return bodyLines.join("\n").slice(0, 500);
-	}
-
-	/**
-	 * Clean wiki syntax from narrative content
+	 * Clean wiki syntax from narrative content (for rest of draft after AI section removed).
 	 */
 	private cleanNarrative(content: string): string {
 		let result = content;
 
-		// Remove frontmatter
-		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
-		result = result.replace(fmRegex, "");
-
-		// Replace ![[NoteName]] with just NoteName in italics
 		result = result.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, name, alias) => {
 			return `_${alias || name.split("/").pop() || name}_`;
 		});
-
-		// Replace [[NoteName]] with just NoteName
 		result = result.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, name, alias) => {
 			return alias || name.split("/").pop() || name;
 		});
@@ -200,9 +359,6 @@ export class PromptGenerator {
 		return result.trim();
 	}
 
-	/**
-	 * Get project folder from draft path
-	 */
 	private getProjectFolder(draft: TFile): string {
 		const pathParts = draft.path.split("/");
 		const draftsIndex = pathParts.indexOf("drafts");
@@ -213,82 +369,81 @@ export class PromptGenerator {
 	}
 
 	/**
-	 * Build the final prompt markdown
+	 * Build prompt: Persona → Task → Constraints → Context → Output Format. Draft "AI prompt" block at top.
 	 */
 	private buildPrompt(
 		sectionTitle: string,
-		narrative: string,
-		classified: ClassifiedLinks,
 		sectionGoal: string,
+		aiPromptBlock: string | null,
+		narrative: string,
+		contextBlocks: ContextBlock[],
+		citationList: CitationEntry[],
+		_wrapperStyle: string,
 	): string {
 		const sections: string[] = [];
 
 		sections.push(`# AI Writing Prompt for Section: ${sectionTitle}`);
 		sections.push("");
 
-		// Section 1: Author Narrative
-		sections.push("## 1. Author Narrative (Draft Skeleton)");
-		sections.push("");
-		sections.push(narrative);
-		sections.push("");
-		sections.push("---");
-		sections.push("");
-
-		// Section 2: Context from Linked Notes
-		sections.push("## 2. Context from Linked Notes");
-		sections.push("");
-
-		// 2.1 Concepts
-		sections.push("### 2.1 Concepts (Atom / Permanent / Lexicon)");
-		sections.push("");
-		if (classified.concepts.length === 0) {
-			sections.push("_No concept notes linked._");
-		} else {
-			for (const entry of classified.concepts) {
-				sections.push(`- **${entry.name}**`);
-				sections.push(`> ${entry.excerpt.split("\n").join("\n> ")}`);
-				sections.push("");
-			}
+		if (aiPromptBlock) {
+			sections.push(aiPromptBlock);
+			sections.push("");
+			sections.push("---");
+			sections.push("");
 		}
 
-		// 2.2 Literature
-		sections.push("### 2.2 Literature Notes");
-		sections.push("");
-		if (classified.literature.length === 0) {
-			sections.push("_No literature notes linked._");
-		} else {
-			for (const entry of classified.literature) {
-				sections.push(`- **${entry.name}**`);
-				sections.push(`> ${entry.excerpt.split("\n").join("\n> ")}`);
-				sections.push("");
-			}
-		}
-
-		// 2.3 Hubs
-		sections.push("### 2.3 Hubs / MOCs");
-		sections.push("");
-		if (classified.hubs.length === 0) {
-			sections.push("_No hub notes linked._");
-		} else {
-			for (const entry of classified.hubs) {
-				sections.push(`- **${entry.name}**`);
-				sections.push(`> ${entry.excerpt.split("\n").join("\n> ")}`);
-				sections.push("");
-			}
-		}
-
-		sections.push("---");
-		sections.push("");
-
-		// Section 3: Writing Instructions
-		sections.push("## 3. Writing Instructions for the Model");
+		// Persona / Task / Constraints (instructions)
+		sections.push("## Persona & Task");
 		sections.push("");
 		sections.push("You are an academic writing assistant helping to draft a PhD thesis section.");
 		sections.push("");
-		sections.push('- Use **Section 1 ("Author Narrative")** as the **outline and flow**.');
-		sections.push('- Use **Section 2 ("Context from Linked Notes")** as background knowledge and evidence. **Do not** copy it verbatim; synthesize and paraphrase instead.');
-		sections.push("- Target format: a LaTeX section (without preamble), with appropriate `\\section`, `\\subsection`, and citation placeholders (e.g., `\\cite{}`) where needed.");
+		sections.push("## Constraints");
+		sections.push("");
+		sections.push('- Use **Author Narrative** below as the **outline and flow**.');
+		sections.push('- Use **Context from Linked Notes** as background; synthesize and paraphrase, do not copy verbatim.');
 		sections.push(`- Focus of this section: ${sectionGoal}`);
+		sections.push("");
+
+		// Author Narrative
+		sections.push("## Author Narrative (Draft Skeleton)");
+		sections.push("");
+		sections.push(narrative || "_No narrative._");
+		sections.push("");
+		sections.push("---");
+		sections.push("");
+
+		// Context
+		sections.push("## Context from Linked Notes");
+		sections.push("");
+		if (contextBlocks.length === 0) {
+			sections.push("_No linked notes imported._");
+		} else {
+			for (const block of contextBlocks) {
+				sections.push(block.content);
+				sections.push("");
+			}
+		}
+		sections.push("---");
+		sections.push("");
+
+		// Citation list
+		if (citationList.length > 0) {
+			sections.push("## Citation list");
+			sections.push("");
+			sections.push("Use these keys in text (e.g. \\cite{citationKey} or [@citationKey]).");
+			sections.push("");
+			for (const entry of citationList) {
+				sections.push(`- \`${entry.citationKey}\` → ${entry.title}`);
+			}
+			sections.push("");
+			sections.push("---");
+			sections.push("");
+		}
+
+		// Output format
+		sections.push("## Output Format");
+		sections.push("");
+		sections.push("Target format: a LaTeX section (without preamble), with \\section, \\subsection, and citation placeholders (e.g. \\cite{}).");
 		sections.push("");
 
 		return sections.join("\n");

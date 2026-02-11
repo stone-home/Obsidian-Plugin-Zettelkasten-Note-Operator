@@ -230,6 +230,16 @@ export class MetadataCache extends Events {
 		return this.cache.get(file.path) || null;
 	}
 
+	getFirstLinkpathDest(linkName: string, sourcePath: string): TFile | null {
+		// Mock: return null (no linked file). Tests can override via _setLinkDest.
+		const linkMap = (this as any)._linkDestMap as Map<string, TFile> | undefined;
+		if (linkMap) {
+			const key = `${sourcePath}:${linkName}`;
+			return linkMap.get(key) ?? null;
+		}
+		return null;
+	}
+
 	// Test helper
 	_setCache(path: string, data: { frontmatter?: Record<string, any> }): void {
 		this.cache.set(path, data);
