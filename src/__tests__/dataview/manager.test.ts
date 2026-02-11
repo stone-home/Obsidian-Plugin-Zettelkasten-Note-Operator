@@ -196,6 +196,21 @@ describe("DataviewJSManager", () => {
 			expect(script?.name).toBe("Research Gantt");
 		});
 
+		it("zk-research-ai-pipeline-tracking should include Copies and last-prompt-by-filename logic", () => {
+			const content = getDefaultScriptContent("zk-research-ai-pipeline-tracking");
+			expect(content).toBeTruthy();
+			// Pre-index prompts by draft stem (performance)
+			expect(content).toContain("promptMap");
+			// Parse prompt filenames to count copies per draft
+			expect(content).toContain("_prompt_v");
+			// Sort by filename descending so "last" is semantic (not mtime)
+			expect(content).toContain("localeCompare");
+			// Table columns: Copies, Last prompt date, Last prompt link
+			expect(content).toContain("'Copies'");
+			expect(content).toContain("'Last prompt date'");
+			expect(content).toContain("'Last prompt'");
+		});
+
 		it("all default scripts should have valid metadata", () => {
 			const defaultScriptIds = [
 				"zk-research-quick-actions",
