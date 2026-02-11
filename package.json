@@ -1,6 +1,6 @@
 {
   "name": "obsidian-plugin-zettelkasten-operator",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "This Plugin is used to manipulate notes with the following Zettelkasten rules.",
   "main": "src/main.ts",
   "scripts": {
