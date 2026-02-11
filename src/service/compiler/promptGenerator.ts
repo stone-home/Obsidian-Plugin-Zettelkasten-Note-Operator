@@ -224,8 +224,7 @@ export class PromptGenerator {
 				const sections = this.getSectionsFromNote(body);
 				const parts: string[] = [];
 				for (const h of headerList) {
-					const key = h.replace(/^#+\s*/, "").trim();
-					const found = sections.get(key) ?? sections.get(h);
+					const found = this.findSectionByHeading(sections, h);
 					if (found) parts.push(found);
 				}
 				if (parts.length) body = parts.join("\n\n");
@@ -238,7 +237,7 @@ export class PromptGenerator {
 			const sections = this.getSectionsFromNote(body);
 			const parts: string[] = [];
 			for (const name of rule.sections) {
-				const s = sections.get(name);
+				const s = this.findSectionByHeading(sections, name);
 				if (s) parts.push(s);
 			}
 			body = parts.length ? parts.join("\n\n") : body;
@@ -248,6 +247,36 @@ export class PromptGenerator {
 			body = body.slice(0, maxChars) + "\n...[Truncated]";
 		}
 		return body;
+	}
+
+	/**
+	 * Normalize heading text for matching: strip markdown bold/italic and leading emoji/symbols
+	 * so that "**📖 Definition**" matches user input "Definition".
+	 */
+	private normalizeHeadingForMatch(s: string): string {
+		const t = s
+			.replace(/\*\*|__/g, "")
+			.replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+			.replace(/^\s*[\p{Emoji}\p{So}\s]+/gu, "")
+			.replace(/[\p{Emoji}\p{So}\s]+\s*$/gu, "")
+			.trim()
+			.replace(/\s+/g, " ");
+		return t.toLowerCase();
+	}
+
+	/**
+	 * Find section content by exact or normalized heading match (case-insensitive, ignores markdown/emoji).
+	 */
+	private findSectionByHeading(sections: Map<string, string>, userHeader: string): string | undefined {
+		const key = userHeader.replace(/^#+\s*/, "").trim();
+		const exact = sections.get(key) ?? sections.get(userHeader);
+		if (exact) return exact;
+		const normalizedInput = this.normalizeHeadingForMatch(key);
+		if (!normalizedInput) return undefined;
+		for (const [heading, content] of sections) {
+			if (this.normalizeHeadingForMatch(heading) === normalizedInput) return content;
+		}
+		return undefined;
 	}
 
 	/**

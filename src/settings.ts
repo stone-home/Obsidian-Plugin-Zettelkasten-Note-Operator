@@ -445,7 +445,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 			if (rule.action === "import_summary") {
 				const summaryRow = ruleBlock.createDiv({ cls: 'zk-ai-rule-summary-row' });
-				new Setting(summaryRow).setName("Summary headers").setDesc("Comma-separated section names to extract (e.g. Summary, Abstract, Key points). Multiple sections are concatenated.").addText(t => {
+				new Setting(summaryRow).setName("Summary headers").setDesc("Comma-separated section names to extract (e.g. Definition, Synthesis (The \"One Truth\"), Key Arguments & Evidence). Matching is case-insensitive and ignores ** and leading emoji in note headings.").addText(t => {
 					t.setPlaceholder("Summary, Abstract").setValue(rule.summaryHeaders?.join(", ") ?? rule.summaryHeader ?? "").onChange(async (v) => {
 						const headers = v.split(",").map(s => s.trim()).filter(Boolean);
 						rule.summaryHeaders = headers.length ? headers : undefined;
