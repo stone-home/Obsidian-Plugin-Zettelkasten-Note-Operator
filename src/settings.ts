@@ -521,6 +521,17 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
+		new Setting(card)
+			.setName("Reload default scripts on load")
+			.setDesc("When on, default scripts are reset to plugin defaults when Obsidian loads. When off, your edited scripts are kept (raw).")
+			.addToggle(t => {
+				t.setValue(this.plugin.settings.dataviewReloadDefaultsOnLoad !== false)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewReloadDefaultsOnLoad = v;
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
+			});
 
 		// Script list: only when Dataview is enabled and we have an instance
 		if (this.plugin.settings.dataviewEnabled && this.plugin.dataview) {

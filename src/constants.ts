@@ -70,6 +70,7 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	dataviewEnabled: true,
 	dataviewQueryPath: 'dataview-scripts',
 	dataviewCodeBlockType: 'zettelkasten-query',
+	dataviewReloadDefaultsOnLoad: true,
 	ganttStatusColors: { ...DEFAULT_GANTT_STATUS_COLORS },
 	createNoteOptions: [],
 	searchDefaultPath: '002-Literature',

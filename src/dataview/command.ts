@@ -15,6 +15,10 @@ export class DataviewCommand {
 		this.dataviewManager = new DataviewJSManager(
 			this.app,
 			this.plugin.settings.dataviewQueryPath,
+			{
+				getOverwriteDefaultsOnLoad: () =>
+					this.plugin.settings.dataviewReloadDefaultsOnLoad !== false,
+			},
 		);
 	}
 

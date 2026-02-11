@@ -70,6 +70,8 @@ export interface ZettelkastenSettings {
 	dataviewEnabled: boolean;
 	dataviewQueryPath: string;
 	dataviewCodeBlockType: string;
+	/** When true, default scripts are overwritten on plugin load; when false, keep user-edited scripts (raw). */
+	dataviewReloadDefaultsOnLoad?: boolean;
 	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
 	searchDefaultPath: string;
