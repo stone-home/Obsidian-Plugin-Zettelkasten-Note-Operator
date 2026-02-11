@@ -561,6 +561,24 @@
 }
 
 /* --- AI Prompt Rules (Settings > Projects) --- */
+.zk-ai-system-prompt-section {
+	margin-bottom: 20px;
+}
+.zk-ai-system-prompt-section .zk-ai-rules-title {
+	margin-bottom: 6px !important;
+}
+.zk-ai-system-prompt-desc {
+	margin: 0 0 10px 0 !important;
+	font-size: 0.9rem;
+	color: var(--text-muted);
+}
+.zk-ai-system-prompt-row {
+	width: 100%;
+	margin-top: 4px;
+}
+.zk-ai-system-prompt-row textarea {
+	box-sizing: border-box;
+}
 .zk-ai-rules-list {
 	display: flex;
 	flex-direction: column;

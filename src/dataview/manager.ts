@@ -11,12 +11,18 @@ export class DataviewJSManager extends Component {
 	private scripts: Map<string, IDataviewScript> = new Map();
 	private scriptCache: Map<string, string> = new Map();
 	private scriptsFolder: string;
+	private getOverwriteDefaultsOnLoad: (() => boolean) | undefined;
 	private logger = Logger.createLogger("DataviewJSManager");
 
-	constructor(app: App, scriptsFolder: string = "dataview-scripts") {
+	constructor(
+		app: App,
+		scriptsFolder: string = "dataview-scripts",
+		options?: { getOverwriteDefaultsOnLoad?: () => boolean },
+	) {
 		super();
 		this.app = app;
 		this.scriptsFolder = scriptsFolder;
+		this.getOverwriteDefaultsOnLoad = options?.getOverwriteDefaultsOnLoad;
 	}
 
 	/** Update scripts folder and clear cache so next onload() loads from new path. Call cleanUpFileWatchers() before this when refreshing. */
@@ -459,9 +465,10 @@ export class DataviewJSManager extends Component {
 			},
 		];
 
+		const overwriteDefaults = this.getOverwriteDefaultsOnLoad?.() !== false;
 		for (const script of scripts) {
 			await this.createScript(script.id, script.name, script.script, {
-				overwrite: script.overwrite,
+				overwrite: script.overwrite && overwriteDefaults,
 			});
 			const fullContent =
 				this.buildScriptHeader(script.id, script.name) + script.script;
