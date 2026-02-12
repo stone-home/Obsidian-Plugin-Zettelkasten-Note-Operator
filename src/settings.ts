@@ -345,18 +345,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		aiText.createEl('p', { text: 'Rules and limits for generating AI prompts from drafts (linked note types, recursion depth, token cap).', cls: 'zettel-section-desc' });
 
 		const aiCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
-		if (!this.plugin.settings.aiPromptRules) {
-			this.plugin.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
-		}
-		if (this.plugin.settings.aiPromptMaxDepth === undefined) {
-			this.plugin.settings.aiPromptMaxDepth = 1;
-		}
-		if (this.plugin.settings.aiPromptMaxCharsPerNote === undefined) {
-			this.plugin.settings.aiPromptMaxCharsPerNote = 4000;
-		}
-		if (!this.plugin.settings.aiPromptWrapperStyle) {
-			this.plugin.settings.aiPromptWrapperStyle = 'xml';
-		}
+		// Do not mutate AI Prompt Generation settings here; only use ?? for display defaults
 
 		const systemPromptSection = aiCard.createDiv({ cls: "zk-ai-system-prompt-section" });
 		systemPromptSection.createEl("h4", { text: "System prompt", cls: "zk-ai-rules-title" });

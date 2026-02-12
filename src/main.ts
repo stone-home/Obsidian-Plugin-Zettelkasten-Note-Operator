@@ -98,10 +98,7 @@ export default class MyPlugin extends Plugin {
 	async loadSettings() {
 		const saved = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
-		// Migrate: ensure AI prompt fields exist for existing users
-		if (!this.settings.aiPromptRules?.length) {
-			this.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
-		}
+		// AI prompt rules are only set to default when user clicks "Reset rules to defaults" in settings
 		if (this.settings.aiPromptMaxDepth === undefined) {
 			this.settings.aiPromptMaxDepth = DEFAULT_SETTINGS.aiPromptMaxDepth ?? 1;
 		}
