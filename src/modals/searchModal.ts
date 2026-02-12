@@ -268,7 +268,7 @@ export class SearchModal extends Modal {
 				new Notice("No active editor.");
 				return;
 			}
-			const wikilink = `[[${stripMdExtension(this.selectedResult.path)}|${this.selectedResult.name}]]`;
+			const wikilink = `[[${stripMdExtension(this.selectedResult.path)}]]`;
 			view.editor.replaceSelection(wikilink);
 			this.close();
 		};
