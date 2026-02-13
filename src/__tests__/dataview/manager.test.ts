@@ -106,6 +106,7 @@ describe("DataviewJSManager", () => {
 				"zk-research-objective-steps.js",
 				"zk-research-experiments.js",
 				"zk-research-requirements.js",
+				"zk-research-target-conference.js",
 				"zk-project-quick-actions.js",
 				"zk-project-requirements.js",
 				"zk-project-releases.js",

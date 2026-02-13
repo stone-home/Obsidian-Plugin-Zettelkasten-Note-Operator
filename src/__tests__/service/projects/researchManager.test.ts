@@ -129,8 +129,8 @@ describe("ResearchManager", () => {
 			);
 
 			expect(objectiveFile).toBeInstanceOf(TFile);
-			expect(objectiveFile.path).toBe(
-				"Research/TestProject/objectives/FirstObjective.md"
+			expect(objectiveFile.path).toMatch(
+				/^Research\/TestProject\/objectives\/TP\d{8} - FirstObjective\.md$/
 			);
 
 			const content = (app.vault as any)._getContent(objectiveFile.path);
@@ -164,8 +164,8 @@ describe("ResearchManager", () => {
 				"Test/Objective\\Name"
 			);
 
-			expect(objectiveFile.path).toBe(
-				"Research/TestProject/objectives/Test-Objective-Name.md"
+			expect(objectiveFile.path).toMatch(
+				/^Research\/TestProject\/objectives\/TP\d{8} - Test-Objective-Name\.md$/
 			);
 		});
 	});
@@ -189,8 +189,8 @@ describe("ResearchManager", () => {
 			);
 
 			expect(stepFile).toBeInstanceOf(TFile);
-			expect(stepFile.path).toBe(
-				"Research/StepTestProject/steps/FirstStep.md"
+			expect(stepFile.path).toMatch(
+				/^Research\/StepTestProject\/steps\/STP\d{8} - FirstStep\.md$/
 			);
 
 			const content = (app.vault as any)._getContent(stepFile.path);
@@ -209,7 +209,9 @@ describe("ResearchManager", () => {
 
 			const content = (app.vault as any)._getContent(stepFile.path);
 			expect(content).toContain("[[Research/StepTestProject/Dashboard|Dashboard]]");
-			expect(content).toContain("[[Research/StepTestProject/objectives/TestObjective]]");
+			expect(content).toMatch(
+				/\[\[Research\/StepTestProject\/objectives\/STP\d{8} - TestObjective\]\]/
+			);
 		});
 
 		it("should throw error if step already exists", async () => {
@@ -237,8 +239,8 @@ describe("ResearchManager", () => {
 			);
 
 			expect(experimentFile).toBeInstanceOf(TFile);
-			expect(experimentFile.path).toBe(
-				"Research/ExperimentProject/experiments/FirstExperiment.md"
+			expect(experimentFile.path).toMatch(
+				/^Research\/ExperimentProject\/experiments\/EP\d{8} - FirstExperiment\.md$/
 			);
 
 			const content = (app.vault as any)._getContent(experimentFile.path);
@@ -354,8 +356,13 @@ describe("ResearchManager", () => {
 			const objectives = manager.listObjectives(projectFile);
 
 			expect(objectives).toHaveLength(2);
-			expect(objectives.map((o) => o.name)).toContain("ObjectiveA.md");
-			expect(objectives.map((o) => o.name)).toContain("ObjectiveB.md");
+			const names = objectives.map((o) => o.name);
+			expect(names).toEqual(
+				expect.arrayContaining([
+					expect.stringMatching(/^OLP\d{8} - ObjectiveA\.md$/),
+					expect.stringMatching(/^OLP\d{8} - ObjectiveB\.md$/),
+				])
+			);
 		});
 	});
 

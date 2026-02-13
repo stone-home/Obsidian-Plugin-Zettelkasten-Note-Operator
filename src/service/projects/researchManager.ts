@@ -215,14 +215,16 @@ export class ResearchManager {
 		const folder = `${projectFolder}/objectives`;
 		await this.ensureFolder(folder);
 		const safeTitle = this.sanitizeSegment(title);
-		const filePath = `${folder}/${safeTitle}.md`;
+		const prefix = this.getProjectPrefix(projectFile);
+		const fileName = prefix ? `${prefix} - ${safeTitle}` : safeTitle;
+		const filePath = `${folder}/${fileName}.md`;
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Objective already exists.");
 		}
 		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
 		return await this.createNote(
 			filePath,
-			safeTitle,
+			fileName,
 			"permanent",
 			"research-objective",
 			{
@@ -283,7 +285,9 @@ export class ResearchManager {
 		const folder = `${projectFolder}/drafts`;
 		await this.ensureFolder(folder);
 		const safeTitle = this.sanitizeSegment(title);
-		const filePath = `${folder}/${safeTitle}.md`;
+		const prefix = this.getProjectPrefix(projectFile);
+		const fileName = prefix ? `${prefix} - ${safeTitle}` : safeTitle;
+		const filePath = `${folder}/${fileName}.md`;
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Draft with this title already exists.");
 		}
@@ -292,6 +296,8 @@ export class ResearchManager {
 			title: safeTitle,
 			section_title: safeTitle,
 			status: "draft",
+			start: "",
+			end: "",
 		};
 		// Merge template config properties if provided
 		const finalProps = templateConfig?.properties
@@ -300,7 +306,7 @@ export class ResearchManager {
 		const finalSections = templateConfig?.sections || [];
 		return await this.createNote(
 			filePath,
-			safeTitle,
+			fileName,
 			"fleeting",
 			"research-draft",
 			finalProps,
@@ -313,13 +319,15 @@ export class ResearchManager {
 		const folder = `${projectFolder}/steps`;
 		await this.ensureFolder(folder);
 		const safeTitle = this.sanitizeSegment(title);
-		const filePath = `${folder}/${safeTitle}.md`;
+		const prefix = this.getProjectPrefix(projectFile);
+		const fileName = prefix ? `${prefix} - ${safeTitle}` : safeTitle;
+		const filePath = `${folder}/${fileName}.md`;
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Step already exists.");
 		}
 		return await this.createNote(
 			filePath,
-			safeTitle,
+			fileName,
 			"permanent",
 			"research-step",
 			{
@@ -336,19 +344,23 @@ export class ResearchManager {
 		const folder = `${projectFolder}/experiments`;
 		await this.ensureFolder(folder);
 		const safeTitle = this.sanitizeSegment(title);
-		const filePath = `${folder}/${safeTitle}.md`;
+		const prefix = this.getProjectPrefix(projectFile);
+		const fileName = prefix ? `${prefix} - ${safeTitle}` : safeTitle;
+		const filePath = `${folder}/${fileName}.md`;
 		if (this.app.vault.getAbstractFileByPath(filePath)) {
 			throw new Error("Experiment already exists.");
 		}
 		return await this.createNote(
 			filePath,
-			safeTitle,
+			fileName,
 			"permanent",
 			"research-experiment",
 			{
 				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 				title: safeTitle,
 				status: "planned",
+				start: "",
+				end: "",
 			},
 		);
 	}
@@ -525,6 +537,60 @@ export class ResearchManager {
 	}
 
 	/**
+	 * Short code for the project (e.g. "MR26", "ZO") used as filename prefix for objectives/steps/drafts/experiments.
+	 * Reads Dashboard frontmatter `project_code`; if empty, derives from project folder name (e.g. "My-Research-2026" → "MR26").
+	 */
+	private getProjectCode(projectFile: TFile): string {
+		const cache = this.app.metadataCache.getFileCache(projectFile);
+		const fromFm = cache?.frontmatter?.project_code;
+		if (fromFm != null && String(fromFm).trim() !== "") {
+			return String(fromFm).trim();
+		}
+		return this.deriveShortCodeFromFolder(this.getProjectFolder(projectFile));
+	}
+
+	/**
+	 * Full prefix for child notes: project code + creation date (e.g. "TP20260213").
+	 * Uses Dashboard frontmatter `created` (YYYY-MM-DD); if missing, uses Dashboard file ctime.
+	 */
+	private getProjectPrefix(projectFile: TFile): string {
+		const code = this.getProjectCode(projectFile);
+		const cache = this.app.metadataCache.getFileCache(projectFile);
+		const createdFm = cache?.frontmatter?.created;
+		let dateStr = "";
+		if (createdFm != null && String(createdFm).trim() !== "") {
+			// Normalize to YYYYMMDD (e.g. "2026-02-13" → "20260213")
+			dateStr = String(createdFm).trim().replace(/-/g, "").slice(0, 8);
+		}
+		if (!dateStr && projectFile.stat) {
+			dateStr = new Date(projectFile.stat.ctime).toISOString().slice(0, 10).replace(/-/g, "");
+		}
+		return dateStr ? `${code}${dateStr}` : code;
+	}
+
+	/**
+	 * Derive a short acronym from project folder path: last segment, first letter of each part (or digits).
+	 * e.g. "Research/My-Research-2026" → "MR26", "Research/zk-operator" → "ZO", "Research/TestProject" → "TP".
+	 */
+	private deriveShortCodeFromFolder(projectFolder: string): string {
+		const segment = projectFolder.split("/").pop() || "";
+		// Split by hyphen/underscore/space, and by camelCase (e.g. TestProject → Test, Project)
+		const byDelim = segment.split(/[-_\s]+/).filter(Boolean);
+		const parts = byDelim.flatMap((p) =>
+			p.replace(/([A-Z])/g, " $1").trim().split(/\s+/).filter(Boolean).length > 1
+				? p.replace(/([A-Z])/g, " $1").trim().split(/\s+/).filter(Boolean)
+				: [p],
+		);
+		const code = parts
+			.map((p) => {
+				if (/^\d+$/.test(p)) return p.length >= 2 ? p.slice(-2) : p;
+				return p.charAt(0).toUpperCase();
+			})
+			.join("");
+		return code || "P";
+	}
+
+	/**
 	 * Creates a research project dashboard using createNote() for unified entry.
 	 */
 	private async createDashboard(
@@ -549,6 +615,10 @@ export class ResearchManager {
 				defaultBranch: "main",
 				github_token_key: "",
 				public_repo: true,
+				conferences: [],
+				granularity: "day",
+				project_code: "",
+				created: new Date().toISOString().slice(0, 10),
 			},
 			[
 				{
@@ -582,6 +652,11 @@ export class ResearchManager {
 						"    Draft -->|Compile| Mat[materials/*.md]",
 						"    Mat -->|Push| GH[GitHub Repo]",
 						"    GH -->|AI Generation| LaTeX[sections/*.tex]",
+						"```",
+						"",
+						"**Target Conferences** (set `conferences` in frontmatter to CFP note links):",
+						"```" + blockType,
+						"zk-research-target-conference",
 						"```",
 					],
 				},
@@ -620,6 +695,7 @@ export class ResearchManager {
 					title: "4. Objectives Timeline (PlantUML Gantt)",
 					level: 2,
 					content: [
+						"*Time granularity: set frontmatter `granularity` (or in block below) to `day`, `week`, or `month`.*",
 						"```" + blockType,
 						"zk-research-gantt",
 						"```",
