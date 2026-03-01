@@ -14,13 +14,15 @@ jobs:
   superLint:
     name: linter
     runs-on: arc-runner-large
+    container:
+      image: ubuntu:24.04
     permissions:
       contents: read
       packages: read
       statuses: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: stone-home/Action-Stone-DevOps/.github/actions/linter@trunk
