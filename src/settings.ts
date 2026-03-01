@@ -536,6 +536,17 @@ export class SampleSettingTab extends PluginSettingTab {
 						await refreshDataview();
 					});
 			});
+		new Setting(card)
+			.setName("Show debug panels (built-in scripts)")
+			.setDesc("When on, built-in Dataview scripts (Research Quick Actions, Project Quick Actions, etc.) show their debug panels (e.g. last request, repo/PAT info).")
+			.addToggle(t => {
+				t.setValue(this.plugin.settings.dataviewDebugPanels === true)
+					.onChange(async (v) => {
+						this.plugin.settings.dataviewDebugPanels = v;
+						await this.plugin.saveSettings();
+						await refreshDataview();
+					});
+			});
 
 		// Script list: only when Dataview is enabled and we have an instance
 		if (this.plugin.settings.dataviewEnabled && this.plugin.dataview) {

@@ -6,8 +6,12 @@ on:
 
 jobs:
   blog-creating:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-large
+    container:
+      image: ubuntu:24.04
     steps:
+      - name: Install Git
+        run: apt-get update && apt-get install -y git
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -20,3 +24,4 @@ jobs:
           python-version: "3.12" # Python version to use
           project-name: "Obsidian Plugin - Zettelkasten Operator"
           onepass-token: ${{ secrets.OP_ACCOUNT_TOKEN }} # 1Password service account token
+          kubernetes-mode: true

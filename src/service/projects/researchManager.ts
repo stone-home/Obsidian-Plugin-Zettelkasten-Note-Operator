@@ -9,6 +9,17 @@ import { ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
 import { stripMdExtension } from "../../utils/path";
 
+/** Debug info for the last Push to GitHub request (headers/body/params), for display in Quick Actions. */
+export type LastPushRequestDebug = {
+	url: string;
+	method: string;
+	headers: Record<string, string>;
+	bodySummary: { message: string; branch: string; contentLength: number; sha?: string };
+	params: { repo: string; defaultBranch: string; path: string; targetFolder?: string };
+	responseStatus?: number;
+	errorMessage?: string;
+};
+
 export class ResearchManager {
 	private app: App;
 	private settings: ZettelkastenSettings;
@@ -375,7 +386,13 @@ export class ResearchManager {
 	 */
 	async updateDashboardProperties(
 		filePath: string,
-		updates: { github_token_key?: string; public_repo?: boolean; repo?: string },
+		updates: {
+			github_token_key?: string;
+			public_repo?: boolean;
+			repo?: string;
+			defaultBranch?: string;
+			github_target_folder?: string;
+		},
 	): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(filePath) as TFile;
 		if (!file) return;
@@ -424,9 +441,12 @@ export class ResearchManager {
 
 	/**
 	 * Push prompts folder contents to GitHub repository.
-	 * Uses GitHub Contents API to upload/update files.
+	 * Uses GitHub Contents API to upload/update files. All pushes use PAT when configured.
 	 */
-	async pushToGitHub(projectFile: TFile, tokenKey?: string): Promise<void> {
+	async pushToGitHub(
+		projectFile: TFile,
+		tokenKey?: string,
+	): Promise<{ successCount: number; errorCount: number; lastRequestDebug?: LastPushRequestDebug }> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const promptsFolder = `${projectFolder}/prompts`;
 
@@ -435,42 +455,43 @@ export class ResearchManager {
 		const fm = cache?.frontmatter || {};
 		const repo = fm.repo;
 		const defaultBranch = fm.defaultBranch || "main";
-		const isPublic = fm.public_repo === true;
+		const targetFolderRaw = (fm.github_target_folder as string) ?? "prompts";
+		const targetFolder = targetFolderRaw.replace(/^\/+|\/+$/g, "").trim() || "prompts";
 
 		if (!repo) {
 			new Notice("No GitHub repo configured. Set 'repo' in dashboard frontmatter.");
-			return;
+			return { successCount: 0, errorCount: 0 };
 		}
 
-		// For private repos, use tokenKey if provided, otherwise fall back to dashboard frontmatter (e.g. from Research Quick Actions PAT dropdown)
+		// All pushes use PAT: tokenKey from callback or dashboard frontmatter (e.g. Research Quick Actions PAT dropdown)
 		const resolvedTokenKey = tokenKey ?? (fm.github_token_key as string | undefined) ?? "";
-		const needsToken = !isPublic && resolvedTokenKey;
+		if (!resolvedTokenKey) {
+			new Notice("Push to GitHub requires a PAT. Set a PAT in Settings and select it in the dashboard.");
+			return { successCount: 0, errorCount: 0 };
+		}
 
-		// Get token if needed
+		const storage = (this.app as any).secretStorage;
+		if (!storage || typeof storage.getSecret !== "function") {
+			new Notice("SecretStorage not available. Configure PAT in Settings → Community plugins → Zettelkasten Operator.");
+			this.logger.warn("pushToGitHub: SecretStorage not available");
+			return { successCount: 0, errorCount: 0 };
+		}
 		let token: string | null = null;
-		if (needsToken) {
-			const storage = (this.app as any).secretStorage;
-			if (!storage || typeof storage.getSecret !== "function") {
-				new Notice("SecretStorage not available. Private repo requires a PAT in Settings → Community plugins → Zettelkasten Operator.");
-				this.logger.warn("pushToGitHub: SecretStorage not available for private repo");
-				return;
-			}
-			try {
-				token = await storage.getSecret(resolvedTokenKey);
-			} catch {
-				this.logger.warn("Failed to get token from SecretStorage for key: " + resolvedTokenKey);
-			}
-			if (!token && !isPublic) {
-				new Notice("No PAT found for key \"" + resolvedTokenKey + "\". Set PAT in Settings and select it in the dashboard.");
-				return;
-			}
+		try {
+			token = await storage.getSecret(resolvedTokenKey);
+		} catch {
+			this.logger.warn("Failed to get token from SecretStorage for key: " + resolvedTokenKey);
+		}
+		if (!token) {
+			new Notice("No PAT found for key \"" + resolvedTokenKey + "\". Set PAT in Settings and select it in the dashboard.");
+			return { successCount: 0, errorCount: 0 };
 		}
 
 		// Get files in prompts folder
 		const promptsDir = this.app.vault.getAbstractFileByPath(promptsFolder);
 		if (!promptsDir || !(promptsDir instanceof TFolder)) {
 			new Notice(`Prompts folder not found: ${promptsFolder}. Generate AI prompts first.`);
-			return;
+			return { successCount: 0, errorCount: 0 };
 		}
 
 		const files = promptsDir.children.filter(
@@ -479,60 +500,125 @@ export class ResearchManager {
 
 		if (files.length === 0) {
 			new Notice("No prompts to push. Generate AI prompts first.");
-			return;
+			return { successCount: 0, errorCount: 0 };
 		}
 
 		const headers: Record<string, string> = {
 			"Accept": "application/vnd.github+json",
 			"X-GitHub-Api-Version": "2022-11-28",
+			"Authorization": `Bearer ${token}`,
+			"Content-Type": "application/json",
 		};
-		if (token) {
-			headers["Authorization"] = `Bearer ${token}`;
-		}
 
 		let successCount = 0;
 		let errorCount = 0;
+		let lastRequestDebug: LastPushRequestDebug | undefined;
 
 		for (const file of files) {
+			const path = `${targetFolder}/${file.name}`;
+			const pathEncoded = path
+				.split("/")
+				.map((seg) => encodeURIComponent(seg))
+				.join("/");
+			let base64Content = "";
+
 			try {
 				const content = await this.app.vault.read(file);
-				const base64Content = btoa(unescape(encodeURIComponent(content)));
-				const path = `prompts/${file.name}`;
+				base64Content = btoa(unescape(encodeURIComponent(content)));
+			} catch (readErr) {
+				errorCount++;
+				const readMsg = readErr instanceof Error ? readErr.message : String(readErr);
+				this.logger.logError(`Failed to read ${file.name}:`, readErr);
+				lastRequestDebug = {
+					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
+					method: "PUT",
+					headers: { ...headers, Authorization: "Bearer ***" },
+					bodySummary: {
+						message: `Create ${file.name} from Obsidian`,
+						branch: defaultBranch,
+						contentLength: 0,
+					},
+					params: { repo, defaultBranch, path, targetFolder },
+					errorMessage: `Read failed: ${readMsg}`,
+				};
+				if (errorCount === 1) {
+					new Notice(`Push failed (read): ${readMsg.slice(0, 80)}`);
+				}
+				continue;
+			}
 
-				// Check if file exists (to get SHA for updates)
+			try {
+				// Check if file exists on GitHub (GET returns sha when file exists; required for update)
 				let sha: string | undefined;
 				try {
 					const existingResp = await requestUrl({
-						url: `https://api.github.com/repos/${repo}/contents/${path}?ref=${defaultBranch}`,
+						url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}?ref=${encodeURIComponent(defaultBranch)}`,
 						method: "GET",
 						headers,
 					});
 					sha = existingResp.json?.sha;
 				} catch {
-					// File doesn't exist, that's fine
+					// File doesn't exist, that's fine — we'll create
 				}
+
+				const message = sha
+					? `Update ${file.name} from Obsidian`
+					: `Create ${file.name} from Obsidian`;
+				const body = {
+					message,
+					content: base64Content,
+					branch: defaultBranch,
+					...(sha ? { sha } : {}),
+				};
+				const url = `https://api.github.com/repos/${repo}/contents/${pathEncoded}`;
 
 				// Create or update file
 				await requestUrl({
-					url: `https://api.github.com/repos/${repo}/contents/${path}`,
+					url,
 					method: "PUT",
-					headers: {
-						...headers,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						message: `Update ${file.name} from Obsidian`,
-						content: base64Content,
-						branch: defaultBranch,
-						...(sha ? { sha } : {}),
-					}),
+					headers,
+					body: JSON.stringify(body),
 				});
 
 				successCount++;
 				this.logger.info(`Pushed prompt ${file.name} to GitHub`);
+				lastRequestDebug = {
+					url,
+					method: "PUT",
+					headers: { ...headers, Authorization: "Bearer ***" },
+					bodySummary: {
+						message,
+						branch: defaultBranch,
+						contentLength: base64Content.length,
+						...(sha ? { sha } : {}),
+					},
+					params: { repo, defaultBranch, path, targetFolder },
+				};
 			} catch (error) {
 				errorCount++;
 				this.logger.logError(`Failed to push ${file.name}:`, error);
+				const status = (error as { status?: number })?.status;
+				const msg = error instanceof Error ? error.message : String(error);
+				lastRequestDebug = {
+					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
+					method: "PUT",
+					headers: { ...headers, Authorization: "Bearer ***" },
+					bodySummary: {
+						message: `Update ${file.name} from Obsidian`,
+						branch: defaultBranch,
+						contentLength: base64Content.length,
+					},
+					params: { repo, defaultBranch, path, targetFolder },
+					responseStatus: status,
+					errorMessage: msg.slice(0, 400),
+				};
+				if (status === 403 || String(msg).includes("403")) {
+					new Notice(
+						"Push failed (403 Forbidden). Check: PAT has 'repo' or 'public_repo' scope, you have push access to the repo, and repo is owner/repo.",
+					);
+				} else if (errorCount === 1) {
+					new Notice(`Push failed: ${msg.slice(0, 80)}${msg.length > 80 ? "…" : ""}`);
+				}
 			}
 		}
 
@@ -541,6 +627,7 @@ export class ResearchManager {
 		} else {
 			new Notice(`Successfully pushed ${successCount} files to GitHub.`);
 		}
+		return { successCount, errorCount, lastRequestDebug };
 	}
 
 	private getProjectFolder(projectFile: TFile): string {

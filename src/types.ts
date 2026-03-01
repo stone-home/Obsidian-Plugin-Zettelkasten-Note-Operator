@@ -74,6 +74,8 @@ export interface ZettelkastenSettings {
 	dataviewCodeBlockType: string;
 	/** When true, default scripts are overwritten on plugin load; when false, keep user-edited scripts (raw). */
 	dataviewReloadDefaultsOnLoad?: boolean;
+	/** When true, show debug panels in built-in Dataview scripts (e.g. last request, PAT/repo info). */
+	dataviewDebugPanels?: boolean;
 	ganttStatusColors: IGanttStatusColorMap;
 	createNoteOptions: INoteOption[];
 	searchDefaultPath: string;
