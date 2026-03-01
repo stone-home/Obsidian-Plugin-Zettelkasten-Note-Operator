@@ -25,11 +25,11 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Set Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: stone-home/Action-Stone-DevOps/.github/actions/linter@trunk
         with:
           kubernetes-mode: true
           onepass-token: ${{ secrets.OP_ACCOUNT_TOKEN }}
           javascript: 'true'
           exclude: '(^.github/.*)'
-
-
