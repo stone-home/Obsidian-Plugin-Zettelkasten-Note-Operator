@@ -24,3 +24,4 @@ jobs:
           python-version: "3.12" # Python version to use
           project-name: "Obsidian Plugin - Zettelkasten Operator"
           onepass-token: ${{ secrets.OP_ACCOUNT_TOKEN }} # 1Password service account token
+          kubernetes-mode: true
