@@ -6,7 +6,10 @@ import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
 import { SearchModal } from "./modals/searchModal";
-import { ResearchManager } from "./service/projects/researchManager";
+import {
+	ResearchManager,
+	type LastPushRequestDebug,
+} from "./service/projects/researchManager";
 import { CodeProjectManager } from "./service/projects/codeProjectManager";
 import { DraftCompiler } from "./service/compiler/draftCompiler";
 import { PromptGenerator } from "./service/compiler/promptGenerator";
@@ -15,6 +18,8 @@ export default class MyPlugin extends Plugin {
 	public settings!: ZettelkastenSettings;
 	public factory!: NoteFactory;
 	public dataview?: DataviewCommand;
+	/** Last Push to GitHub request debug (headers/body/params) for Research Quick Actions. */
+	public lastPushRequestDebug?: LastPushRequestDebug;
 
 	async onload() {
 		await this.loadSettings();
@@ -212,7 +217,13 @@ export default class MyPlugin extends Plugin {
 			},
 			updateResearchDashboardProperties: async (
 				projectPath: string,
-				updates: { github_token_key?: string; public_repo?: boolean; repo?: string },
+				updates: {
+					github_token_key?: string;
+					public_repo?: boolean;
+					repo?: string;
+					defaultBranch?: string;
+					github_target_folder?: string;
+				},
 			) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
@@ -222,6 +233,9 @@ export default class MyPlugin extends Plugin {
 			},
 			getSettings: (): ZettelkastenSettings => {
 				return { ...plugin.settings };
+			},
+			getLastPushRequestDebug: (): LastPushRequestDebug | null => {
+				return plugin.lastPushRequestDebug ?? null;
 			},
 			compileDraft: async (draftPath: string) => {
 				const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
@@ -246,7 +260,9 @@ export default class MyPlugin extends Plugin {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
-				return await manager.pushToGitHub(file, tokenKey);
+				const result = await manager.pushToGitHub(file, tokenKey);
+				if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
+				return result;
 			},
 			renderDraftsTable: (container: HTMLElement, projectPath: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
@@ -261,7 +277,8 @@ export default class MyPlugin extends Plugin {
 						const rm = new ResearchManager(plugin.app, plugin.settings);
 						const file = plugin.app.vault.getAbstractFileByPath(projPath) as TFile;
 						if (!file) throw new Error("Project not found");
-						await rm.pushToGitHub(file, tokenKey);
+						const result = await rm.pushToGitHub(file, tokenKey);
+						if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
 					},
 				});
 			},
