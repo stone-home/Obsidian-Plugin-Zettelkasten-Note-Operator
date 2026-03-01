@@ -13,7 +13,9 @@ permissions:
 jobs:
   superLint:
     name: linter
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-large
+    container:
+      image: ubuntu:24.04
     permissions:
       contents: read
       packages: read
