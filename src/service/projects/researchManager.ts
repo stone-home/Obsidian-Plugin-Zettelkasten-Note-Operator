@@ -442,16 +442,27 @@ export class ResearchManager {
 			return;
 		}
 
+		// For private repos, use tokenKey if provided, otherwise fall back to dashboard frontmatter (e.g. from Research Quick Actions PAT dropdown)
+		const resolvedTokenKey = tokenKey ?? (fm.github_token_key as string | undefined) ?? "";
+		const needsToken = !isPublic && resolvedTokenKey;
+
 		// Get token if needed
 		let token: string | null = null;
-		if (!isPublic && tokenKey) {
+		if (needsToken) {
 			const storage = (this.app as any).secretStorage;
-			if (storage && typeof storage.getSecret === "function") {
-				try {
-					token = await storage.getSecret(tokenKey);
-				} catch {
-					this.logger.warn("Failed to get token from SecretStorage");
-				}
+			if (!storage || typeof storage.getSecret !== "function") {
+				new Notice("SecretStorage not available. Private repo requires a PAT in Settings → Community plugins → Zettelkasten Operator.");
+				this.logger.warn("pushToGitHub: SecretStorage not available for private repo");
+				return;
+			}
+			try {
+				token = await storage.getSecret(resolvedTokenKey);
+			} catch {
+				this.logger.warn("Failed to get token from SecretStorage for key: " + resolvedTokenKey);
+			}
+			if (!token && !isPublic) {
+				new Notice("No PAT found for key \"" + resolvedTokenKey + "\". Set PAT in Settings and select it in the dashboard.");
+				return;
 			}
 		}
 
