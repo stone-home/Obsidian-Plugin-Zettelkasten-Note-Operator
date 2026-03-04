@@ -1,13 +1,8 @@
 ---
-description: Python coding standards (PEP 8, type hints, docstrings)
-globs:
-  - "**/*.py"
-alwaysApply: false
+
 ---
-
-# Python
-
-- **Style:** **PEP 8**. Use **type hints** for function args and return values.
-- **Paths:** Prefer `pathlib` over `os.path`; use f-strings for formatting.
-- **Dependencies:** Manage via `requirements.txt` or `pyproject.toml`; pin versions in deployment.
-- **Docstrings:** **Google Style** — include Args, Returns, Raises for public functions and modules.
+# Bash
+- **Shebang:** `#!/usr/bin/env bash`
+- **Strict mode:** `set -euo pipefail` (exit on error, undefined vars, pipe failures).
+- **Quoting:** Double-quote variables (`"$VAR"`); use `[[ ]]` for conditions.
+- **Scripts with args:** Include a `show_help` (or similar) function and document usage.

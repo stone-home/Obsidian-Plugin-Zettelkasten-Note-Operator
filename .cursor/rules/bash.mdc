@@ -1,13 +1,7 @@
 ---
-description: Bash/shell script standards (strict mode, quoting, help)
-globs:
-  - "**/*.sh"
-  - "**/scripts/**"
-alwaysApply: false
+
 ---
-
 # Bash
-
 - **Shebang:** `#!/usr/bin/env bash`
 - **Strict mode:** `set -euo pipefail` (exit on error, undefined vars, pipe failures).
 - **Quoting:** Double-quote variables (`"$VAR"`); use `[[ ]]` for conditions.

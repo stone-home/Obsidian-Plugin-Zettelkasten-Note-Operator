@@ -1,13 +1,8 @@
 ---
-description: Go coding standards (idioms, modules, error handling)
-globs:
-  - "**/*.go"
-alwaysApply: false
+
 ---
-
-# Golang
-
-- **Style:** Follow effective-go and standard `gofmt`/`goimports`; run `go vet` and linters in CI.
-- **Modules:** Use Go modules (`go.mod`); keep dependencies minimal and pinned.
-- **Errors:** Return errors; use `errors.Is`/`errors.As` for checks; wrap with context (`fmt.Errorf("...: %w", err)`).
-- **Naming:** Short names in scope; exported names with doc comments; interfaces small and in consumer packages when possible.
+# Bash
+- **Shebang:** `#!/usr/bin/env bash`
+- **Strict mode:** `set -euo pipefail` (exit on error, undefined vars, pipe failures).
+- **Quoting:** Double-quote variables (`"$VAR"`); use `[[ ]]` for conditions.
+- **Scripts with args:** Include a `show_help` (or similar) function and document usage.
