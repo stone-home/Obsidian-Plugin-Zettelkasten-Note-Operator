@@ -252,7 +252,7 @@ export class ResearchManager {
 					content: [
 						"```" + blockType,
 						"zk-research-objective-steps",
-						`objectivePath: "${filePath}"`,
+						`objectivePath: "${fileName}"`,
 						"```",
 					],
 				},
