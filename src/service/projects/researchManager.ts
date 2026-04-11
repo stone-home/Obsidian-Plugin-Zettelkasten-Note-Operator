@@ -654,7 +654,7 @@ export class ResearchManager {
 	private getProjectPrefix(projectFile: TFile): string {
 		const code = this.getProjectCode(projectFile);
 		const cache = this.app.metadataCache.getFileCache(projectFile);
-		const createdFm = cache?.frontmatter?.created;
+		const createdFm = cache?.frontmatter?.create;
 		let dateStr = "";
 		if (createdFm != null && String(createdFm).trim() !== "") {
 			// Normalize to YYYYMMDD (e.g. "2026-02-13" → "20260213")
