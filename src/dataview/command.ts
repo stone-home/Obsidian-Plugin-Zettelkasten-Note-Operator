@@ -3,11 +3,23 @@ import { App, Notice } from "obsidian";
 import { DataviewJSManager } from "./manager";
 import type { IDataviewScript } from "./types";
 
+/** Delay before re-running Dataview JS after the user stops typing (Live Preview). Reduces cursor jumps from rapid re-renders. */
+const CODE_BLOCK_DEBOUNCE_MS = 350;
+
+type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any };
+
+type PendingDvjsEntry = {
+	timer: ReturnType<typeof setTimeout> | null;
+	seq: number;
+	latest: PendingDvjsPayload | null;
+};
+
 export class DataviewCommand {
 	private app: App;
 	private plugin: MyPlugin;
 	private dataviewManager: DataviewJSManager;
 	private processorRegistered = false;
+	private readonly pendingDvjsByKey = new Map<string, PendingDvjsEntry>();
 
 	constructor(app: App, plugin: MyPlugin) {
 		this.app = app;
@@ -41,7 +53,9 @@ export class DataviewCommand {
 		try {
 			this.plugin.registerMarkdownCodeBlockProcessor(
 				this.plugin.settings.dataviewCodeBlockType,
-				(source, el, ctx) => this.processDvjsBlock(source, el, ctx),
+				(source, el, ctx) => {
+					this.scheduleProcessDvjsBlock(source, el, ctx);
+				},
 			);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -50,6 +64,13 @@ export class DataviewCommand {
 	}
 
 	public unload(): void {
+		for (const entry of this.pendingDvjsByKey.values()) {
+			if (entry.timer != null) {
+				clearTimeout(entry.timer);
+				entry.timer = null;
+			}
+		}
+		this.pendingDvjsByKey.clear();
 		this.dataviewManager.cleanUpFileWatchers();
 	}
 
@@ -76,10 +97,78 @@ export class DataviewCommand {
 		return this.dataviewManager.createScript(id, name, scriptContent, options ?? {});
 	}
 
-	private async processDvjsBlock(source: string, el: HTMLElement, ctx: any) {
+	/**
+	 * Stable key for one fenced block in a file. Prefer section line (Obsidian); fallback for tests / missing API.
+	 */
+	private debounceKeyForBlock(el: HTMLElement, ctx: any, source: string): string {
+		const path = typeof ctx?.sourcePath === "string" ? ctx.sourcePath : "";
+		if (typeof ctx?.getSectionInfo === "function") {
+			try {
+				const info = ctx.getSectionInfo(el);
+				if (info != null && typeof info.lineStart === "number") {
+					return `${path}\0${info.lineStart}`;
+				}
+			} catch {
+				// ignore
+			}
+		}
+		const firstMeaningfulLine =
+			source
+				.split("\n")
+				.map((l) => l.trim())
+				.find((l) => l.length > 0) ?? "";
+		return `${path}\0${firstMeaningfulLine}`;
+	}
+
+	private scheduleProcessDvjsBlock(source: string, el: HTMLElement, ctx: any): void {
 		const lines = source.trim().split("\n").filter((line) => line.trim().length);
 		const scriptId = lines[0];
-		if (!scriptId) return;
+		if (!scriptId) {
+			return;
+		}
+
+		const key = this.debounceKeyForBlock(el, ctx, source);
+		let entry = this.pendingDvjsByKey.get(key);
+		if (!entry) {
+			entry = { timer: null, seq: 0, latest: null };
+			this.pendingDvjsByKey.set(key, entry);
+		}
+
+		entry.latest = { source, el, ctx };
+		entry.seq += 1;
+		const generation = entry.seq;
+
+		if (entry.timer != null) {
+			clearTimeout(entry.timer);
+			entry.timer = null;
+		}
+
+		entry.timer = setTimeout(() => {
+			const e = entry;
+			e.timer = null;
+			if (e.seq !== generation) {
+				return;
+			}
+			const payload = e.latest;
+			if (!payload) {
+				this.pendingDvjsByKey.delete(key);
+				return;
+			}
+			// Skip only when explicitly detached (browser). In Node tests, `isConnected` may be undefined.
+			if (payload.el.isConnected === false) {
+				this.pendingDvjsByKey.delete(key);
+				return;
+			}
+			void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
+		}, CODE_BLOCK_DEBOUNCE_MS);
+	}
+
+	private async runDvjsBlock(source: string, el: HTMLElement, ctx: any): Promise<void> {
+		const lines = source.trim().split("\n").filter((line) => line.trim().length);
+		const scriptId = lines[0];
+		if (!scriptId) {
+			return;
+		}
 
 		const params: Record<string, any> = {};
 		lines.slice(1).forEach((line) => {

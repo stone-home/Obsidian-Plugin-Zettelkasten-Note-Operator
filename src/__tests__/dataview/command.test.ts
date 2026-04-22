@@ -128,6 +128,13 @@ describe("DataviewCommand", () => {
 	});
 
 	describe("processDvjsBlock (via handler)", () => {
+		beforeEach(() => {
+			jest.useFakeTimers();
+		});
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
 		it("should do nothing when source is empty", async () => {
 			const { plugin } = createMockPlugin();
 			plugin.app = app;
@@ -137,6 +144,7 @@ describe("DataviewCommand", () => {
 				.calls[0][1];
 			const el = document.createElement("div");
 			await handler("  \n  ", el, {});
+			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toBeFalsy();
 		});
 
@@ -149,6 +157,7 @@ describe("DataviewCommand", () => {
 				.calls[0][1];
 			const el = document.createElement("div");
 			await handler("", el, {});
+			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toBeFalsy();
 		});
 
@@ -162,6 +171,7 @@ describe("DataviewCommand", () => {
 			const el = document.createElement("div") as HTMLElement & { setText?(s: string): void };
 			el.setText = (s: string) => { el.textContent = s; };
 			await handler("nonexistent-script", el, {});
+			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toContain("not found");
 		});
 
@@ -180,6 +190,7 @@ describe("DataviewCommand", () => {
 			const el = document.createElement("div") as HTMLElement & { setText?(s: string): void };
 			el.setText = (s: string) => { el.textContent = s; };
 			await handler("test\nfoo: 1\nbar= 2", el, {});
+			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toBeDefined();
 		});
 	});
