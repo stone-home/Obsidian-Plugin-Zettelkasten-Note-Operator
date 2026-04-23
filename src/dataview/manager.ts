@@ -229,6 +229,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-ai-pipeline-tracking',
 				name: 'Research AI Pipeline Tracking (Draft Status)',
+				overwrite: true,
 				script: join([
 					"const draftsFolder = dv.current().file.folder + '/drafts';",
 					"const promptsFolder = dv.current().file.folder + '/prompts';",
@@ -272,6 +273,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-ai-pipeline',
 				name: 'Research AI Pipeline',
+				overwrite: true,
 				script: join([
 					'const zk = window.ZettelkastenOperator;',
 					'const settings = zk ? zk.getSettings() : {};',
@@ -288,6 +290,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-atomic-notes',
 				name: 'Research Atomic Notes',
+				overwrite: true,
 				script: join([
 					'const zk = window.ZettelkastenOperator;',
 					'const settings = zk ? zk.getSettings() : {};',
@@ -296,14 +299,16 @@ export class DataviewJSManager extends Component {
 					"const LEXICON_FOLDER = settings.lexiconPath || '005-Lexicon';",
 					'const PROJECT_ID = dv.current().project_id;',
 					"let atoms = dv.pages('\"' + ATOM_FOLDER + '\" or \"' + PERMANENT_FOLDER + '\" or \"' + LEXICON_FOLDER + '\"').where(p => p.projects && p.projects.includes(PROJECT_ID));",
+					"const fmtMtime = (m) => (m && typeof m.toFormat === 'function') ? m.toFormat('yyyy-MM-dd') : (m ? String(m).slice(0, 10) : '-');",
 					"dv.table(['Concept Note', 'Tags', 'Linked Source', 'Last Updated'],",
-					"  atoms.map(p => [p.file.link, p.tags, p.source ? p.source : '-', p.file.mtime.toFormat('yyyy-MM-dd')])",
+					"  atoms.map(p => [p.file.link, p.tags, p.source ? p.source : '-', fmtMtime(p.file.mtime)])",
 					');',
 				]),
 			},
 			{
 				id: 'zk-research-materials',
 				name: 'Research Materials',
+				overwrite: true,
 				script: join([
 					"const folder = dv.current().file.folder + '/materials';",
 					"dv.table(['Modified', 'Size'],",
@@ -448,6 +453,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-experiments',
 				name: 'Research Experiments Table',
+				overwrite: true,
 				script: join([
 					"const folder = dv.current().file.folder + '/experiments';",
 					"dv.table(['Experiment', 'status'],",
@@ -459,6 +465,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-requirements',
 				name: 'Research Requirements Table',
+				overwrite: true,
 				script: join([
 					"const folder = dv.current().file.folder + '/requirements';",
 					"dv.table(['Requirement', 'status', 'priority'],",
@@ -470,6 +477,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-research-target-conference',
 				name: 'Zettelkasten-Target-Conference',
+				overwrite: true,
 				script: join([
 					"const CONFERENCE_LIST_FIELD = 'conferences';",
 					"const CFP_FOLDER = '002-Literature/005-CFP/';",
@@ -647,6 +655,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-project-releases',
 				name: 'Project Releases',
+				overwrite: true,
 				script: join([
 					"const folder = dv.current().file.folder + '/releases';",
 					"dv.table(['version', 'date', 'url'],",
@@ -658,6 +667,7 @@ export class DataviewJSManager extends Component {
 			{
 				id: 'zk-project-commits',
 				name: 'Project Commits',
+				overwrite: true,
 				script: join([
 					"const folder = dv.current().file.folder + '/commits';",
 					"dv.table(['sha', 'message', 'date', 'url'],",
@@ -962,6 +972,8 @@ export class DataviewJSManager extends Component {
 			);
 		} catch (error) {
 			this.logger.logError(`Error executing script '${scriptId}':`, error);
+			const message = Logger.getErrorMessage(error);
+			container.setText(`Error: ${message}`);
 		}
 	}
 

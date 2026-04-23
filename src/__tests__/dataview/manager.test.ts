@@ -359,6 +359,24 @@ describe("DataviewJSManager", () => {
 			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
 			expect(executeJs).toHaveBeenCalled();
 		});
+
+		it("should set error text when executeJs rejects", async () => {
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
+			const executeJs = jest.fn().mockRejectedValue(new Error("Dataview execution failed"));
+			(app as any).plugins = {
+				plugins: {
+					dataview: { api: { executeJs } },
+				},
+			};
+			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			expect(el.textContent).toContain("Error:");
+			expect(el.textContent).toContain("Dataview execution failed");
+		});
 	});
 
 	// ==================== createScript (overwrite) ====================

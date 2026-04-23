@@ -143,6 +143,10 @@ export class DataviewCommand {
 			entry.timer = null;
 		}
 
+		// Live Preview: `el` is in-document while typing — debounce to avoid cursor jumps.
+		// Reading mode / first paint: `el` is often not connected yet — run ASAP (0) and rAF-wait if still detached.
+		const debounceMs = el.isConnected === true ? CODE_BLOCK_DEBOUNCE_MS : 0;
+
 		entry.timer = setTimeout(() => {
 			const e = entry;
 			e.timer = null;
@@ -154,13 +158,17 @@ export class DataviewCommand {
 				this.pendingDvjsByKey.delete(key);
 				return;
 			}
-			// Skip only when explicitly detached (browser). In Node tests, `isConnected` may be undefined.
-			if (payload.el.isConnected === false) {
-				this.pendingDvjsByKey.delete(key);
-				return;
+			const run = () => {
+				void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
+			};
+			if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(run);
+				});
+			} else {
+				run();
 			}
-			void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
-		}, CODE_BLOCK_DEBOUNCE_MS);
+		}, debounceMs);
 	}
 
 	private async runDvjsBlock(source: string, el: HTMLElement, ctx: any): Promise<void> {
