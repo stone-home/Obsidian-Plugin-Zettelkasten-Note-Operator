@@ -785,7 +785,11 @@ export class DataviewJSManager extends Component {
 				continue;
 			}
 
-			// Edited by the user, or updates are off: keep the file, report this default once.
+			// Updates are off: leave both the file and its state alone, so the "no record yet"
+			// rule above still applies once the setting is turned back on.
+			if (!overwriteDefaults) continue;
+
+			// Edited by the user: keep the file, report this default once.
 			if (recorded?.seen !== defaultHash) {
 				notApplied.push(script.id);
 				state[script.id] = { written: recorded?.written ?? "", seen: defaultHash };
