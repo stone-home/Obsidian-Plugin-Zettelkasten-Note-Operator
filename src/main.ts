@@ -11,6 +11,7 @@ import {
 	type LastPushRequestDebug,
 } from "./service/projects/researchManager";
 import { CodeProjectManager } from "./service/projects/codeProjectManager";
+import { askLegacyCommitCleanup } from "./modals/codeProjectsModal";
 import { DraftCompiler } from "./service/compiler/draftCompiler";
 import { PromptGenerator } from "./service/compiler/promptGenerator";
 
@@ -206,7 +207,9 @@ export default class MyPlugin extends Plugin {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
-				return await manager.refreshProject(file, tokenKey);
+				return await manager.refreshProject(file, tokenKey, {
+					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(plugin.app, count),
+				});
 			},
 			updateProjectDashboardProperties: async (
 				projectPath: string,

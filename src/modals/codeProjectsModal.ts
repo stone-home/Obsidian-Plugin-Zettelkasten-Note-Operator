@@ -1,6 +1,17 @@
 import { App, Modal, Notice, TFile, TFolder, FuzzySuggestModal } from "obsidian";
 import { ZettelkastenSettings } from "../types";
 import { CodeProjectManager } from "../service/projects/codeProjectManager";
+import { confirmAction } from "./confirmModal";
+
+/** Asks whether the per-commit notes that older versions created under commits/ may be trashed. */
+export function askLegacyCommitCleanup(app: App, count: number): Promise<boolean> {
+	return confirmAction(app, {
+		title: "Remove old commit notes?",
+		message: `${count} notes under commits/ were created by an older version of the plugin. Unreleased commits now live in the "Unreleased Commits" note, so these are no longer used. Move them to the trash?`,
+		confirmText: "Move to trash",
+		cancelText: "Keep them",
+	});
+}
 
 class TextPromptModal extends Modal {
 	private titleText: string;
@@ -236,7 +247,9 @@ export class CodeProjectsModal extends Modal {
 				this.getFrontmatter(this.selectedProject as TFile).github_token_key;
 			try {
 				// Shows its own summary Notice on success.
-				await this.manager.refreshProject(this.selectedProject as TFile, tokenKey);
+				await this.manager.refreshProject(this.selectedProject as TFile, tokenKey, {
+					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(this.app, count),
+				});
 			} catch (err) {
 				new Notice("Refresh failed: " + (err instanceof Error ? err.message : String(err)));
 				return;
