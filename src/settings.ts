@@ -131,6 +131,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	// [STATE]: Tracks which top-level tab is active
 	private activeTab: 'general' | 'projects' | 'dataview' | 'templates' = 'general';
+	private lastRenderKey: string | null = null;
 
 	// [STATE]: Tracks which template is being edited (null = list view, number = detail view)
 	private editingIndex: number | null = null;
@@ -148,6 +149,10 @@ export class SampleSettingTab extends PluginSettingTab {
 	// [CORE]: Main render loop. Called whenever the view needs to update.
 	display(): void {
 		const { containerEl } = this;
+		// Redrawing the same view (e.g. after adding a rule) keeps the scroll position;
+		// switching tabs or templates starts at the top.
+		const renderKey = `${this.activeTab}:${this.editingIndex}`;
+		const scrollTop = renderKey === this.lastRenderKey ? containerEl.scrollTop : 0;
 		containerEl.empty();
 		containerEl.addClass('zettel-settings-wrapper');
 
@@ -187,6 +192,9 @@ export class SampleSettingTab extends PluginSettingTab {
 				this.renderSummaryView(contentContainer);
 			}
 		}
+
+		this.lastRenderKey = renderKey;
+		containerEl.scrollTop = scrollTop;
 	}
 
 	// [UI]: Helper to create top navigation tabs
