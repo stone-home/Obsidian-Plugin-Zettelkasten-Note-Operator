@@ -421,12 +421,14 @@ param2: value2
 
 ### Custom Scripts
 
-Create custom scripts with a metadata header:
+Start a custom script with a block-comment header. The opening `/**` must be on its own line, and each tag is written as `@tag value` (no colon). Without a header, the script ID is the file name.
 
 ```javascript
-// @id: my-custom-script
-// @name: My Custom Script
-// @description: Does something useful
+/**
+ * @id my-custom-script
+ * @name My Custom Script
+ * @description Does something useful
+ */
 
 const folder = dv.current().file.folder;
 dv.table(['Name', 'Status'],
