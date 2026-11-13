@@ -527,7 +527,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 		new Setting(card)
 			.setName("Reload default scripts on load")
-			.setDesc("When on, default scripts are reset to plugin defaults when Obsidian loads. When off, your edited scripts are kept (raw).")
+			.setDesc("When on, built-in scripts you have not edited are updated to the latest defaults when Obsidian loads; scripts you edited are kept (use Reset to restore a default). When off, existing built-in scripts are never changed.")
 			.addToggle(t => {
 				t.setValue(this.plugin.settings.dataviewReloadDefaultsOnLoad !== false)
 					.onChange(async (v) => {

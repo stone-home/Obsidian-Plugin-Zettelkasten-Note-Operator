@@ -3,6 +3,30 @@ import { IDataviewScript, IDataviewParameter } from "./types";
 import { DataviewScriptBuilder } from "./builder";
 import { Logger } from "../logger";
 
+/**
+ * Per built-in script: `written` = hash of the content the plugin last wrote to the file,
+ * `seen` = hash of the default content last evaluated (used to report a skipped default once).
+ */
+export type DefaultScriptState = Record<string, { written: string; seen: string }>;
+
+export interface DataviewJSManagerOptions {
+	getOverwriteDefaultsOnLoad?: () => boolean;
+	getDefaultScriptState?: () => DefaultScriptState;
+	saveDefaultScriptState?: (state: DefaultScriptState) => void | Promise<void>;
+	notify?: (message: string) => void;
+}
+
+/** FNV-1a (32-bit) over the content with line endings normalised to LF; returned as hex. */
+export function hashContent(content: string): string {
+	const text = content.replace(/\r\n/g, "\n");
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		hash ^= text.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, "0");
+}
+
 export class DataviewJSManager extends Component {
 	static defaultContentById: Map<string, string> = new Map();
 
@@ -11,18 +35,18 @@ export class DataviewJSManager extends Component {
 	private scripts: Map<string, IDataviewScript> = new Map();
 	private scriptCache: Map<string, string> = new Map();
 	private scriptsFolder: string;
-	private getOverwriteDefaultsOnLoad: (() => boolean) | undefined;
+	private options: DataviewJSManagerOptions;
 	private logger = Logger.createLogger("DataviewJSManager");
 
 	constructor(
 		app: App,
 		scriptsFolder: string = "dataview-scripts",
-		options?: { getOverwriteDefaultsOnLoad?: () => boolean },
+		options: DataviewJSManagerOptions = {},
 	) {
 		super();
 		this.app = app;
 		this.scriptsFolder = scriptsFolder;
-		this.getOverwriteDefaultsOnLoad = options?.getOverwriteDefaultsOnLoad;
+		this.options = options;
 	}
 
 	/** Update scripts folder and clear cache so next onload() loads from new path. Call cleanUpFileWatchers() before this when refreshing. */
@@ -678,14 +702,65 @@ export class DataviewJSManager extends Component {
 			},
 		];
 
-		const overwriteDefaults = this.getOverwriteDefaultsOnLoad?.() !== false;
+		const overwriteDefaults = this.options.getOverwriteDefaultsOnLoad?.() !== false;
+		const state: DefaultScriptState = { ...(this.options.getDefaultScriptState?.() ?? {}) };
+		let stateChanged = false;
+		const notApplied: string[] = [];
+
 		for (const script of scripts) {
-			await this.createScript(script.id, script.name, script.script, {
-				overwrite: script.overwrite && overwriteDefaults,
-			});
 			const fullContent =
 				this.buildScriptHeader(script.id, script.name) + script.script;
 			DataviewJSManager.defaultContentById.set(script.id, fullContent);
+
+			const defaultHash = hashContent(fullContent);
+			const recorded = state[script.id];
+			const existing = this.app.vault.getAbstractFileByPath(
+				`${this.scriptsFolder}/${script.id}.js`,
+			);
+
+			if (!(existing instanceof TFile)) {
+				await this.createScript(script.id, script.name, script.script);
+				if (overwriteDefaults) {
+					state[script.id] = { written: defaultHash, seen: defaultHash };
+					stateChanged = true;
+				}
+				continue;
+			}
+
+			const currentHash = hashContent(await this.app.vault.read(existing));
+			if (currentHash === defaultHash) {
+				if (overwriteDefaults && (recorded?.written !== defaultHash || recorded?.seen !== defaultHash)) {
+					state[script.id] = { written: defaultHash, seen: defaultHash };
+					stateChanged = true;
+				}
+				continue;
+			}
+
+			// No record yet: the file was force-overwritten on every load by older versions,
+			// so it holds an old default. Update it once; from then on edits are protected.
+			const unedited = !recorded || currentHash === recorded.written;
+			if (overwriteDefaults && script.overwrite !== false && unedited) {
+				await this.createScript(script.id, script.name, script.script, { overwrite: true });
+				state[script.id] = { written: defaultHash, seen: defaultHash };
+				stateChanged = true;
+				continue;
+			}
+
+			// Edited by the user, or updates are off: keep the file, report this default once.
+			if (recorded?.seen !== defaultHash) {
+				notApplied.push(script.id);
+				state[script.id] = { written: recorded?.written ?? "", seen: defaultHash };
+				stateChanged = true;
+			}
+		}
+
+		if (stateChanged) {
+			await this.options.saveDefaultScriptState?.(state);
+		}
+		if (notApplied.length > 0) {
+			this.options.notify?.(
+				`Zettelkasten Operator: newer defaults were not applied to these edited built-in Dataview scripts: ${notApplied.join(", ")}. Use Reset in Settings → Dataview to get the new default.`,
+			);
 		}
 	}
 

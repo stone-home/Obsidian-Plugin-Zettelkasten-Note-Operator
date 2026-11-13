@@ -30,6 +30,16 @@ export class DataviewCommand {
 			{
 				getOverwriteDefaultsOnLoad: () =>
 					this.plugin.settings.dataviewReloadDefaultsOnLoad !== false,
+				getDefaultScriptState: () =>
+					this.plugin.settings.dataviewDefaultScriptHashes ?? {},
+				saveDefaultScriptState: async (state) => {
+					this.plugin.settings.dataviewDefaultScriptHashes = state;
+					// Some callers (tests, early startup) pass a plugin without saveSettings.
+					if (typeof this.plugin.saveSettings === "function") {
+						await this.plugin.saveSettings();
+					}
+				},
+				notify: (message) => new Notice(message, 15000),
 			},
 		);
 	}
