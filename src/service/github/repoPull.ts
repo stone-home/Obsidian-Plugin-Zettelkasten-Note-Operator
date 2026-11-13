@@ -28,8 +28,9 @@ export function generateRuleId(existing: string[]): string {
 	return id;
 }
 
+/** True when any segment is "..", splitting on both "/" and "\\" (normalizePath turns "\\" into "/"). */
 function hasParentSegment(path: string): boolean {
-	return path.split("/").some((segment) => segment.trim() === "..");
+	return path.split(/[\\/]/).some((segment) => segment.trim() === "..");
 }
 
 /** @returns a message describing what is wrong with the rule, or null when it is usable. */
@@ -79,5 +80,7 @@ export function resolvePullTarget(projectFolder: string, target: string, fileNam
 	}
 	const root = normalizePath(projectFolder);
 	const path = normalizePath(`${root}/${target}/${fileName}`);
+	// Check again after normalising, in case separators were rewritten.
+	if (hasParentSegment(path)) return null;
 	return path.startsWith(`${root}/`) ? path : null;
 }
