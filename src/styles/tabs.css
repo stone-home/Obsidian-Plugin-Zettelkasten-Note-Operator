@@ -56,67 +56,34 @@
 	white-space: nowrap;
 }
 
-/* Section: a text title and a short description, then its settings. No box. */
-.zettel-section-header {
-	margin: var(--zk-gap-l) 0 var(--zk-gap-m);
+/* Section and sub-section titles are native heading rows; only their spacing is set here.
+   Setting rows themselves are left to Obsidian and the theme. */
+.zettel-settings-wrapper .zettel-section-header {
+	margin-top: var(--zk-gap-l);
 }
 
 .zettel-tab-content > .zettel-section-header:first-child {
 	margin-top: 0;
 }
 
+.zettel-settings-wrapper .zk-subtitle {
+	margin-top: var(--zk-gap-m);
+}
+
+/* Title of the template editor, next to the back button. */
 .zettel-settings-wrapper .zettel-section-title {
 	margin: 0;
+	padding: 0;
 	font-size: calc(var(--font-ui-medium) * 1.2);
 	font-weight: var(--font-semibold);
 	line-height: var(--line-height-tight);
 	color: var(--text-normal);
 }
 
-.zettel-settings-wrapper .zettel-section-desc {
-	margin: 4px 0 0;
-	max-width: 70ch;
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	line-height: 1.45;
-}
-
-/* A group of settings under a section title: a rule line on top, no box. */
-.zettel-settings-card {
-	border-top: 1px solid var(--background-modifier-border);
-	padding-top: var(--zk-gap-m);
-}
-
 .zettel-settings-card + .zettel-settings-card {
 	margin-top: 24px;
 }
 
-.zettel-settings-card > .setting-item:first-child {
-	border-top: none;
-	padding-top: 0;
-}
-
 .zettel-settings-card .setting-item-description {
 	max-width: 60ch;
-}
-
-/* Sub-heading inside a section (System prompt, Rules, Scripts). */
-.zettel-settings-wrapper .zk-subtitle {
-	margin: 20px 0 0;
-	font-size: var(--font-ui-medium);
-	font-weight: var(--font-semibold);
-	line-height: var(--line-height-tight);
-	color: var(--text-normal);
-}
-
-.zettel-settings-card > .zk-subtitle:first-child {
-	margin-top: 0;
-}
-
-.zettel-settings-wrapper .zk-subdesc {
-	margin: 2px 0 var(--zk-gap-s);
-	max-width: 70ch;
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	line-height: 1.45;
 }

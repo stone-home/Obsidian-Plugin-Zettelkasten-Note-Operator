@@ -225,17 +225,19 @@ export class SampleSettingTab extends PluginSettingTab {
 		};
 	}
 
-	/** Section title with a one-line description. */
+	/**
+	 * Section title with a one-line description. A native heading row, so the app
+	 * and the active theme lay it out like every other settings heading.
+	 */
 	private renderSectionHeader(parent: HTMLElement, title: string, desc: string): void {
-		const header = parent.createDiv({ cls: 'zettel-section-header' });
-		header.createEl('h2', { text: title, cls: 'zettel-section-title' });
-		header.createEl('p', { text: desc, cls: 'zettel-section-desc' });
+		new Setting(parent).setName(title).setDesc(desc).setHeading().settingEl.addClass('zettel-section-header');
 	}
 
-	/** Sub-heading inside a section, with an optional description. */
+	/** Sub-heading inside a section, with an optional description; also a native heading row. */
 	private renderSubtitle(parent: HTMLElement, title: string, desc?: string): void {
-		parent.createEl('h3', { text: title, cls: 'zk-subtitle' });
-		if (desc) parent.createEl('p', { text: desc, cls: 'zk-subdesc' });
+		const heading = new Setting(parent).setName(title).setHeading();
+		if (desc) heading.setDesc(desc);
+		heading.settingEl.addClass('zk-subtitle');
 	}
 
 	/**
