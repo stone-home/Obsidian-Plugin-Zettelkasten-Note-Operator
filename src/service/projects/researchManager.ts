@@ -649,7 +649,7 @@ export class ResearchManager {
 
 	/**
 	 * Full prefix for child notes: project code + creation date (e.g. "TP20260213").
-	 * Uses Dashboard frontmatter `created` (YYYY-MM-DD); if missing, uses Dashboard file ctime.
+	 * Uses Dashboard frontmatter `create` (YYYY-MM-DD, written by markdown-note-orm); if missing, uses Dashboard file ctime.
 	 */
 	private getProjectPrefix(projectFile: TFile): string {
 		const code = this.getProjectCode(projectFile);
@@ -716,7 +716,6 @@ export class ResearchManager {
 				conferences: [],
 				granularity: "day",
 				project_code: "",
-				created: new Date().toISOString().slice(0, 10),
 			},
 			[
 				{
