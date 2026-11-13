@@ -190,9 +190,11 @@ export class DataviewCommand {
 
 		const params: Record<string, any> = {};
 		lines.slice(1).forEach((line) => {
-			const [key, ...rest] = line.split(/[=:]/);
-			const value = rest.join(":").trim();
-			const normalizedKey = key?.trim();
+			// Split at the first "=" or ":" only; the value keeps any later separators as typed.
+			const sep = line.search(/[=:]/);
+			if (sep < 0) return;
+			const normalizedKey = line.slice(0, sep).trim();
+			const value = line.slice(sep + 1).trim();
 			if (!normalizedKey || value.length === 0) return;
 			try {
 				params[normalizedKey] = JSON.parse(value);
