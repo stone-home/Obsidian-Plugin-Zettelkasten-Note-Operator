@@ -44,6 +44,11 @@ export class CodeProjectManager {
 			title,
 			config,
 		);
+		// createByType seeds type defaults (e.g. url: "") and keeps them when applying the
+		// template, so values passed here would be dropped. Set them explicitly.
+		for (const [key, value] of Object.entries(extraProps)) {
+			note.properties.set(key, value);
+		}
 		await note.save();
 		return this.app.vault.getAbstractFileByPath(filePath) as TFile;
 	}
