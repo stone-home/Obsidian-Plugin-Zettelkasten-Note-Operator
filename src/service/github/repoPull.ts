@@ -43,10 +43,10 @@ export function validatePullRule(rule: GithubPullRule): string | null {
 		return "Set the target folder inside the project.";
 	}
 	if (target.startsWith("/") || /^[A-Za-z]:[\\/]/.test(target)) {
-		return "The target folder must be relative to the project folder.";
+		return 'The target folder must be a relative path starting from the project folder, e.g. "runs" (no leading "/").';
 	}
 	if (hasParentSegment(target)) {
-		return 'The target folder must not contain "..".';
+		return 'The target folder must stay inside the project folder: ".." is not allowed.';
 	}
 	try {
 		new RegExp(rule.filePattern);

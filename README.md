@@ -313,7 +313,7 @@ Pull experiment notes, results or figures from the project's repo (the dashboard
 1. In **Settings → Projects → GitHub pull rules**, click **Add pull rule** and fill in:
    - **Repo folder**: a folder in the repo, e.g. `pkm`. Only files directly inside it are pulled (no subfolders).
    - **File name pattern**: a regular expression tested against the file name, e.g. `\.md$` or `\.(png|pdf|csv)$`.
-   - **Target folder**: where the files go inside the project folder, e.g. `runs`.
+   - **Target folder**: a relative path that starts from the research project folder, e.g. `runs` puts files in `<project>/runs` and `results/figures` in `<project>/results/figures`. A leading `/` or `..` is rejected. Missing folders are created.
    Each rule gets a random id, shown in the settings.
 2. In the project dashboard's **Quick Actions**, pick a rule in the **Pull** dropdown and click **Add**. The ids are stored in the dashboard's `github_pull` list; **Remove** takes a rule out again.
 3. Click **Pull from GitHub**.
