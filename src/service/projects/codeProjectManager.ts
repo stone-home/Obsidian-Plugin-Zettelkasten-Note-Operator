@@ -42,6 +42,8 @@ export function buildUnreleasedCommitsNote(input: {
 	totalCommits: number;
 	truncated: boolean;
 	commits: UnreleasedCommit[];
+	/** Set when the comparison failed; the note then says so instead of "no unreleased commits". */
+	error?: string;
 }): string {
 	const frontmatter = {
 		type: "permanent",
@@ -52,6 +54,7 @@ export function buildUnreleasedCommitsNote(input: {
 		total_commits: input.totalCommits,
 		truncated: input.truncated,
 		commits: input.commits,
+		...(input.error ? { error: input.error } : {}),
 	};
 	const yaml = stringifyYaml(frontmatter);
 	const cell = (text: string) => text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
@@ -65,7 +68,9 @@ export function buildUnreleasedCommitsNote(input: {
 		}
 	}
 	lines.push("");
-	if (input.commits.length === 0) {
+	if (input.error) {
+		lines.push(`Could not load the unreleased commits: ${input.error}`);
+	} else if (input.commits.length === 0) {
 		lines.push("No unreleased commits.");
 	} else {
 		lines.push("| sha | message | date | url |", "| --- | --- | --- | --- |");
@@ -388,8 +393,9 @@ export class CodeProjectManager {
 
 		let commits: UnreleasedCommit[] = [];
 		let totalCommits = 0;
+		let compareError: string | undefined;
+		let compare: any;
 		if (latestRelease?.tag_name) {
-			let compare: any;
 			try {
 				compare = await client.compareCommits(
 					owner,
@@ -398,26 +404,28 @@ export class CodeProjectManager {
 					defaultBranch,
 				);
 			} catch (err) {
-				throw new Error(
+				compareError =
 					`Synced ${releases.length} releases, but ` +
-						describeGitHubError(
-							err,
-							`comparing ${latestRelease.tag_name}...${defaultBranch}`,
-							!!token,
-							"ref",
-						),
-				);
+					describeGitHubError(
+						err,
+						`comparing ${latestRelease.tag_name}...${defaultBranch}`,
+						!!token,
+						"ref",
+					);
 			}
-			commits = (compare?.commits || []).map((c: any) => ({
+		}
+		if (compare) {
+			commits = (compare.commits || []).map((c: any) => ({
 				sha: String(c.sha ?? "").substring(0, 7),
 				message: String(c.commit?.message ?? "").split("\n")[0],
 				date: c.commit?.author?.date || "",
 				url: c.html_url || "",
 			}));
-			totalCommits = Number(compare?.total_commits ?? commits.length);
+			totalCommits = Number(compare.total_commits ?? commits.length);
 		}
 
-		// Rewritten as a whole each time: the set of unreleased commits changes between refreshes.
+		// Rewritten as a whole each time (also when the comparison failed, so stale commits
+		// do not linger): the set of unreleased commits changes between refreshes.
 		await this.writeUnreleasedCommitsNote(projectFolder, buildUnreleasedCommitsNote({
 			project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
 			base: latestRelease?.tag_name ?? null,
@@ -425,7 +433,11 @@ export class CodeProjectManager {
 			totalCommits,
 			truncated: totalCommits > commits.length,
 			commits,
+			error: compareError,
 		}));
+		if (compareError) {
+			throw new Error(compareError);
+		}
 
 		const legacyCommitNotes = await this.cleanUpLegacyCommitNotes(projectFile, projectFolder, options);
 		const summary: RefreshSummary = {
