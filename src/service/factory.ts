@@ -100,7 +100,6 @@ export class NoteFactory extends Component {
 		option: INoteOption,
 		title: string
 	): Promise<ZettelNoteModel | null> {
-		console.error("option", option);
 		let finalTitle = title;
 		if (option.extraInfo?.prefix) {
 			const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
