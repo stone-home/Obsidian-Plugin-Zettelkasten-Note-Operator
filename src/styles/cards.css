@@ -422,6 +422,13 @@
 	display: none;
 }
 
+/* A body that lists rows (the templates of a note type): set it apart from the head. */
+.zk-object-rows {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 /* Title input of a template body section. */
 .zk-object-head > input[type="text"] {
 	flex: 1 1 auto;

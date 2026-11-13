@@ -857,6 +857,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		);
 		obj.nameEl.addClass('is-capitalized');
 		obj.head.addClass('is-clickable');
+		obj.body.addClass('zk-object-rows');
 
 		new ButtonComponent(obj.actions).setButtonText('Add template').onClick(async (e) => {
 			e.stopPropagation(); // [CRITICAL]: Stop click from bubbling up to toggle the accordion
