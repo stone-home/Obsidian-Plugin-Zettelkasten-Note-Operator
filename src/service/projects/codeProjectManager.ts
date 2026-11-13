@@ -57,7 +57,11 @@ export function buildUnreleasedCommitsNote(input: {
 		...(input.error ? { error: input.error } : {}),
 	};
 	const yaml = stringifyYaml(frontmatter);
-	const cell = (text: string) => text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+	const cell = (text: string) =>
+		text
+			.replace(/\r?\n/g, " ")
+			.replace(/\\/g, "\\\\")
+			.replace(/\|/g, "\\|");
 	const lines = [`# ${UNRELEASED_COMMITS_NOTE}`, ""];
 	if (input.base === null) {
 		lines.push("No release yet, so there is nothing to compare. Rewritten on every Refresh.");
