@@ -8,10 +8,10 @@ const CODE_BLOCK_DEBOUNCE_MS = 350;
 
 type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any };
 
+/** Debounced renders of one block, one payload per element (several panes can show the same block). */
 type PendingDvjsEntry = {
 	timer: ReturnType<typeof setTimeout> | null;
-	seq: number;
-	latest: PendingDvjsPayload | null;
+	byElement: Map<HTMLElement, PendingDvjsPayload>;
 };
 
 export class DataviewCommand {
@@ -137,49 +137,50 @@ export class DataviewCommand {
 			return;
 		}
 
+		const payload: PendingDvjsPayload = { source, el, ctx };
+
+		// Reading mode / first paint: `el` is not in the document yet. Render it on its own
+		// (no debounce key), after it has had a chance to be attached.
+		if (el.isConnected !== true) {
+			setTimeout(() => {
+				const run = () => {
+					void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
+				};
+				if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
+					requestAnimationFrame(() => {
+						requestAnimationFrame(run);
+					});
+				} else {
+					run();
+				}
+			}, 0);
+			return;
+		}
+
+		// Live Preview: `el` is in the document while typing. Debounce per block to avoid cursor
+		// jumps, but keep one payload per element so a second pane showing the same block renders too.
 		const key = this.debounceKeyForBlock(el, ctx, source);
 		let entry = this.pendingDvjsByKey.get(key);
 		if (!entry) {
-			entry = { timer: null, seq: 0, latest: null };
+			entry = { timer: null, byElement: new Map() };
 			this.pendingDvjsByKey.set(key, entry);
 		}
-
-		entry.latest = { source, el, ctx };
-		entry.seq += 1;
-		const generation = entry.seq;
+		entry.byElement.set(el, payload);
 
 		if (entry.timer != null) {
 			clearTimeout(entry.timer);
-			entry.timer = null;
 		}
-
-		// Live Preview: `el` is in-document while typing — debounce to avoid cursor jumps.
-		// Reading mode / first paint: `el` is often not connected yet — run ASAP (0) and rAF-wait if still detached.
-		const debounceMs = el.isConnected === true ? CODE_BLOCK_DEBOUNCE_MS : 0;
-
-		entry.timer = setTimeout(() => {
-			const e = entry;
-			e.timer = null;
-			if (e.seq !== generation) {
-				return;
-			}
-			// Latest render for this block: drop the entry so it no longer holds the element.
+		const current = entry;
+		current.timer = setTimeout(() => {
+			current.timer = null;
+			// Drop the entry so it no longer holds the elements.
 			this.pendingDvjsByKey.delete(key);
-			const payload = e.latest;
-			if (!payload) {
-				return;
+			for (const pending of current.byElement.values()) {
+				// An element that left the document was replaced by a newer render of the block.
+				if (pending.el.isConnected === false) continue;
+				void this.runDvjsBlock(pending.source, pending.el, pending.ctx);
 			}
-			const run = () => {
-				void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
-			};
-			if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
-				requestAnimationFrame(() => {
-					requestAnimationFrame(run);
-				});
-			} else {
-				run();
-			}
-		}, debounceMs);
+		}, CODE_BLOCK_DEBOUNCE_MS);
 	}
 
 	private async runDvjsBlock(source: string, el: HTMLElement, ctx: any): Promise<void> {
