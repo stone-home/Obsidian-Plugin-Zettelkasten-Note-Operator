@@ -376,7 +376,7 @@
 
 
 /* --- Dataview Script Editor Modal --- */
-.zettelkasten-script-editor-modal .zk-script-editor-content {
+.zettelkasten-script-editor-modal .zettelkasten-script-editor-content {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
@@ -407,7 +407,7 @@
 
 .zettelkasten-script-editor-modal .zk-script-editor-codemirror-wrap {
 	width: 100%;
-	min-height: 420px;
+	min-height: min(420px, 50vh);
 }
 
 .zettelkasten-script-editor-modal .zk-script-editor-codemirror-wrap .cm-editor {
