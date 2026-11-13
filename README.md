@@ -318,6 +318,8 @@ Pull experiment notes, results or figures from the project's repo (the dashboard
 2. In the project dashboard's **Quick Actions**, pick a rule in the **Pull** dropdown and click **Add**. The ids are stored in the dashboard's `github_pull` list; **Remove** takes a rule out again.
 3. Click **Pull from GitHub**.
 
+A public repo can be pulled without a PAT: tick **Public** in Quick Actions. Without a PAT, GitHub allows 60 requests per hour, and each listed folder and each downloaded file is one request.
+
 The repo wins: a file that changed in the repo overwrites the local copy, so edits made in the vault to pulled files are lost on the next pull. Files that are unchanged (same git blob id) are skipped, and local files are never deleted. A notice reports how many files were added, updated, skipped or failed. GitHub lists at most 1000 entries per folder.
 
 Push to GitHub sends all changed prompts in a single commit and skips prompts that are already up to date.
@@ -498,6 +500,9 @@ interface ZettelkastenOperator {
   createResearchDraft(projectPath: string, title: string, templateOptionIndex?: number): Promise<TFile>
   updateResearchDashboardProperties(projectPath: string, updates: object): Promise<void>
   pushToGitHub(projectPath: string, tokenKey?: string): Promise<void>
+  getPullRules(): GithubPullRule[]
+  setResearchPullRules(projectPath: string, ids: string[]): Promise<void>
+  pullFromGitHub(projectPath: string, tokenKey?: string): Promise<{ added: number; updated: number; skipped: number; failed: number; unknownRules: string[]; warnings: string[] }>
 
   // Code Project Methods
   createCodeRequirement(projectPath: string, title: string): Promise<TFile>
