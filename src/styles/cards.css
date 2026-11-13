@@ -92,6 +92,78 @@
 	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
 }
 
+/* Group title inside Quick Actions (GitHub, Pull). */
+.zk-pqa-title {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+/* GitHub settings: labelled fields, two per line when there is room. */
+.zk-pqa-fields {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 8px 20px;
+}
+
+.zk-pqa-field {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.zk-pqa-field .zk-pqa-label {
+	flex: 0 0 7em;
+}
+
+.zk-pqa-field .zk-pqa-input,
+.zk-pqa-field .zk-pqa-select {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* Pull: the project's rules, then the add row with the one filled button. */
+.zk-pqa-pull {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zk-pqa-rule-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.zk-pqa-rule-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 0.9rem;
+	overflow-wrap: anywhere;
+}
+
+.zk-pqa-pull-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+
+.zk-pqa-pull-foot .zk-pqa-btn-primary {
+	margin-left: auto;
+}
+
+/* Secondary action: not filled, so the primary button stands out. */
+.zk-pqa-btn.zk-pqa-btn-secondary {
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: none;
+	font-weight: 500;
+	padding: 6px 12px;
+}
+
 /* Toggle Switch */
 .zk-pqa-toggle {
 	position: relative;
