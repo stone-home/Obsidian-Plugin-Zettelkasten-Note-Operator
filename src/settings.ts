@@ -567,7 +567,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				'Only files directly inside this folder are pulled, not subfolders.');
 			field('File name pattern', 'e.g. \\.md$', rule.filePattern, (v) => { rule.filePattern = v; },
 				'Regular expression tested against each file name.', true);
-			field('Target folder', 'e.g. runs', rule.target, (v) => { rule.target = v.trim(); },
+			field('Download folder', 'e.g. runs', rule.target, (v) => { rule.target = v.trim(); },
 				'Relative path from the research project folder: "runs" puts files in <project>/runs. No leading "/" and no "..".');
 			showProblem();
 		});

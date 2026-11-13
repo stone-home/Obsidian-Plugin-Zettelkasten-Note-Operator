@@ -774,7 +774,7 @@ export class ResearchManager {
 		const path = resolvePullTarget(projectFolder, rule.target, entry.name);
 		if (!path) {
 			summary.failed++;
-			summary.warnings.push(`Skipped "${entry.name}": the file name or the target folder "${rule.target}" cannot be used in this vault.`);
+			summary.warnings.push(`Skipped "${entry.name}": the file name or the download folder "${rule.target}" cannot be used in this vault.`);
 			return;
 		}
 		const existing = this.app.vault.getAbstractFileByPath(path);

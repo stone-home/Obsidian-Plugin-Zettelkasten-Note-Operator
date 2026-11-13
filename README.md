@@ -111,7 +111,7 @@ A new research dashboard contains these sections, each a `zettelkasten-query` bl
 
 | Section | Script | Shows |
 |---------|--------|-------|
-| Quick Actions | `zk-research-quick-actions` | Create objectives, steps, experiments and drafts; repo, branch, target folder, PAT and Public settings; the Pull group; the drafts list |
+| Quick Actions | `zk-research-quick-actions` | Create objectives, steps, experiments and drafts; repo, branch, PAT, Public and push folder settings; the Pull group; the drafts list |
 | Data Pipeline Visualization | `zk-research-target-conference` | The takeaway workflow diagram and the target conferences from `conferences` |
 | AI Pipeline Tracking | `zk-research-ai-pipeline-tracking` | Drafts with their status, prompt copies and latest prompt |
 | Atomic Intelligence | `zk-research-ai-pipeline`, `zk-research-atomic-notes` | Literature, Atom, Permanent and Lexicon notes whose `projects` contains this project's `project_id` |
@@ -127,7 +127,7 @@ Dashboard frontmatter used by the plugin:
 | `project_code` | Prefix code for child note names; empty means initials of the folder name | empty |
 | `repo`, `defaultBranch` | GitHub repo (`owner/name`) and branch for push and pull | empty, `main` |
 | `github_token_key`, `public_repo` | Selected PAT (SecretStorage key) and whether the repo is public | empty, `true` |
-| `github_target_folder` | Repo folder that prompts are pushed to | `prompts` |
+| `github_target_folder` | Repo folder that prompts are pushed to ("Push folder" in Quick Actions) | `prompts` |
 | `github_pull` | Ids of the pull rules this project uses | `[]` |
 | `conferences` | Links to CFP notes for the target conference table | `[]` |
 | `granularity` | Gantt scale: `day`, `week` or `month` | `day` |
@@ -160,7 +160,7 @@ Pull experiment notes, results or figures from the project's repo (the dashboard
 1. In **Settings → Projects → GitHub pull rules**, click **Add pull rule** and fill in:
    - **Repo folder**: a folder in the repo, e.g. `pkm`. Only files directly inside it are pulled (no subfolders).
    - **File name pattern**: a regular expression tested against the file name, e.g. `\.md$` or `\.(png|pdf|csv)$`.
-   - **Target folder**: a relative path that starts from the research project folder, e.g. `runs` puts files in `<project>/runs` and `results/figures` in `<project>/results/figures`. A leading `/` or `..` is rejected. Missing folders are created.
+   - **Download folder**: a relative path that starts from the research project folder, e.g. `runs` puts files in `<project>/runs` and `results/figures` in `<project>/results/figures`. A leading `/` or `..` is rejected. Missing folders are created.
    Each rule gets a random id, shown in the settings.
 2. In the project dashboard's **Quick Actions**, pick a rule in the **Pull** dropdown and click **Add**. The ids are stored in the dashboard's `github_pull` list; **Remove** takes a rule out again.
 3. Click **Pull from GitHub**.
