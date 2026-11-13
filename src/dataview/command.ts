@@ -163,9 +163,10 @@ export class DataviewCommand {
 			if (e.seq !== generation) {
 				return;
 			}
+			// Latest render for this block: drop the entry so it no longer holds the element.
+			this.pendingDvjsByKey.delete(key);
 			const payload = e.latest;
 			if (!payload) {
-				this.pendingDvjsByKey.delete(key);
 				return;
 			}
 			const run = () => {
