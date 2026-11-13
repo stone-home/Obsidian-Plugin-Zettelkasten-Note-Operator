@@ -704,3 +704,49 @@
 	color: var(--text-muted);
 	font-size: 0.82em;
 }
+
+/* GitHub pull rules: one compact row per rule */
+.zk-pull-rule-row {
+	display: grid;
+	grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(90px, 1fr) auto auto;
+	gap: 6px;
+	align-items: center;
+	padding: 4px 0;
+}
+
+.zk-pull-rule-row input {
+	width: 100%;
+	min-width: 0;
+}
+
+.zk-pull-rule-head {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	padding-bottom: 0;
+}
+
+.zk-pull-rule-id {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.zk-pull-rule-problem {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-error);
+	padding-bottom: 4px;
+}
+
+.zk-pull-rule-problem.is-hidden {
+	display: none;
+}
+
+@media (max-width: 700px) {
+	.zk-pull-rule-row {
+		grid-template-columns: 1fr 1fr;
+	}
+	.zk-pull-rule-head {
+		display: none;
+	}
+}

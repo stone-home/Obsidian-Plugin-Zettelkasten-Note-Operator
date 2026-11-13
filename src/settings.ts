@@ -496,63 +496,52 @@ export class SampleSettingTab extends PluginSettingTab {
 		if (rules.length === 0) {
 			card.createEl('p', { text: 'No rules yet.', cls: 'setting-item-description' });
 		}
+		if (rules.length > 0) {
+			// Column titles once, instead of a labelled row per field.
+			const head = card.createDiv({ cls: 'zk-pull-rule-row zk-pull-rule-head' });
+			['Label', 'Repo folder (top level only)', 'File name pattern (regex)', 'Target folder in project', 'Id', ''].forEach((title) =>
+				head.createSpan({ text: title })
+			);
+		}
 		rules.forEach((rule, idx) => {
-			const block = card.createDiv({ cls: 'zk-ai-rule-block' });
-			const problem = block.createDiv({ cls: 'setting-item-description' });
+			const row = card.createDiv({ cls: 'zk-pull-rule-row' });
+			const problem = card.createDiv({ cls: 'zk-pull-rule-problem' });
 			const showProblem = () => {
 				const message = validatePullRule(rule);
 				problem.setText(message ?? '');
-				problem.style.color = message ? 'var(--text-error)' : '';
+				problem.toggleClass('is-hidden', !message);
 			};
-			const save = async () => {
-				showProblem();
-				await this.plugin.saveSettings();
+			const field = (placeholder: string, value: string, title: string, apply: (v: string) => void) => {
+				const input = row.createEl('input', { type: 'text', placeholder, attr: { 'aria-label': title, title } });
+				input.value = value;
+				input.addEventListener('input', async () => {
+					apply(input.value);
+					showProblem();
+					await this.plugin.saveSettings();
+				});
 			};
+			field('e.g. Run notes', rule.label ?? '', 'Label', (v) => { rule.label = v.trim() || undefined; });
+			field('e.g. pkm', rule.sourceDir, 'Repo folder', (v) => { rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, ''); });
+			field('e.g. \\.md$', rule.filePattern, 'File name pattern', (v) => { rule.filePattern = v; });
+			field('e.g. runs', rule.target, 'Target folder', (v) => { rule.target = v.trim(); });
 
-			new Setting(block)
-				.setName(`Rule ${rule.id}`)
-				.setDesc('Id used by projects (stored in their github_pull list).')
-				.addExtraButton((b) =>
-					b.setIcon('copy').setTooltip('Copy id').onClick(async () => {
-						try {
-							await navigator.clipboard.writeText(rule.id);
-							new Notice(`Copied ${rule.id}`);
-						} catch {
-							new Notice(rule.id);
-						}
-					})
-				)
-				.addExtraButton((b) =>
-					b.setIcon('trash').setTooltip('Remove rule').onClick(async () => {
-						this.plugin.settings.githubPullRules = rules.filter((_, i) => i !== idx);
-						await this.plugin.saveSettings();
-						this.display();
-					})
-				);
-			new Setting(block).setName('Label').addText((t) =>
-				t.setPlaceholder('e.g. Run notes').setValue(rule.label ?? '').onChange(async (v) => {
-					rule.label = v.trim() || undefined;
-					await save();
-				})
-			);
-			new Setting(block).setName('Repo folder').setDesc('Only files directly in this folder are pulled.').addText((t) =>
-				t.setPlaceholder('e.g. pkm').setValue(rule.sourceDir).onChange(async (v) => {
-					rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, '');
-					await save();
-				})
-			);
-			new Setting(block).setName('File name pattern').setDesc('Regular expression tested against the file name.').addText((t) =>
-				t.setPlaceholder('e.g. \\.md$').setValue(rule.filePattern).onChange(async (v) => {
-					rule.filePattern = v;
-					await save();
-				})
-			);
-			new Setting(block).setName('Target folder').setDesc('Inside the research project folder.').addText((t) =>
-				t.setPlaceholder('e.g. runs').setValue(rule.target).onChange(async (v) => {
-					rule.target = v.trim();
-					await save();
-				})
-			);
+			const idCell = row.createDiv({ cls: 'zk-pull-rule-id', attr: { title: 'Id stored in a project\'s github_pull list. Click to copy.' } });
+			idCell.setText(rule.id);
+			idCell.addEventListener('click', async () => {
+				try {
+					await navigator.clipboard.writeText(rule.id);
+					new Notice(`Copied ${rule.id}`);
+				} catch {
+					new Notice(rule.id);
+				}
+			});
+			const remove = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Remove rule' } });
+			setIcon(remove, 'trash');
+			remove.addEventListener('click', async () => {
+				this.plugin.settings.githubPullRules = rules.filter((_, i) => i !== idx);
+				await this.plugin.saveSettings();
+				this.display();
+			});
 			showProblem();
 		});
 
