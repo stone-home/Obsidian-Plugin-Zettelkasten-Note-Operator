@@ -42,7 +42,7 @@ class PropertyCreationModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.addClass('zettelkasten-modal');
-		contentEl.createEl('h2', { text: 'Add New Property', cls: 'modal-title' });
+		contentEl.createEl('h2', { text: 'Add property', cls: 'modal-title' });
 
 		const container = contentEl.createDiv();
 		container.setAttr('style', 'display:flex; flex-direction:column; gap:15px');
@@ -141,6 +141,9 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	private expandedScriptIds: Set<string> = new Set();
 
+	/** Counter for field ids, so each label can point at its control. Reset on every redraw. */
+	private fieldSeq = 0;
+
 	constructor(app: App, plugin: MyPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
@@ -155,6 +158,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		const scrollTop = renderKey === this.lastRenderKey ? containerEl.scrollTop : 0;
 		containerEl.empty();
 		containerEl.addClass('zettel-settings-wrapper');
+		this.fieldSeq = 0;
 
 		// [LOGIC]: Safety check to ensure array exists
 		if (!this.plugin.settings.createNoteOptions) {
@@ -204,9 +208,11 @@ export class SampleSettingTab extends PluginSettingTab {
 		tab: 'general' | 'projects' | 'dataview' | 'templates',
 		iconName?: string
 	) {
+		const isActive = this.activeTab === tab;
 		const btn = parent.createEl('button', {
-			cls: `zettel-tab-button ${this.activeTab === tab ? 'active' : ''}`,
+			cls: `zettel-tab-button ${isActive ? 'active' : ''}`,
 		});
+		if (isActive) btn.setAttr('aria-current', 'page');
 		if (iconName) {
 			const iconSpan = btn.createSpan('zettel-tab-icon');
 			setIcon(iconSpan, iconName);
@@ -219,13 +225,43 @@ export class SampleSettingTab extends PluginSettingTab {
 		};
 	}
 
+	/** Section title with a one-line description. */
+	private renderSectionHeader(parent: HTMLElement, title: string, desc: string): void {
+		const header = parent.createDiv({ cls: 'zettel-section-header' });
+		header.createEl('h2', { text: title, cls: 'zettel-section-title' });
+		header.createEl('p', { text: desc, cls: 'zettel-section-desc' });
+	}
+
+	/** Sub-heading inside a section, with an optional description. */
+	private renderSubtitle(parent: HTMLElement, title: string, desc?: string): void {
+		parent.createEl('h3', { text: title, cls: 'zk-subtitle' });
+		if (desc) parent.createEl('p', { text: desc, cls: 'zk-subdesc' });
+	}
+
+	/**
+	 * One item of a list that has several fields (a rule, a script, a note type):
+	 * a head with its name, an optional id and its actions, and a body for the fields.
+	 */
+	private createObject(parent: HTMLElement, name: string, id?: string) {
+		const el = parent.createDiv({ cls: 'zk-object' });
+		const head = el.createDiv({ cls: 'zk-object-head' });
+		const nameEl = head.createSpan({ text: name, cls: 'zk-object-name' });
+		if (id) head.createSpan({ text: id, cls: 'zk-object-id' });
+		const actions = head.createDiv({ cls: 'zk-object-actions' });
+		const body = el.createDiv({ cls: 'zk-object-body' });
+		return { el, head, nameEl, actions, body };
+	}
+
+	/** A labelled row inside an object. Give the control the returned id so the label points at it. */
+	private createField(body: HTMLElement, label: string): { row: HTMLElement; id: string } {
+		const id = `zk-field-${this.fieldSeq++}`;
+		const row = body.createDiv({ cls: 'zk-field' });
+		row.createEl('label', { text: label, attr: { for: id } });
+		return { row, id };
+	}
+
 	private renderGeneralSettings(containerEl: HTMLElement) {
-		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(iconWrap, 'folder');
-		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
-		textWrap.createEl('h2', { text: 'General Configuration', cls: 'zettel-section-title' });
-		textWrap.createEl('p', { text: 'Default paths for note types and search.', cls: 'zettel-section-desc' });
+		this.renderSectionHeader(containerEl, 'General Configuration', 'Default paths for note types and search.');
 
 		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		new Setting(card).setName("Fleeting Default Path").addText(t => {
@@ -275,12 +311,7 @@ export class SampleSettingTab extends PluginSettingTab {
 	}
 
 	private renderProjectsSettings(containerEl: HTMLElement) {
-		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(iconWrap, 'folder-tree');
-		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
-		textWrap.createEl('h2', { text: 'Project Management', cls: 'zettel-section-title' });
-		textWrap.createEl('p', { text: 'Research and code project roots, and Gantt chart status colors.', cls: 'zettel-section-desc' });
+		this.renderSectionHeader(containerEl, 'Project Management', 'Root folders for research and code projects.');
 
 		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		new Setting(card).setName("Research Root Path").addText(t => {
@@ -300,12 +331,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		const ganttHeader = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const ganttIcon = ganttHeader.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(ganttIcon, 'palette');
-		const ganttText = ganttHeader.createDiv({ cls: 'zettel-section-text' });
-		ganttText.createEl('h2', { text: 'Gantt Chart Status Colors', cls: 'zettel-section-title' });
-		ganttText.createEl('p', { text: 'Define colors for each status in PlantUML Gantt charts.', cls: 'zettel-section-desc' });
+		this.renderSectionHeader(containerEl, 'Gantt Chart Status Colors', 'The color each status gets in PlantUML Gantt charts.');
 
 		if (!this.plugin.settings.ganttStatusColors) {
 			this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
@@ -314,17 +340,16 @@ export class SampleSettingTab extends PluginSettingTab {
 		const colorContainer = colorCard.createDiv({ cls: 'zettel-gantt-colors' });
 		this.renderGanttColorList(colorContainer, this.plugin.settings.ganttStatusColors);
 
-		const addStatusContainer = colorCard.createDiv({ cls: 'zettel-add-status-row' });
-		addStatusContainer.style.cssText = 'display:flex; align-items:center; gap:10px; margin:16px 0;';
-		const statusInput = new TextComponent(addStatusContainer);
-		statusInput.setPlaceholder("status name (e.g. review)");
-		statusInput.inputEl.style.flex = '1';
-		const newColorDropdown = new DropdownComponent(addStatusContainer);
+		const addStatusRow = colorCard.createDiv({ cls: 'zk-add-row' });
+		const statusInput = new TextComponent(addStatusRow);
+		statusInput.setPlaceholder("Status name, e.g. review");
+		statusInput.inputEl.setAttr('aria-label', 'New status name');
+		const newColorDropdown = new DropdownComponent(addStatusRow);
 		GANTT_COLOR_OPTIONS.forEach(opt => newColorDropdown.addOption(opt.value, opt.label));
 		newColorDropdown.setValue(GANTT_COLOR_OPTIONS[0].value);
-		new ButtonComponent(addStatusContainer)
-			.setButtonText("Add")
-			.setCta()
+		newColorDropdown.selectEl.setAttr('aria-label', 'Color for the new status');
+		new ButtonComponent(addStatusRow)
+			.setButtonText("Add status")
 			.onClick(async () => {
 				const status = statusInput.getValue().trim().toLowerCase();
 				const color = newColorDropdown.getValue();
@@ -335,42 +360,38 @@ export class SampleSettingTab extends PluginSettingTab {
 				}
 			});
 
-		new Setting(colorCard)
-			.addButton(btn => {
-				btn.setButtonText("Reset to Defaults")
-					.setWarning()
-					.onClick(async () => {
-						this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
-						await this.plugin.saveSettings();
-						this.display();
-					});
+		const colorActions = colorCard.createDiv({ cls: 'zk-list-actions' });
+		new ButtonComponent(colorActions)
+			.setButtonText("Reset colors to defaults")
+			.setWarning()
+			.setClass('zk-push-right')
+			.onClick(async () => {
+				this.plugin.settings.ganttStatusColors = { ...DEFAULT_GANTT_STATUS_COLORS };
+				await this.plugin.saveSettings();
+				this.display();
 			});
 
 		// AI Prompt Generation (Research / drafts)
-		const aiHeader = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const aiIcon = aiHeader.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(aiIcon, 'file-output');
-		const aiText = aiHeader.createDiv({ cls: 'zettel-section-text' });
-		aiText.createEl('h2', { text: 'AI Prompt Generation', cls: 'zettel-section-title' });
-		aiText.createEl('p', { text: 'Rules and limits for generating AI prompts from drafts (linked note types, recursion depth, token cap).', cls: 'zettel-section-desc' });
+		this.renderSectionHeader(
+			containerEl,
+			'AI Prompt Generation',
+			"How a draft's linked notes are turned into an AI prompt: which notes are imported, how deep links are followed, and how much text each note may add.",
+		);
 
 		const aiCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		// Do not mutate AI Prompt Generation settings here; only use ?? for display defaults
 
-		const systemPromptSection = aiCard.createDiv({ cls: "zk-ai-system-prompt-section" });
-		systemPromptSection.createEl("h4", { text: "System prompt", cls: "zk-ai-rules-title" });
-		systemPromptSection.createEl("p", { text: "Optional. Prepended to the top of every generated prompt (before the note-level AI prompt section).", cls: "zk-ai-system-prompt-desc" });
-		const systemPromptRow = systemPromptSection.createDiv({ cls: "zk-ai-system-prompt-row" });
-		const systemPromptTa = new TextAreaComponent(systemPromptRow);
+		this.renderSubtitle(aiCard, 'System prompt', "Optional. Placed at the top of every generated prompt, before the draft's own AI prompt section.");
+		const systemPromptTa = new TextAreaComponent(aiCard);
 		systemPromptTa.setPlaceholder("e.g. You are an academic writing assistant...").setValue(this.plugin.settings.aiPromptSystemPrompt ?? "").onChange(async (v) => {
 			this.plugin.settings.aiPromptSystemPrompt = v.trim() || undefined;
 			await this.plugin.saveSettings();
 		});
-		systemPromptTa.inputEl.rows = 12;
-		systemPromptTa.inputEl.style.width = "100%";
-		systemPromptTa.inputEl.style.minHeight = "200px";
-		systemPromptTa.inputEl.style.resize = "vertical";
-		new Setting(aiCard).setName("Zotero / Literature path").setDesc("Optional; if empty, Literature path from General is used.").addText(t => {
+		systemPromptTa.inputEl.rows = 6;
+		systemPromptTa.inputEl.addClass('zk-textarea');
+		systemPromptTa.inputEl.setAttr('aria-label', 'System prompt');
+
+		new Setting(aiCard).setName("Zotero / Literature path").setDesc("Optional. When empty, the Literature path from General is used.").addText(t => {
 			t.setPlaceholder("002-Literature").setValue(this.plugin.settings.zoteroPath ?? "").onChange(async (v) => {
 				this.plugin.settings.zoteroPath = v.trim() || undefined;
 				await this.plugin.saveSettings();
@@ -386,7 +407,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 			t.inputEl.type = "number";
 		});
-		new Setting(aiCard).setName("Max chars per note").setDesc("Truncate imported note content beyond this (≈ token cap).").addText(t => {
+		new Setting(aiCard).setName("Max chars per note").setDesc("Imported note text is cut off after this many characters.").addText(t => {
 			t.setPlaceholder("4000").setValue(String(this.plugin.settings.aiPromptMaxCharsPerNote ?? 4000)).onChange(async (v) => {
 				const n = parseInt(v, 10);
 				if (!isNaN(n) && n > 0) {
@@ -396,112 +417,117 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 			t.inputEl.type = "number";
 		});
-		new Setting(aiCard).setName("Wrapper style").setDesc("Wrap imported content in XML tags (recommended) or Markdown headers.").addDropdown(d => {
+		new Setting(aiCard).setName("Wrapper style").setDesc("Wrap imported notes in XML tags (recommended) or Markdown headings.").addDropdown(d => {
 			d.addOption("xml", "XML <source>").addOption("markdown", "Markdown ###").setValue(this.plugin.settings.aiPromptWrapperStyle ?? "xml").onChange(async (v) => {
 				this.plugin.settings.aiPromptWrapperStyle = v as "xml" | "markdown";
 				await this.plugin.saveSettings();
 			});
 		});
 
-		const rulesContainer = aiCard.createDiv({ cls: 'zk-ai-rules-list' });
-		rulesContainer.createEl('h4', { text: 'Rules (match type → action)', cls: 'zk-ai-rules-title' });
-		(this.plugin.settings.aiPromptRules ?? []).forEach((rule, idx) => {
-			const ruleBlock = rulesContainer.createDiv({ cls: 'zk-ai-rule-block' });
-			// Row 1: Label | Match type | Match value (full width for content)
-			const row1 = ruleBlock.createDiv({ cls: 'zk-ai-rule-row zk-ai-rule-row-main' });
-			new Setting(row1).setName("Label").setDesc("").addText(t => {
-				t.setPlaceholder("e.g. Atom").setValue(rule.label).onChange(async (v) => {
-					rule.label = v;
-					await this.plugin.saveSettings();
-				});
-			});
-			new Setting(row1).setName("Match").setDesc("").addDropdown(d => {
-				d.addOption("folder", "Folder").addOption("tag", "Tag").addOption("regex", "Regex").setValue(rule.matchType).onChange(async (v) => {
-					rule.matchType = v as AIPromptRule["matchType"];
-					await this.plugin.saveSettings();
-				});
-			});
-			new Setting(row1).setName("Value").setDesc("").addText(t => {
-				t.setPlaceholder("e.g. 003-Atom").setValue(rule.matchValue).onChange(async (v) => {
-					rule.matchValue = normalizePathPrefix(v);
-					await this.plugin.saveSettings();
-				});
-			});
-			// Row 2: Action (wide dropdown) + Remove (full button text)
-			const row2 = ruleBlock.createDiv({ cls: 'zk-ai-rule-row zk-ai-rule-row-actions' });
-			new Setting(row2).setName("Action").setDesc("").addDropdown(d => {
-				d.addOption("import_full", "Import full").addOption("import_summary", "Import summary").addOption("citation_only", "Citation only").addOption("ignore", "Ignore").setValue(rule.action).onChange(async (v) => {
-					rule.action = v as AIPromptRule["action"];
-					await this.plugin.saveSettings();
-					this.display();
-				});
-			});
-			const removeWrap = row2.createDiv({ cls: 'zk-ai-rule-remove-wrap' });
-			new ButtonComponent(removeWrap).setButtonText("Remove").setWarning().onClick(async () => {
+		this.renderSubtitle(aiCard, 'Rules', 'Each rule matches linked notes by folder, tag or regex and says how they enter the prompt.');
+		const aiRules = this.plugin.settings.aiPromptRules ?? [];
+		const rulesList = aiCard.createDiv({ cls: 'zk-ai-rules-list' });
+		if (aiRules.length === 0) {
+			rulesList.createEl('p', { text: 'No rules yet. Add a rule, or reset to the defaults.', cls: 'zk-empty' });
+		}
+		aiRules.forEach((rule, idx) => {
+			const untitled = 'Untitled rule';
+			const obj = this.createObject(rulesList, rule.label || untitled);
+			new ButtonComponent(obj.actions).setButtonText("Remove").onClick(async () => {
 				this.plugin.settings.aiPromptRules = this.plugin.settings.aiPromptRules!.filter((_, i) => i !== idx);
 				await this.plugin.saveSettings();
 				this.display();
 			});
+
+			const labelField = this.createField(obj.body, 'Label');
+			const labelInput = new TextComponent(labelField.row).setPlaceholder("e.g. Atom").setValue(rule.label).onChange(async (v) => {
+				rule.label = v;
+				obj.nameEl.setText(v || untitled);
+				await this.plugin.saveSettings();
+			});
+			labelInput.inputEl.id = labelField.id;
+
+			const matchField = this.createField(obj.body, 'Match');
+			const matchControls = matchField.row.createDiv({ cls: 'zk-field-controls' });
+			const matchType = new DropdownComponent(matchControls);
+			matchType.addOption("folder", "Folder").addOption("tag", "Tag").addOption("regex", "Regex").setValue(rule.matchType).onChange(async (v) => {
+				rule.matchType = v as AIPromptRule["matchType"];
+				await this.plugin.saveSettings();
+			});
+			matchType.selectEl.id = matchField.id;
+			const matchValue = new TextComponent(matchControls).setPlaceholder("e.g. 003-Atom").setValue(rule.matchValue).onChange(async (v) => {
+				rule.matchValue = normalizePathPrefix(v);
+				await this.plugin.saveSettings();
+			});
+			matchValue.inputEl.setAttr('aria-label', 'Match value');
+
+			const actionField = this.createField(obj.body, 'Action');
+			const action = new DropdownComponent(actionField.row);
+			action.addOption("import_full", "Import full").addOption("import_summary", "Import summary").addOption("citation_only", "Citation only").addOption("ignore", "Ignore").setValue(rule.action).onChange(async (v) => {
+				rule.action = v as AIPromptRule["action"];
+				await this.plugin.saveSettings();
+				this.display();
+			});
+			action.selectEl.id = actionField.id;
+
 			if (rule.action === "import_summary") {
-				const summaryRow = ruleBlock.createDiv({ cls: 'zk-ai-rule-summary-row' });
-				new Setting(summaryRow).setName("Summary headers").setDesc("Comma-separated section names to extract (e.g. Definition, Synthesis (The \"One Truth\"), Key Arguments & Evidence). Matching is case-insensitive and ignores ** and leading emoji in note headings.").addText(t => {
-					t.setPlaceholder("Summary, Abstract").setValue(rule.summaryHeaders?.join(", ") ?? rule.summaryHeader ?? "").onChange(async (v) => {
-						const headers = v.split(",").map(s => s.trim()).filter(Boolean);
-						rule.summaryHeaders = headers.length ? headers : undefined;
-						rule.summaryHeader = headers[0]; // keep first for backward compat
-						await this.plugin.saveSettings();
-					});
-				}).settingEl.style.flex = "1";
+				const headersField = this.createField(obj.body, 'Summary headers');
+				const headersInput = new TextComponent(headersField.row).setPlaceholder("Summary, Abstract").setValue(rule.summaryHeaders?.join(", ") ?? rule.summaryHeader ?? "").onChange(async (v) => {
+					const headers = v.split(",").map(s => s.trim()).filter(Boolean);
+					rule.summaryHeaders = headers.length ? headers : undefined;
+					rule.summaryHeader = headers[0]; // keep first for backward compat
+					await this.plugin.saveSettings();
+				});
+				headersInput.inputEl.id = headersField.id;
+				headersField.row.createDiv({
+					text: "Section names to extract, separated by commas. Case, ** and a leading emoji in the note's headings are ignored.",
+					cls: 'zk-field-hint',
+				});
 			}
 		});
-		new Setting(aiCard).addButton(btn => {
-			btn.setButtonText("Add rule").onClick(async () => {
-				this.plugin.settings.aiPromptRules = this.plugin.settings.aiPromptRules ?? [];
-				this.plugin.settings.aiPromptRules.push({
-					id: `rule-${Date.now()}`,
-					label: "New",
-					matchType: "folder",
-					matchValue: "",
-					action: "import_full",
-				});
-				await this.plugin.saveSettings();
-				this.display();
+
+		const ruleActions = aiCard.createDiv({ cls: 'zk-list-actions' });
+		new ButtonComponent(ruleActions).setButtonText("Add rule").onClick(async () => {
+			this.plugin.settings.aiPromptRules = this.plugin.settings.aiPromptRules ?? [];
+			this.plugin.settings.aiPromptRules.push({
+				id: `rule-${Date.now()}`,
+				label: "New",
+				matchType: "folder",
+				matchValue: "",
+				action: "import_full",
 			});
+			await this.plugin.saveSettings();
+			this.display();
 		});
-		new Setting(aiCard).addButton(btn => {
-			btn.setButtonText("Reset rules to defaults").setWarning().onClick(async () => {
-				this.plugin.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
-				await this.plugin.saveSettings();
-				this.display();
-			});
+		new ButtonComponent(ruleActions).setButtonText("Reset rules to defaults").setWarning().setClass('zk-push-right').onClick(async () => {
+			this.plugin.settings.aiPromptRules = [...DEFAULT_AI_PROMPT_RULES];
+			await this.plugin.saveSettings();
+			this.display();
 		});
-	
+
 		this.renderGithubPullRules(containerEl);
 	}
 
 	/** Settings → Projects → GitHub pull rules. Research projects pick rules by id in Quick Actions. */
 	private renderGithubPullRules(containerEl: HTMLElement) {
-		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const icon = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(icon, 'download');
-		const text = header.createDiv({ cls: 'zettel-section-text' });
-		text.createEl('h2', { text: 'GitHub pull rules', cls: 'zettel-section-title' });
-		text.createEl('p', {
-			text: 'Each rule pulls the files directly inside a repo folder whose name matches a pattern into a folder of the research project. Add rules to a project from its Quick Actions; the repo comes from the project dashboard. Pulled files are overwritten when they change in the repo.',
-			cls: 'zettel-section-desc',
-		});
+		this.renderSectionHeader(
+			containerEl,
+			'GitHub pull rules',
+			'Each rule pulls files from one repo folder into a folder of the research project. Add rules to a project in its Quick Actions; the repo comes from the project dashboard. A pulled file is overwritten when it changes in the repo.',
+		);
 
 		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		const rules = this.plugin.settings.githubPullRules ?? [];
 		if (rules.length === 0) {
-			card.createEl('p', { text: 'No rules yet.', cls: 'setting-item-description' });
+			card.createEl('p', { text: 'No pull rules yet. Add one to choose what Pull from GitHub downloads.', cls: 'zk-empty' });
 		}
 		rules.forEach((rule, idx) => {
-			const ruleEl = card.createDiv({ cls: 'zk-pull-rule' });
-			const head = ruleEl.createDiv({ cls: 'zk-pull-rule-title' });
-			head.createSpan({ text: `Rule ${rule.id}` });
-			const copy = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Copy id' } });
+			const untitled = 'Untitled rule';
+			const obj = this.createObject(card, rule.label || untitled, rule.id);
+
+			const copy = obj.head.createEl('button', { cls: 'clickable-icon', attr: { type: 'button', 'aria-label': 'Copy rule id' } });
 			setIcon(copy, 'copy');
+			obj.head.insertBefore(copy, obj.actions);
 			copy.addEventListener('click', async () => {
 				try {
 					await navigator.clipboard.writeText(rule.id);
@@ -510,68 +536,60 @@ export class SampleSettingTab extends PluginSettingTab {
 					new Notice(rule.id);
 				}
 			});
-			const remove = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Remove rule' } });
-			setIcon(remove, 'trash');
-			remove.addEventListener('click', async () => {
+			new ButtonComponent(obj.actions).setButtonText("Remove").onClick(async () => {
 				this.plugin.settings.githubPullRules = rules.filter((_, i) => i !== idx);
 				await this.plugin.saveSettings();
 				this.display();
 			});
 
-			const problem = ruleEl.createDiv({ cls: 'zk-pull-rule-problem' });
+			const problem = obj.el.createDiv({ cls: 'zk-object-problem' });
 			const showProblem = () => {
 				const message = validatePullRule(rule);
 				problem.setText(message ?? '');
 				problem.toggleClass('is-hidden', !message);
 			};
-			// One labelled input per line; an optional hint sits under the input.
-			const field = (label: string, placeholder: string, value: string, apply: (v: string) => void, hint?: string) => {
-				const line = ruleEl.createDiv({ cls: 'zk-pull-rule-field' });
-				line.createEl('label', { text: label });
-				const input = line.createEl('input', { type: 'text', placeholder });
-				input.value = value;
-				input.addEventListener('input', async () => {
-					apply(input.value);
+			const field = (label: string, placeholder: string, value: string, apply: (v: string) => void, hint?: string, code = false) => {
+				const f = this.createField(obj.body, label);
+				const input = new TextComponent(f.row).setPlaceholder(placeholder).setValue(value).onChange(async (v) => {
+					apply(v);
 					showProblem();
 					await this.plugin.saveSettings();
 				});
-				if (hint) line.createDiv({ text: hint, cls: 'zk-pull-rule-hint' });
+				input.inputEl.id = f.id;
+				if (code) input.inputEl.addClass('zk-input-code');
+				if (hint) f.row.createDiv({ text: hint, cls: 'zk-field-hint' });
 			};
-			field('Label', 'e.g. Run notes', rule.label ?? '', (v) => { rule.label = v.trim() || undefined; });
+			field('Label', 'e.g. Run notes', rule.label ?? '', (v) => {
+				rule.label = v.trim() || undefined;
+				obj.nameEl.setText(rule.label ?? untitled);
+			});
 			field('Repo folder', 'e.g. pkm', rule.sourceDir, (v) => { rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, ''); },
-				'Folder in the repo. Only files directly inside it are pulled, not subfolders.');
+				'Only files directly inside this folder are pulled, not subfolders.');
 			field('File name pattern', 'e.g. \\.md$', rule.filePattern, (v) => { rule.filePattern = v; },
-				'Regular expression tested against each file name.');
+				'Regular expression tested against each file name.', true);
 			field('Target folder', 'e.g. runs', rule.target, (v) => { rule.target = v.trim(); },
-				'Relative path only, starting from the research project folder: "runs" puts files in <project>/runs. No leading "/" and no "..".');
-			ruleEl.appendChild(problem);
+				'Relative path from the research project folder: "runs" puts files in <project>/runs. No leading "/" and no "..".');
 			showProblem();
 		});
 
-		new Setting(card).addButton((btn) =>
-			btn.setButtonText('Add pull rule').onClick(async () => {
-				// Copy: without saved rules, settings.githubPullRules is the shared DEFAULT_SETTINGS array.
-				const list = [...(this.plugin.settings.githubPullRules ?? [])];
-				list.push({
-					id: generateRuleId(list.map((r) => r.id)),
-					sourceDir: '',
-					filePattern: '\\.md$',
-					target: '',
-				});
-				this.plugin.settings.githubPullRules = list;
-				await this.plugin.saveSettings();
-				this.display();
-			})
-		);
+		const actions = card.createDiv({ cls: 'zk-list-actions' });
+		new ButtonComponent(actions).setButtonText('Add pull rule').onClick(async () => {
+			// Copy: without saved rules, settings.githubPullRules is the shared DEFAULT_SETTINGS array.
+			const list = [...(this.plugin.settings.githubPullRules ?? [])];
+			list.push({
+				id: generateRuleId(list.map((r) => r.id)),
+				sourceDir: '',
+				filePattern: '\\.md$',
+				target: '',
+			});
+			this.plugin.settings.githubPullRules = list;
+			await this.plugin.saveSettings();
+			this.display();
+		});
 	}
 
 	private renderDataviewSettings(containerEl: HTMLElement) {
-		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
-		const iconWrap = header.createDiv({ cls: 'zettel-section-icon' });
-		setIcon(iconWrap, 'file-search');
-		const textWrap = header.createDiv({ cls: 'zettel-section-text' });
-		textWrap.createEl('h2', { text: 'Dataview Integration', cls: 'zettel-section-title' });
-		textWrap.createEl('p', { text: 'Load and run Dataview JS scripts from a vault folder.', cls: 'zettel-section-desc' });
+		this.renderSectionHeader(containerEl, 'Dataview Integration', 'Load and run Dataview JS scripts from a vault folder.');
 
 		const refreshDataview = async () => {
 			if (!this.plugin.settings.dataviewEnabled) {
@@ -636,7 +654,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 		new Setting(card)
 			.setName("Show debug panels (built-in scripts)")
-			.setDesc("When on, built-in Dataview scripts (Research Quick Actions, Project Quick Actions, etc.) show their debug panels (e.g. last request, repo/PAT info).")
+			.setDesc("When on, built-in scripts show their debug panels (last request, repo and PAT info).")
 			.addToggle(t => {
 				t.setValue(this.plugin.settings.dataviewDebugPanels === true)
 					.onChange(async (v) => {
@@ -648,60 +666,30 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		// Script list: only when Dataview is enabled and we have an instance
 		if (this.plugin.settings.dataviewEnabled && this.plugin.dataview) {
-			const scriptsCard = containerEl.createDiv({ cls: 'zettel-settings-card zk-scripts-card' });
-			const scriptsHeader = scriptsCard.createDiv({ cls: 'zk-scripts-header' });
-			const scriptsHeaderIcon = scriptsHeader.createDiv({ cls: 'zk-scripts-header-icon' });
-			setIcon(scriptsHeaderIcon, 'file-code');
-			const scriptsHeaderText = scriptsHeader.createDiv({ cls: 'zk-scripts-header-text' });
-			scriptsHeaderText.createEl('h3', { text: 'Scripts', cls: 'zk-scripts-title' });
-			scriptsHeaderText.createEl('p', { text: 'Manage Dataview JS scripts. Edit, reset to default, or remove.', cls: 'zk-scripts-desc' });
-			const createWrap = scriptsCard.createDiv({ cls: 'zk-scripts-create-wrap' });
-			new ButtonComponent(createWrap)
-				.setButtonText('Create script')
-				.setCta()
-				.onClick(() => {
-					new DataviewScriptEditorModal(
-						this.app,
-						this.plugin,
-						null,
-						"// Your Dataview JS script here\nconst zk = window.ZettelkastenOperator;\n",
-						async (content, newId, newName) => {
-							if (newId && newName) {
-								await this.plugin.dataview!.createScript(newId, newName, content);
-								await this.plugin.dataview!.refresh();
-								this.display();
-							}
-						}
-					).open();
-				});
+			this.renderSubtitle(card, 'Scripts', 'Edit a script, reset a built-in script to its default, or remove it.');
 
-			const scriptsList = scriptsCard.createDiv({ cls: 'zk-scripts-list' });
+			const scriptsList = card.createDiv({ cls: 'zk-scripts-list' });
 			const scripts = this.plugin.dataview.getScripts();
+			if (scripts.length === 0) {
+				scriptsList.createEl('p', { text: 'No scripts yet. Create one to use it in a code block.', cls: 'zk-empty' });
+			}
 			scripts.forEach((script: IDataviewScript) => {
-				const row = scriptsList.createDiv({ cls: 'zk-dataview-script-row' });
-				const rowMain = row.createDiv({ cls: 'zk-script-row-main' });
-				const titleBlock = rowMain.createDiv({ cls: 'zk-script-title-block' });
-				titleBlock.createSpan({ text: script.name, cls: 'zk-script-name' });
-				titleBlock.createSpan({ text: script.id, cls: 'zk-script-id-pill' });
-				const btnGroup = rowMain.createDiv({ cls: 'zk-script-btn-group' });
+				const obj = this.createObject(scriptsList, script.name, script.id);
+				const isExpanded = this.expandedScriptIds.has(script.id);
 
-				const expandBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-expand' });
-				const expandIcon = expandBtn.createSpan();
-				setIcon(expandIcon, this.expandedScriptIds.has(script.id) ? 'chevron-up' : 'chevron-down');
-				expandBtn.appendText(' Preview');
-				expandBtn.onclick = () => {
-					if (this.expandedScriptIds.has(script.id)) {
-						this.expandedScriptIds.delete(script.id);
-					} else {
-						this.expandedScriptIds.add(script.id);
-					}
-					this.display();
-				};
+				const previewBtn = new ButtonComponent(obj.actions)
+					.setButtonText(isExpanded ? 'Hide preview' : 'Preview')
+					.onClick(() => {
+						if (this.expandedScriptIds.has(script.id)) {
+							this.expandedScriptIds.delete(script.id);
+						} else {
+							this.expandedScriptIds.add(script.id);
+						}
+						this.display();
+					});
+				previewBtn.buttonEl.setAttr('aria-expanded', String(isExpanded));
 
-				const editBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-edit' });
-				setIcon(editBtn.createSpan(), 'pencil');
-				editBtn.appendText(' Edit');
-				editBtn.onclick = async () => {
+				new ButtonComponent(obj.actions).setButtonText('Edit').onClick(async () => {
 					let content = this.plugin.dataview!.getScriptContent(script.id);
 					if (content === undefined) {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
@@ -725,27 +713,21 @@ export class SampleSettingTab extends PluginSettingTab {
 							}
 						}
 					).open();
-				};
+				});
 
 				const defaultContent = getDefaultScriptContent(script.id);
 				if (defaultContent !== null) {
-					const resetBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-reset' });
-					setIcon(resetBtn.createSpan(), 'undo');
-					resetBtn.appendText(' Reset');
-					resetBtn.onclick = async () => {
+					new ButtonComponent(obj.actions).setButtonText('Reset').onClick(async () => {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
 						if (file) {
 							await this.app.vault.modify(file, defaultContent);
 							await this.plugin.dataview!.refresh();
 							this.display();
 						}
-					};
+					});
 				}
 
-				const removeBtn = btnGroup.createEl('button', { cls: 'zk-script-btn zk-script-btn-remove' });
-				setIcon(removeBtn.createSpan(), 'trash-2');
-				removeBtn.appendText(' Remove');
-				removeBtn.onclick = async () => {
+				new ButtonComponent(obj.actions).setButtonText('Remove').onClick(async () => {
 					if (confirm(`Remove script "${script.name}"?`)) {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
 						if (file) {
@@ -754,14 +736,33 @@ export class SampleSettingTab extends PluginSettingTab {
 							this.display();
 						}
 					}
-				};
+				});
 
-				if (this.expandedScriptIds.has(script.id)) {
-					const snippet = row.createDiv({ cls: 'zk-script-snippet' });
+				if (isExpanded) {
+					const snippet = obj.body.createDiv({ cls: 'zk-script-snippet' });
 					const cached = this.plugin.dataview!.getScriptContent(script.id);
 					snippet.textContent = cached ?? '(load script to preview)';
 				}
 			});
+
+			const scriptActions = card.createDiv({ cls: 'zk-list-actions' });
+			new ButtonComponent(scriptActions)
+				.setButtonText('Create script')
+				.onClick(() => {
+					new DataviewScriptEditorModal(
+						this.app,
+						this.plugin,
+						null,
+						"// Your Dataview JS script here\nconst zk = window.ZettelkastenOperator;\n",
+						async (content, newId, newName) => {
+							if (newId && newName) {
+								await this.plugin.dataview!.createScript(newId, newName, content);
+								await this.plugin.dataview!.refresh();
+								this.display();
+							}
+						}
+					).open();
+				});
 		}
 	}
 
@@ -778,23 +779,19 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		if (entries.length === 0) {
 			container.createEl('p', {
-				text: 'No status colors defined.',
-				cls: 'setting-item-description',
+				text: 'No status colors yet. Add a status below to give it a color.',
+				cls: 'zk-empty',
 			});
 			return;
 		}
 
 		entries.forEach(([status, color]) => {
-			const row = container.createDiv({ cls: 'zettel-gantt-color-row' });
-			row.style.cssText = 'display:flex; align-items:center; gap:10px; margin-bottom:8px;';
-
-			// Status label
-			const statusSpan = row.createEl('span', { text: status });
-			statusSpan.style.cssText = 'min-width:100px; font-weight:500;';
+			const row = container.createDiv({ cls: 'zk-line-row zettel-gantt-color-row' });
+			row.createSpan({ text: status, cls: 'zk-line-name' });
 
 			// Color preview box
-			const previewBox = row.createDiv();
-			previewBox.style.cssText = `width:24px; height:24px; border-radius:4px; border:1px solid var(--background-modifier-border); background-color:${this.getColorPreview(color)};`;
+			const previewBox = row.createDiv({ cls: 'zk-swatch' });
+			previewBox.style.backgroundColor = this.getColorPreview(color);
 
 			// Color dropdown
 			const colorDropdown = new DropdownComponent(row);
@@ -802,7 +799,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				colorDropdown.addOption(opt.value, opt.label);
 			});
 			colorDropdown.setValue(color);
-			colorDropdown.selectEl.style.flex = '1';
+			colorDropdown.selectEl.setAttr('aria-label', `Color for ${status}`);
 			colorDropdown.onChange(async (v) => {
 				this.plugin.settings.ganttStatusColors[status] = v;
 				await this.plugin.saveSettings();
@@ -810,11 +807,8 @@ export class SampleSettingTab extends PluginSettingTab {
 				previewBox.style.backgroundColor = this.getColorPreview(v);
 			});
 
-			// Delete button
 			new ButtonComponent(row)
-				.setIcon('trash')
-				.setClass('clickable-icon')
-				.setTooltip('Remove')
+				.setButtonText('Remove')
 				.onClick(async () => {
 					delete this.plugin.settings.ganttStatusColors[status];
 					await this.plugin.saveSettings();
@@ -825,16 +819,14 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	// --- [VIEW]: Template List (Accordion Summary) ---
 	private renderSummaryView(containerEl: HTMLElement) {
-		// [UI]: View Header
-		const header = containerEl.createDiv({ cls: 'zettel-view-header' });
-		// [FIX]: Use attr style to prevent TS error
-		header.createEl('h2', { text: 'Note Templates', attr: { style: 'margin:0;' } });
+		this.renderSectionHeader(containerEl, 'Note Templates', 'Templates you can pick when creating a note, grouped by note type.');
 
 		// [LOGIC]: We want to render boxes for these 4 specific types
 		const categories: NoteType[] = ['fleeting', 'literature', 'permanent', 'atom'];
 
+		const list = containerEl.createDiv({ cls: 'zettel-settings-card' });
 		categories.forEach((type) => {
-			this.renderTypeBox(containerEl, type);
+			this.renderTypeBox(list, type);
 		});
 
 		// [LOGIC]: Handle any templates that don't fit the 4 categories
@@ -842,7 +834,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			(opt) => !categories.includes(opt.type)
 		);
 		if (others.length > 0) {
-			containerEl.createEl('h3', { text: 'Other / Uncategorized' });
+			this.renderSubtitle(containerEl, 'Other / Uncategorized');
 		}
 	}
 
@@ -854,35 +846,19 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		const count = items.length;
 		const defaultItem = items.find((x) => x.opt.isDefault);
-		const defaultName = defaultItem ? defaultItem.opt.label : 'None';
+		const defaultName = defaultItem ? defaultItem.opt.label : 'none';
 
 		// [UI]: Determine if box is expanded based on state
 		const isExpanded = this.expandedCategories[type] || false;
-		const box = containerEl.createDiv({
-			cls: `zettel-type-box ${isExpanded ? 'is-expanded' : ''}`,
-		});
+		const obj = this.createObject(
+			containerEl,
+			type,
+			`${count} ${count === 1 ? 'template' : 'templates'}, default: ${defaultName}`,
+		);
+		obj.nameEl.addClass('is-capitalized');
+		obj.head.addClass('is-clickable');
 
-		// --- Header Section ---
-		const header = box.createDiv({ cls: 'zettel-type-header' });
-
-		// Left: Info (Title & Meta)
-		const info = header.createDiv({ cls: 'zettel-type-info' });
-		info.createEl('div', { text: type, cls: 'zettel-type-title' });
-		info.createEl('div', {
-			text: `Default: ${defaultName}  •  Total: ${count}`,
-			cls: 'zettel-type-meta',
-		});
-
-		// Right: Actions (Plus Button & Toggle)
-		const headerActions = header.createDiv({ cls: 'zettel-type-header-actions' });
-
-		// 1. [INTERACTION]: Plus Button (Add Template)
-		const addBtn = headerActions.createDiv({ cls: 'zettel-header-icon' });
-		// [FIX]: Ensures icon is rendered
-		setIcon(addBtn, 'plus');
-		addBtn.ariaLabel = 'Add Template';
-
-		addBtn.addEventListener('click', async (e) => {
+		new ButtonComponent(obj.actions).setButtonText('Add template').onClick(async (e) => {
 			e.stopPropagation(); // [CRITICAL]: Stop click from bubbling up to toggle the accordion
 
 			// Create new template data
@@ -903,80 +879,70 @@ export class SampleSettingTab extends PluginSettingTab {
 			this.display();
 		});
 
-		// 2. [UI]: Toggle Icon (Chevron)
-		const toggleIcon = headerActions.createDiv({ cls: 'zettel-type-toggle' });
-		setIcon(toggleIcon, 'chevron-down');
+		// A real button, so the list can be opened from the keyboard; its click bubbles to the head.
+		const toggle = obj.actions.createEl('button', {
+			cls: 'clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-expanded': String(isExpanded),
+				'aria-label': `${isExpanded ? 'Hide' : 'Show'} ${type} templates`,
+			},
+		});
+		setIcon(toggle, isExpanded ? 'chevron-up' : 'chevron-down');
 
 		// [INTERACTION]: Toggle Accordion
-		header.addEventListener('click', () => {
+		obj.head.addEventListener('click', () => {
 			this.expandedCategories[type] = !this.expandedCategories[type];
 			this.display();
 		});
 
-		// --- List Section ---
-		const listContainer = box.createDiv({ cls: 'zettel-template-list' });
+		if (!isExpanded) return;
 
 		if (items.length === 0) {
-			listContainer.createDiv({
-				text: "No templates. Click '+' to add one.",
+			obj.body.createEl('p', { text: 'No templates yet. Add one for this note type.', cls: 'zk-empty' });
+			return;
+		}
+		items.forEach(({ opt, index }) => {
+			const row = obj.body.createDiv({ cls: 'zk-line-row' });
+
+			// [INTERACTION]: Set Default Star
+			const starBtn = row.createEl('button', {
+				cls: `clickable-icon zettel-default-icon ${opt.isDefault ? 'is-selected' : ''}`,
 				attr: {
-					style: 'color:var(--text-muted); padding:10px; text-align:center;',
+					type: 'button',
+					'aria-pressed': String(!!opt.isDefault),
+					'aria-label': opt.isDefault ? 'Default template' : 'Set as default',
 				},
 			});
-		} else {
-			items.forEach(({ opt, index }) => {
-				const row = listContainer.createDiv({ cls: 'zettel-list-item' });
-
-				// Row Left: Star & Name
-				const nameArea = row.createDiv({ cls: 'zettel-item-name' });
-
-				// [INTERACTION]: Set Default Star
-				const isSelectedClass = opt.isDefault ? 'is-selected' : '';
-				const starBtn = nameArea.createDiv({
-					cls: `zettel-default-icon ${isSelectedClass}`,
+			setIcon(starBtn, 'star');
+			starBtn.addEventListener('click', async () => {
+				// 1. Unset all others
+				this.plugin.settings.createNoteOptions.forEach((o) => {
+					if (o.type === type) o.isDefault = false;
 				});
-				setIcon(starBtn, 'star');
-				starBtn.ariaLabel = 'Set as Default';
+				// 2. Set this one
+				this.plugin.settings.createNoteOptions[index].isDefault = true;
+				await this.plugin.saveSettings();
+				this.display();
+			});
 
-				starBtn.addEventListener('click', async (e) => {
-					e.stopPropagation();
-					// 1. Unset all others
-					this.plugin.settings.createNoteOptions.forEach((o) => {
-						if (o.type === type) o.isDefault = false;
-					});
-					// 2. Set this one
-					this.plugin.settings.createNoteOptions[index].isDefault = true;
+			const nameArea = row.createDiv({ cls: 'zk-line-name' });
+			nameArea.createSpan({ text: opt.label });
+			// The star's fill alone would be a color-only cue; say it in words too.
+			if (opt.isDefault) nameArea.createSpan({ text: 'Default', cls: 'zk-badge' });
+
+			new ButtonComponent(row).setButtonText('Edit').onClick(() => {
+				this.editingIndex = index; // Switch View
+				this.display();
+			});
+			new ButtonComponent(row).setButtonText('Remove').onClick(async () => {
+				if (confirm(`Remove "${opt.label}"?`)) {
+					this.plugin.settings.createNoteOptions.splice(index, 1);
 					await this.plugin.saveSettings();
 					this.display();
-				});
-
-				nameArea.createEl('span', { text: opt.label });
-
-				// Row Right: Actions (Edit/Delete)
-				const actions = row.createDiv({ cls: 'zettel-item-actions' });
-
-				new ButtonComponent(actions)
-					.setIcon('pencil')
-					.setTooltip('Edit')
-					.setClass('clickable-icon')
-					.onClick(() => {
-						this.editingIndex = index; // Switch View
-						this.display();
-					});
-
-				new ButtonComponent(actions)
-					.setIcon('trash')
-					.setTooltip('Delete')
-					.setClass('clickable-icon')
-					.onClick(async () => {
-						if (confirm(`Delete "${opt.label}"?`)) {
-							this.plugin.settings.createNoteOptions.splice(index, 1);
-							await this.plugin.saveSettings();
-							this.display();
-						}
-					});
+				}
 			});
-		}
+		});
 	}
 
 	// --- [VIEW]: Detail Editor ---
@@ -992,25 +958,23 @@ export class SampleSettingTab extends PluginSettingTab {
 		const navHeader = containerEl.createDiv({ cls: 'zettel-detail-header' });
 		new ButtonComponent(navHeader)
 			.setIcon('arrow-left')
-			.setTooltip('Back')
+			.setTooltip('Back to templates')
 			.onClick(() => {
 				this.editingIndex = null; // Go back to list
 				this.display();
 			});
-		navHeader.createEl('h2', {
-			text: `Edit: ${option.label}`,
-			attr: { style: 'margin:0;' },
-		});
+		navHeader.createEl('h2', { text: `Edit: ${option.label}`, cls: 'zettel-section-title' });
 
 		// [SETTINGS]: Basic Info
-		new Setting(containerEl).setName('Template Name').addText((t) =>
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		new Setting(card).setName('Template Name').addText((t) =>
 			t.setValue(option.label).onChange(async (v) => {
 				option.label = v;
 				await this.plugin.saveSettings();
 			})
 		);
 
-		new Setting(containerEl).setName('Brief of Template').addText((t) =>
+		new Setting(card).setName('Brief of Template').addText((t) =>
 			t.setPlaceholder("introduce your template here").setValue(option.brief || "").onChange(async (v) => {
 				option.brief = v;
 				await this.plugin.saveSettings();
@@ -1019,7 +983,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		// The default dir path for each type
 		// The value of specificFolder should be also changed when type is changed.
-		new Setting(containerEl).setName('Category').addDropdown((d) =>
+		new Setting(card).setName('Category').addDropdown((d) =>
 			d
 				.addOptions({
 					fleeting: 'Fleeting',
@@ -1037,7 +1001,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				})
 		);
 
-		new Setting(containerEl).setName('Specific Folder').addText((t) => {
+		new Setting(card).setName('Specific Folder').addText((t) => {
 			t.setValue(option.specificFolder)
 				.onChange(async (v) => {
 					option.specificFolder = v;
@@ -1045,7 +1009,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		new Setting(containerEl).setName('Prefix').addText((t) =>
+		new Setting(card).setName('Prefix').addText((t) =>
 			t.setValue(option.extraInfo?.prefix || '$date')
 				.onChange(async (v) => {
 					if (!option.extraInfo) {
@@ -1056,38 +1020,30 @@ export class SampleSettingTab extends PluginSettingTab {
 				})
 		);
 
-		// [SECTION]: Properties Editor (Grid)
-		containerEl.createEl('h3', { text: 'Frontmatter Properties' });
-		new Setting(containerEl).addButton((btn) =>
-			btn.setButtonText('+ Add Property').onClick(() => {
-				// Open the custom modal
-				new PropertyCreationModal(this.app, async (name, defaultValue) => {
-					if (name && !config.properties!.hasOwnProperty(name)) {
-						config.properties![name] = defaultValue;
-						await this.plugin.saveSettings();
-						this.display();
-					}
-				}).open();
-			})
-		);
-
-		const propList = containerEl.createDiv({ cls: 'zettel-prop-list' });
+		// [SECTION]: Properties Editor
+		const propsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		this.renderSubtitle(propsCard, 'Frontmatter properties', 'Fields added to the frontmatter of notes made from this template.');
+		const propList = propsCard.createDiv({ cls: 'zettel-prop-list' });
+		const propKeys = Object.keys(config.properties);
+		if (propKeys.length === 0) {
+			propList.createEl('p', { text: 'No properties yet. Add one to prefill the frontmatter.', cls: 'zk-empty' });
+		}
 
 		// Loop through existing properties
-		Object.keys(config.properties).forEach((key) => {
+		propKeys.forEach((key) => {
 			const val = config.properties![key];
 			const valType = Array.isArray(val) ? 'list' : typeof val;
-			const row = propList.createDiv({ cls: 'zettel-prop-row' });
+			const row = propList.createDiv({ cls: 'zk-line-row' });
 
-			// Grid Column 1: Label
+			// Label
 			row.createEl('span', {
 				text: `${key}`,
-				cls: 'zettel-prop-label',
+				cls: 'zk-line-key',
 				title: key,
 			});
 
-			// Grid Column 2: Input (Dynamic)
-			const inputContainer = row.createDiv({ cls: 'zettel-prop-input' });
+			// Input (dynamic)
+			const inputContainer = row.createDiv({ cls: 'zk-line-control' });
 
 			if (valType === 'boolean') {
 				new ToggleComponent(inputContainer)
@@ -1099,14 +1055,15 @@ export class SampleSettingTab extends PluginSettingTab {
 			} else if (valType === 'number') {
 				const numInput = new TextComponent(inputContainer);
 				numInput.inputEl.type = 'number';
+				numInput.inputEl.setAttr('aria-label', key);
 				numInput.setValue(String(val)).onChange(async (v) => {
 					config.properties![key] = Number(v);
 					await this.plugin.saveSettings();
 				});
-				numInput.inputEl.style.width = '100%';
 			} else if (valType === 'list') {
 				const listInput = new TextComponent(inputContainer);
 				listInput.setPlaceholder('item1, item2');
+				listInput.inputEl.setAttr('aria-label', key);
 				listInput
 					.setValue(Array.isArray(val) ? val.join(', ') : '')
 					.onChange(async (v) => {
@@ -1116,7 +1073,6 @@ export class SampleSettingTab extends PluginSettingTab {
 							.filter((s) => s.length > 0);
 						await this.plugin.saveSettings();
 					});
-				listInput.inputEl.style.width = '100%';
 			} else {
 				const txtInput = new TextComponent(inputContainer)
 					.setValue(String(val))
@@ -1124,14 +1080,11 @@ export class SampleSettingTab extends PluginSettingTab {
 						config.properties![key] = v;
 						await this.plugin.saveSettings();
 					});
-				txtInput.inputEl.style.width = '100%';
+				txtInput.inputEl.setAttr('aria-label', key);
 			}
 
-			// Grid Column 3: Delete
-			const actionContainer = row.createDiv({ cls: 'zettel-prop-actions' });
-			new ButtonComponent(actionContainer)
-				.setIcon('trash')
-				.setClass('clickable-icon')
+			new ButtonComponent(row)
+				.setButtonText('Remove')
 				.onClick(async () => {
 					delete config.properties![key];
 					await this.plugin.saveSettings();
@@ -1139,25 +1092,31 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 		});
 
-		// [SECTION]: Body Content
-		// [FIX]: Using attr style
-		containerEl.createEl('h3', {
-			text: 'Body Sections',
-			attr: { style: 'margin-top: 30px;' },
+		const propActions = propsCard.createDiv({ cls: 'zk-list-actions' });
+		new ButtonComponent(propActions).setButtonText('Add property').onClick(() => {
+			// Open the custom modal
+			new PropertyCreationModal(this.app, async (name, defaultValue) => {
+				if (name && !config.properties!.hasOwnProperty(name)) {
+					config.properties![name] = defaultValue;
+					await this.plugin.saveSettings();
+					this.display();
+				}
+			}).open();
 		});
-		new Setting(containerEl).addButton((btn) =>
-			btn.setButtonText('+ Add Section').onClick(async () => {
-				config.sections!.push({ title: 'New Section', level: 2, content: [] });
-				await this.plugin.saveSettings();
-				this.display();
-			})
-		);
+
+		// [SECTION]: Body Content
+		const sectionsCard = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		this.renderSubtitle(sectionsCard, 'Body sections', 'Headings and starter text added to the note body.');
+		const sectionsList = sectionsCard.createDiv({ cls: 'zettel-section-list' });
+		if (!config.sections || config.sections.length === 0) {
+			sectionsList.createEl('p', { text: 'No sections yet. Add one to give new notes a starting outline.', cls: 'zk-empty' });
+		}
 
 		config.sections?.forEach((sec, i) => {
-			const secBox = containerEl.createDiv({ cls: 'zettel-section-box' });
-			const topRow = secBox.createDiv({ cls: 'zettel-section-header-row' });
+			const secBox = sectionsList.createDiv({ cls: 'zk-object' });
+			const topRow = secBox.createDiv({ cls: 'zk-object-head' });
 
-			// Title + Level + Delete
+			// Title + Level + Remove
 			const titleInput = new TextComponent(topRow)
 				.setPlaceholder('Section Title')
 				.setValue(sec.title)
@@ -1165,9 +1124,8 @@ export class SampleSettingTab extends PluginSettingTab {
 					sec.title = v;
 					await this.plugin.saveSettings();
 				});
-			titleInput.inputEl.style.flex = '1';
-			titleInput.inputEl.style.fontWeight = 'bold';
-			new DropdownComponent(topRow)
+			titleInput.inputEl.setAttr('aria-label', 'Section title');
+			const levelDropdown = new DropdownComponent(topRow)
 				.addOptions({
 					'1': 'H1',
 					'2': 'H2',
@@ -1181,9 +1139,9 @@ export class SampleSettingTab extends PluginSettingTab {
 					sec.level = parseInt(v);
 					await this.plugin.saveSettings();
 				});
+			levelDropdown.selectEl.setAttr('aria-label', 'Heading level');
 			new ButtonComponent(topRow)
-				.setIcon('trash')
-				.setClass('clickable-icon')
+				.setButtonText('Remove')
 				.onClick(async () => {
 					config.sections!.splice(i, 1);
 					await this.plugin.saveSettings();
@@ -1191,16 +1149,21 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 
 			// Content
-			const contentArea = new TextAreaComponent(secBox.createDiv())
+			const contentArea = new TextAreaComponent(secBox.createDiv({ cls: 'zk-object-body' }))
 				.setPlaceholder('Content template...')
 				.setValue(sec.content.join('\n'))
 				.onChange(async (v) => {
 					sec.content = v.split('\n');
 					await this.plugin.saveSettings();
 				});
-			contentArea.inputEl.style.width = '100%';
-			contentArea.inputEl.style.minHeight = '80px';
-			contentArea.inputEl.style.resize = 'vertical';
+			contentArea.inputEl.setAttr('aria-label', 'Section content');
+		});
+
+		const sectionActions = sectionsCard.createDiv({ cls: 'zk-list-actions' });
+		new ButtonComponent(sectionActions).setButtonText('Add section').onClick(async () => {
+			config.sections!.push({ title: 'New Section', level: 2, content: [] });
+			await this.plugin.saveSettings();
+			this.display();
 		});
 	}
 }

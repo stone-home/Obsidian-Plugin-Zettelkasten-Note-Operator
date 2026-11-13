@@ -1,60 +1,31 @@
+/* Settings page: wrapper and shared spacing.
+   Every color, radius and font size is an Obsidian theme variable, so the page
+   follows the active theme. Roles: ground = --background-primary,
+   list object = --background-secondary, rule line = --background-modifier-border,
+   text = --text-normal / --text-muted, accent (active tab) = --interactive-accent,
+   problem = --text-error. */
 .zettel-settings-wrapper {
-	padding: 20px 16px 32px;
+	--zk-gap-s: 8px;
+	--zk-gap-m: 12px;
+	--zk-gap-l: 32px;
 	max-width: 760px;
 	margin: 0 auto;
 }
 
-.zettel-settings-wrapper .zettel-section-header {
-	margin: 0 0 18px 0;
-	padding-bottom: 14px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.zettel-settings-wrapper .zettel-settings-card {
-	margin-bottom: 28px;
-}
-
-.zettel-settings-wrapper .zettel-settings-card:last-child {
-	margin-bottom: 0;
-}
-
-.zettel-settings-wrapper .setting-item-control input[type="text"],
-.zettel-settings-wrapper .setting-item-control select {
-	border-radius: 8px;
-	border: 1px solid var(--background-modifier-border);
-	transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.zettel-settings-wrapper .setting-item-control input[type="text"]:focus,
-.zettel-settings-wrapper .setting-item-control select:focus {
-	outline: none;
-	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.18);
-}
-
-.zettel-view-header {
+/* Template editor: back button and title. */
+.zettel-detail-header {
 	display: flex;
-	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 20px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	padding-bottom: 10px;
+	gap: var(--zk-gap-m);
+	margin-bottom: var(--zk-gap-m);
 }
 
-.zettel-category-header {
-	margin-top: 30px;
-	font-size: 0.85em;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	color: var(--text-muted);
-	border-bottom: 1px solid var(--background-modifier-border);
-	padding-bottom: 5px;
+.zettel-detail-header .zettel-section-title {
+	margin: 0;
 }
 
-.no-options {
-	text-align: center;
-	color: var(--text-muted);
-	font-style: italic;
-	padding: 20px;
+@media (prefers-reduced-motion: reduce) {
+	.zettel-settings-wrapper * {
+		transition: none !important;
+	}
 }
