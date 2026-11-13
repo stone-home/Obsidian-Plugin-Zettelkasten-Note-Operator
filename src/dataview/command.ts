@@ -1,12 +1,13 @@
 import MyPlugin from "../main";
-import { App, Notice } from "obsidian";
+import { App, Component, MarkdownRenderChild, Notice } from "obsidian";
 import { DataviewJSManager } from "./manager";
 import type { IDataviewScript } from "./types";
 
 /** Delay before re-running Dataview JS after the user stops typing (Live Preview). Reduces cursor jumps from rapid re-renders. */
 const CODE_BLOCK_DEBOUNCE_MS = 350;
 
-type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any };
+/** `component` owns the Dataview renderer so it is unloaded together with the code block. */
+type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any; component?: Component };
 
 /** Debounced renders of one block, one payload per element (several panes can show the same block). */
 type PendingDvjsEntry = {
@@ -137,14 +138,21 @@ export class DataviewCommand {
 			return;
 		}
 
-		const payload: PendingDvjsPayload = { source, el, ctx };
+		// Register the block's own child synchronously, while Obsidian is still processing it.
+		let component: Component | undefined;
+		if (typeof ctx?.addChild === "function") {
+			const child = new MarkdownRenderChild(el);
+			ctx.addChild(child);
+			component = child;
+		}
+		const payload: PendingDvjsPayload = { source, el, ctx, component };
 
 		// Reading mode / first paint: `el` is not in the document yet. Render it on its own
 		// (no debounce key), after it has had a chance to be attached.
 		if (el.isConnected !== true) {
 			setTimeout(() => {
 				const run = () => {
-					void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
+					void this.runDvjsBlock(payload);
 				};
 				if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
 					requestAnimationFrame(() => {
@@ -178,12 +186,12 @@ export class DataviewCommand {
 			for (const pending of current.byElement.values()) {
 				// An element that left the document was replaced by a newer render of the block.
 				if (pending.el.isConnected === false) continue;
-				void this.runDvjsBlock(pending.source, pending.el, pending.ctx);
+				void this.runDvjsBlock(pending);
 			}
 		}, CODE_BLOCK_DEBOUNCE_MS);
 	}
 
-	private async runDvjsBlock(source: string, el: HTMLElement, ctx: any): Promise<void> {
+	private async runDvjsBlock({ source, el, ctx, component }: PendingDvjsPayload): Promise<void> {
 		const lines = source.trim().split("\n").filter((line) => line.trim().length);
 		const scriptId = lines[0];
 		if (!scriptId) {
@@ -206,7 +214,7 @@ export class DataviewCommand {
 		});
 
 		try {
-			await this.dataviewManager.executeScript(scriptId, el, params, ctx);
+			await this.dataviewManager.executeScript(scriptId, el, params, ctx, component);
 		} catch (error) {
 			new Notice(
 				`Error executing script ${scriptId}: ${error instanceof Error ? error.message : "Unknown error"}`,

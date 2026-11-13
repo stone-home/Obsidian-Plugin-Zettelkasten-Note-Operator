@@ -1002,6 +1002,7 @@ export class DataviewJSManager extends Component {
 		container: HTMLElement,
 		parameters: Record<string, any> = {},
 		ctx?: any,
+		component?: Component,
 	): Promise<void> {
 		const script = this.getScript(scriptId);
 		if (!script) {
@@ -1039,10 +1040,12 @@ export class DataviewJSManager extends Component {
 
 			const codeWithParams = `const input = ${JSON.stringify(parameters)};\n${cleanCode}`;
 
+			// Dataview attaches its renderer to `component`; the block's own child unloads it
+			// with the block, while the manager (fallback) lives until the plugin unloads.
 			await dataviewApi.executeJs(
 				codeWithParams,
 				container,
-				this,
+				component ?? this,
 				ctx ? ctx.sourcePath : script.filePath,
 			);
 		} catch (error) {
