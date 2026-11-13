@@ -11,7 +11,7 @@ import { stripMdExtension } from "../../utils/path";
 import { GitHubClient } from "../github/githubClient";
 import { describeGitHubError } from "../github/errors";
 import { bytesToBase64, gitBlobSha } from "../github/gitHash";
-import { GitHubContentEntry, resolvePullTarget, selectPullFiles } from "../github/repoPull";
+import { GitHubContentEntry, resolvePullTarget, selectPullFiles, validatePullRule } from "../github/repoPull";
 
 /** Outcome of one Pull from GitHub. */
 export interface PullSummary {
@@ -703,6 +703,13 @@ export class ResearchManager {
 				summary.unknownRules.push(id);
 				continue;
 			}
+			// Rules can be hand-edited in data.json; a broken one must not stop the others.
+			const problem = validatePullRule(rule);
+			if (problem) {
+				summary.failed++;
+				summary.warnings.push(`Skipped rule ${rule.id}: ${problem}`);
+				continue;
+			}
 			let entries: GitHubContentEntry[];
 			try {
 				const listing = await client.listDirectory(owner, repoName, rule.sourceDir, branch);
@@ -734,6 +741,26 @@ export class ResearchManager {
 	}
 
 	private async pullOneFile(
+		client: GitHubClient,
+		owner: string,
+		repoName: string,
+		branch: string,
+		projectFolder: string,
+		rule: GithubPullRule,
+		entry: GitHubContentEntry,
+		authed: boolean,
+		summary: PullSummary,
+	): Promise<void> {
+		try {
+			await this.pullOneFileUnsafe(client, owner, repoName, branch, projectFolder, rule, entry, authed, summary);
+		} catch (err) {
+			// A vault write or folder problem affects only this file.
+			summary.failed++;
+			summary.warnings.push(`Could not save "${entry.name}" from ${rule.sourceDir}: ${Logger.getErrorMessage(err)}`);
+		}
+	}
+
+	private async pullOneFileUnsafe(
 		client: GitHubClient,
 		owner: string,
 		repoName: string,
@@ -787,8 +814,11 @@ export class ResearchManager {
 		let current = "";
 		for (const segment of folderPath.split("/").filter((s) => s.length > 0)) {
 			current = current ? `${current}/${segment}` : segment;
-			if (!this.app.vault.getAbstractFileByPath(current)) {
+			const existing = this.app.vault.getAbstractFileByPath(current);
+			if (!existing) {
 				await this.app.vault.createFolder(current);
+			} else if (existing instanceof TFile) {
+				throw new Error(`"${current}" is a file, so it cannot hold the pulled files`);
 			}
 		}
 	}
