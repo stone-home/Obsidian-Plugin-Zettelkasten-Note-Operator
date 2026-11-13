@@ -134,8 +134,9 @@ export class ResearchManager {
 		const draftsFolder = this.app.vault.getAbstractFileByPath(draftsPath);
 
 		const section = container.createDiv({ cls: "zk-pqa-group" });
-		section.style.cssText = "display:flex; flex-direction:column; gap:8px; width:100%;";
-		section.createSpan({ text: "Drafts", cls: "zk-pqa-label" });
+		// align-items: zk-pqa-group centres its children, which put the title in the middle.
+		section.style.cssText = "display:flex; flex-direction:column; align-items:stretch; gap:8px; width:100%;";
+		section.createDiv({ text: "Drafts", cls: "zk-pqa-title" });
 
 		if (!draftsFolder || !(draftsFolder instanceof TFolder)) {
 			section.createSpan({ text: "No drafts folder found.", cls: "zk-pqa-desc" });
@@ -146,6 +147,9 @@ export class ResearchManager {
 			(f): f is TFile => f instanceof TFile && f.extension === "md",
 		);
 
+		if (drafts.length === 0) {
+			section.createSpan({ text: "No drafts yet. Create one with the Draft row above.", cls: "zk-pqa-desc" });
+		}
 		for (const draft of drafts) {
 			const row = section.createDiv({ cls: "zk-pqa-draft-row" });
 			row.style.cssText = "display:flex; align-items:center; gap:8px; width:100%;";
