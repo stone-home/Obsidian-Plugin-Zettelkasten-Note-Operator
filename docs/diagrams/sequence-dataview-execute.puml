@@ -10,46 +10,47 @@ participant "DataviewJSManager" as Mgr
 participant "Dataview plugin\napi.executeJs" as DV
 participant "Script (JS)" as Script
 participant "window.ZettelkastenOperator" as API
-participant "ResearchManager\nor CodeProjectManager" as Manager
-participant "Vault" as Vault
 
 User -> Note : Open note containing\n``` zettelkasten-query\nzk-research-quick-actions\n```
 Note -> Render : Render code block (language = zettelkasten-query)
-
-Render -> Cmd : registerMarkdownCodeBlockProcessor callback\nprocessDvjsBlock(source, el, ctx)
+Render -> Cmd : processor callback(source, el, ctx)
 activate Cmd
-Cmd -> Cmd : Parse source: scriptId = first line\nparams = key: value lines
-Cmd -> Mgr : executeScript(scriptId, el, params, ctx)
+Cmd -> Cmd : scheduleProcessDvjsBlock(source, el, ctx)
+opt ctx.addChild exists
+  Cmd -> Render : ctx.addChild(new MarkdownRenderChild(el))\n(synchronously; the block's own component)
+end
 
+alt el not yet in the document (reading mode, first paint)
+  Cmd -> Cmd : setTimeout(0), then two animation frames
+else el in the document (Live Preview)
+  Cmd -> Cmd : key = sourcePath + section line\npending[key].set(el, payload)\nrestart 350 ms timer
+  note right of Cmd : Several panes showing the same block\neach keep their own pending render
+  Cmd -> Cmd : timer fires: delete pending[key];\nskip elements that left the document
+end
+
+Cmd -> Cmd : runDvjsBlock(payload)\nscriptId = first line; params split at first ":" or "="
+Cmd -> Mgr : executeScript(scriptId, el, params, ctx, component)
+deactivate Cmd
 activate Mgr
 Mgr -> Mgr : getScript(scriptId)
-alt Script not found
-  Mgr -> Mgr : container.setText("Error: Script '...' not found")
-  Mgr --> Cmd : return
+alt not found
+  Mgr -> Mgr : el.setText("Error: Script '...' not found")
 end
-Mgr -> Mgr : scriptContent = scriptCache.get(scriptId)\nor read from vault
-Mgr -> Mgr : cleanCode = strip header comment\ncodeWithParams = "const input = " + JSON.stringify(params) + ";\n" + cleanCode
-Mgr -> DV : dataviewApi.executeJs(codeWithParams, container, this, sourcePath)
+alt Dataview api missing
+  Mgr -> Mgr : el.setText("Error: Dataview plugin not found or not enabled")
+end
+Mgr -> Mgr : strip header; code = "const input = " + JSON(params) + script
+Mgr -> DV : executeJs(code, el, component ?? manager, sourcePath)
 deactivate Mgr
-
 activate DV
-DV -> Script : Run script in Dataview JS context\n(dv, input, app, ... available)
+DV -> DV : renderer = new DataviewJSRenderer(...)\ncomponent.addChild(renderer)
+note right of DV : The renderer re-runs the script when the\nDataview index changes, and unloads with\nthe block's component
+DV -> Script : run with dv, input
 activate Script
-note right of Script : Script uses dv.current().file.path\nand may call ZettelkastenOperator
-Script -> API : e.g. createResearchDraft(projectPath, title)
-API -> Manager : new ResearchManager(app, settings)\nmanager.createDraft(projectFile, title)
-activate Manager
-Manager -> Vault : ensureFolder(drafts); createNote(...)
-Vault --> Manager : TFile
-Manager --> API : TFile
-deactivate Manager
-API --> Script : (return)
-Script -> Script : Render UI (buttons, tables) into container
-Script --> DV : (done)
+Script -> API : e.g. createResearchDraft(projectPath, title)\npullFromGitHub(projectPath, key)
+API --> Script : result
+Script -> Script : render buttons and tables into el
 deactivate Script
-DV --> Mgr : (done)
 deactivate DV
-Mgr --> Cmd : (done)
-deactivate Cmd
 
 @enduml

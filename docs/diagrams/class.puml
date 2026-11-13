@@ -10,6 +10,7 @@ package "Plugin Core" {
     + settings: ZettelkastenSettings
     + factory: NoteFactory
     + dataview?: DataviewCommand
+    + lastPushRequestDebug?: LastPushRequestDebug
     --
     + onload(): Promise<void>
     + loadSettings(): Promise<void>
@@ -22,29 +23,39 @@ package "Plugin Core" {
     - plugin: MyPlugin
     - activeTab: general | projects | dataview | templates
     - editingIndex: number | null
+    - lastRenderKey: string | null
     --
     + display(): void
     - renderGeneralSettings(container)
     - renderProjectsSettings(container)
+    - renderGithubPullRules(container)
     - renderDataviewSettings(container)
     - renderSummaryView(container)
     - renderDetailView(container, index)
   }
 
   class ZettelkastenSettings <<interface>> {
-    dateFormat
-    fleetingPath
-    literaturePath
-    atomPath
-    permanentPath
+    fleetingPath / literaturePath / atomPath / permanentPath
+    lexiconPath / hubPath
     researchRootPath
     projectRootPath
     dataviewEnabled
     dataviewQueryPath
     dataviewCodeBlockType
-    searchDefaultPath
+    dataviewReloadDefaultsOnLoad
+    dataviewDefaultScriptHashes
     ganttStatusColors
     createNoteOptions
+    aiPromptRules / aiPromptMaxDepth / ...
+    githubPullRules: GithubPullRule[]
+  }
+
+  class GithubPullRule <<interface>> {
+    id
+    label?
+    sourceDir
+    filePattern
+    target
   }
 }
 
@@ -52,9 +63,11 @@ package "Service Layer" {
   class NoteFactory {
     - app: App
     - settings: ZettelkastenSettings
+    + confirmOverwrite: (path) => Promise<boolean>
     --
     + initialize(settings): Promise<void>
     + openCreationModal(): void
+    + createNoteFromOption(option, title): Promise<ZettelNoteModel | null>
     + createZettel(type, title, folder, config?, extra?): Promise<ZettelNoteModel>
     + loadNote(path): Promise<ZettelNoteModel>
     + loadActiveNote(): Promise<ZettelNoteModel>
@@ -65,6 +78,7 @@ package "Service Layer" {
     - settings: ZettelkastenSettings
     --
     + createProject(name): Promise<TFile>
+    + importExistingProject(folderPath): Promise<TFile>
     + createObjective(projectFile, title): Promise<TFile>
     + createStep(projectFile, objectiveFile, title): Promise<TFile>
     + createExperiment(projectFile, title): Promise<TFile>
@@ -72,9 +86,15 @@ package "Service Layer" {
     + createDraft(projectFile, title, templateConfig?): Promise<TFile>
     + listProjects(): Promise<TFile[]>
     + updateDashboardProperties(filePath, updates): Promise<void>
-    + pushToGitHub(projectFile, tokenKey?): Promise<void>
+    + renderDraftsTable(container, projectPath, callbacks): void
+    + pushToGitHub(projectFile, tokenKey?): Promise<PushResult>
+    + setPullRules(projectFile, ids): Promise<void>
+    + pullFromGitHub(projectFile, tokenKey?): Promise<PullSummary>
+    - readPromptsOnBranch(client, owner, name, branch, folder)
+    - pullOneFile(...): Promise<void>
+    - ensureFolderPath(folderPath): Promise<void>
+    - readPat(key): Promise<string>
     - createNote(...): Promise<TFile>
-    - ensureFolder(path): Promise<void>
   }
 
   class CodeProjectManager {
@@ -82,13 +102,19 @@ package "Service Layer" {
     - settings: ZettelkastenSettings
     --
     + createProject(name): Promise<TFile>
+    + importExistingProject(folderPath): Promise<TFile>
     + createRequirement(projectFile, title): Promise<TFile>
-    + refreshProject(projectFile, tokenKey?): Promise<void>
+    + refreshProject(projectFile, tokenKey?, options?): Promise<RefreshSummary>
     + updateDashboardProperties(filePath, updates): Promise<void>
     + listProjects(): Promise<TFile[]>
     - createNote(...): Promise<TFile>
     - upsertRelease(folder, projectFile, release): Promise<void>
-    - upsertCommit(folder, projectFile, commit): Promise<void>
+    - writeUnreleasedCommitsNote(folder, content): Promise<void>
+    - cleanUpLegacyCommitNotes(projectFile, folder, options): Promise<number>
+  }
+
+  class "codeProjectManager (module)" as CodeModule <<functions>> {
+    + buildUnreleasedCommitsNote(input): string
   }
 
   class DraftCompiler {
@@ -107,8 +133,10 @@ package "Service Layer" {
     - settings: ZettelkastenSettings
     --
     + generatePrompt(draft): Promise<string>
-    - extractLinks(content): string[]
-    - classifyLinks(links): Promise<ClassifiedLinks>
+    + extractAIPromptSection(content)
+    - extractLinksInOrder(content): string[]
+    - findRule(file, rules): AIPromptRule | null
+    - resolveLinksWithRules(...)
     - cleanNarrative(content): string
     - buildPrompt(...): string
   }
@@ -118,7 +146,28 @@ package "Service Layer" {
     --
     + listReleases(owner, repo): Promise<any[]>
     + compareCommits(owner, repo, base, head): Promise<any>
-    - getJson<T>(url): Promise<T>
+    + graphql<T>(query, variables): Promise<T>
+    + listDirectory(owner, repo, path, ref): Promise<any[]>
+    + downloadRaw(owner, repo, path, ref): Promise<ArrayBuffer>
+    - get(url, accept?)
+    - contentsUrl(owner, repo, path, ref): string
+  }
+
+  class "github/errors" as GitHubErrors <<functions>> {
+    + githubErrorStatus(err): number | undefined
+    + describeGitHubError(err, action, authed, notFound): string
+  }
+
+  class "github/gitHash" as GitHash <<functions>> {
+    + gitBlobSha(bytes): Promise<string>
+    + bytesToBase64(bytes): string
+  }
+
+  class "github/repoPull" as RepoPull <<functions>> {
+    + generateRuleId(existing): string
+    + validatePullRule(rule): string | null
+    + selectPullFiles(entries, rule): GitHubContentEntry[]
+    + resolvePullTarget(projectFolder, target, fileName): string | null
   }
 }
 
@@ -128,29 +177,39 @@ package "Dataview Layer" {
     - plugin: MyPlugin
     - dataviewManager: DataviewJSManager
     - processorRegistered: boolean
+    - pendingDvjsByKey: Map<string, PendingDvjsEntry>
     --
     + initialize(): Promise<void>
     + refresh(): Promise<void>
     + unload(): void
     - registerCodeBlockProcessor(): void
-    - processDvjsBlock(source, el, ctx): Promise<void>
+    - scheduleProcessDvjsBlock(source, el, ctx): void
+    - runDvjsBlock(payload): Promise<void>
   }
 
   class DataviewJSManager {
     - scripts: Map<string, IDataviewScript>
     - scriptCache: Map<string, string>
     - scriptsFolder: string
+    - options: DataviewJSManagerOptions
     - fileWatcherRef: EventRef[]
     --
     + onload(): Promise<void>
     + getScript(id): IDataviewScript | undefined
-    + executeScript(scriptId, container, params, ctx?): Promise<void>
+    + executeScript(scriptId, container, params, ctx?, component?): Promise<void>
+    + createScript(id, name, content, options?): Promise<IDataviewScript>
     + cleanUpFileWatchers(): void
     - createDefaultScripts(): Promise<void>
     - loadAllScripts(): Promise<void>
     - loadScript(file): Promise<void>
     - registerFileWatchers(): void
-    - createScript(id, name, content, options?): Promise<IDataviewScript>
+  }
+
+  class DataviewJSManagerOptions <<interface>> {
+    getOverwriteDefaultsOnLoad?()
+    getDefaultScriptState?()
+    saveDefaultScriptState?(state)
+    notify?(message)
   }
 
   class DataviewScriptBuilder {
@@ -179,42 +238,41 @@ package "UI Layer (Modals)" {
     - renderCategoryGrid(container, types)
   }
 
+  class ConfirmModal {
+    - options: ConfirmOptions
+    - onResult: (confirmed) => void
+    --
+    + onOpen(): void
+    + onClose(): void
+  }
+
   class SearchModal {
     - settings: ZettelkastenSettings
     - factory: NoteFactory
-    - targetDirectory: string
-    - searchResults: ISearchResult[]
     --
     + onOpen(): void
-    - refreshAllResults(): void
     - performSearch(): void
+    - addActiveNoteToResultSources(result)
     - handleCreateOpen(name): void
   }
 
   class TemplateGridModal {
-    - noteType: NoteType
-    - options: INoteOption[]
-    - onChoose: (item: INoteOption) => void
-    --
     + onOpen(): void
   }
 
   class FileNameModal {
-    - referencePath: string
-    - onSubmit: (title: string) => Promise<void> | void
-    --
     + onOpen(): void
   }
 
   class ResearchProjectsModal {
-    - settings: ZettelkastenSettings
-    --
     + onOpen(): void
   }
 
   class CodeProjectsModal {
-    - settings: ZettelkastenSettings
-    --
+    + onOpen(): void
+  }
+
+  class DataviewScriptEditorModal {
     + onOpen(): void
   }
 }
@@ -228,11 +286,16 @@ MyPlugin ..> ResearchManager : creates on demand
 MyPlugin ..> CodeProjectManager : creates on demand
 MyPlugin ..> DraftCompiler : creates on demand
 MyPlugin ..> PromptGenerator : creates on demand
+MyPlugin ..> CodeProjectsModal : askLegacyCommitCleanup()
 
 SampleSettingTab --> MyPlugin : plugin
 SampleSettingTab ..> ZettelkastenSettings : edits
+SampleSettingTab ..> RepoPull : rule ids, validation
+SampleSettingTab --> DataviewScriptEditorModal : opens
+ZettelkastenSettings o-- GithubPullRule
 
 NoteFactory --> Dashboard : opens
+NoteFactory --> ConfirmModal : confirmOverwrite
 NoteFactory ..> ZettelkastenSettings : uses
 Dashboard --> TemplateGridModal : opens
 Dashboard --> FileNameModal : opens
@@ -241,10 +304,20 @@ Dashboard --> ResearchProjectsModal : opens
 Dashboard --> CodeProjectsModal : opens
 Dashboard --> NoteFactory : uses
 
-DataviewCommand --> DataviewJSManager : holds
-DataviewJSManager --> DataviewScriptBuilder : createScriptBuilder()
-DataviewJSManager ..> MyPlugin : plugin.settings
+CodeProjectsModal --> CodeProjectManager : uses
+CodeProjectsModal --> ConfirmModal : legacy cleanup
+ResearchProjectsModal --> ResearchManager : uses
 
-CodeProjectManager --> GitHubClient : uses
+DataviewCommand --> DataviewJSManager : holds
+DataviewJSManager ..> DataviewJSManagerOptions : configured by
+DataviewJSManager --> DataviewScriptBuilder : createScriptBuilder()
+
+CodeProjectManager --> GitHubClient : releases, compare
+CodeProjectManager ..> CodeModule
+CodeProjectManager ..> GitHubErrors
+ResearchManager --> GitHubClient : graphql, contents
+ResearchManager ..> GitHash
+ResearchManager ..> RepoPull
+ResearchManager ..> GitHubErrors
 
 @enduml
