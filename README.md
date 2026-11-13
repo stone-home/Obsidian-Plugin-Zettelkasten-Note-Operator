@@ -306,6 +306,22 @@ Configure status colors in Settings → Project Management → Gantt Chart Statu
 | `blocked` | Red | Blocked tasks |
 | `cancelled` | Dark Gray | Cancelled tasks |
 
+### Pulling files from GitHub
+
+Pull experiment notes, results or figures from the project's repo (the dashboard's `repo`, `defaultBranch` and PAT) into the project folder.
+
+1. In **Settings → Projects → GitHub pull rules**, click **Add pull rule** and fill in:
+   - **Repo folder**: a folder in the repo, e.g. `pkm`. Only files directly inside it are pulled (no subfolders).
+   - **File name pattern**: a regular expression tested against the file name, e.g. `\.md$` or `\.(png|pdf|csv)$`.
+   - **Target folder**: where the files go inside the project folder, e.g. `runs`.
+   Each rule gets a random id, shown in the settings.
+2. In the project dashboard's **Quick Actions**, pick a rule in the **Pull** dropdown and click **Add**. The ids are stored in the dashboard's `github_pull` list; **Remove** takes a rule out again.
+3. Click **Pull from GitHub**.
+
+The repo wins: a file that changed in the repo overwrites the local copy, so edits made in the vault to pulled files are lost on the next pull. Files that are unchanged (same git blob id) are skipped, and local files are never deleted. A notice reports how many files were added, updated, skipped or failed. GitHub lists at most 1000 entries per folder.
+
+Push to GitHub sends all changed prompts in a single commit and skips prompts that are already up to date.
+
 ## Code Project Management
 
 Manage code projects with GitHub integration for tracking releases and commits.

@@ -9,6 +9,7 @@ import {
 	Modal,
 	ToggleComponent,
 	setIcon,
+	Notice,
 	TFile,
 } from 'obsidian';
 import MyPlugin from './main';
@@ -18,6 +19,7 @@ import { DataviewCommand } from "./dataview/command";
 import { getDefaultScriptContent } from "./dataview/manager";
 import { DEFAULT_GANTT_STATUS_COLORS, GANTT_COLOR_OPTIONS, DEFAULT_AI_PROMPT_RULES } from "./constants";
 import { normalizePathPrefix } from "./utils/path";
+import { generateRuleId, validatePullRule } from "./service/github/repoPull";
 import { DataviewScriptEditorModal } from "./modals/dataviewScriptEditorModal";
 import type { IDataviewScript } from "./dataview/types";
 
@@ -465,6 +467,101 @@ export class SampleSettingTab extends PluginSettingTab {
 				this.display();
 			});
 		});
+	
+		this.renderGithubPullRules(containerEl);
+	}
+
+	/** Settings → Projects → GitHub pull rules. Research projects pick rules by id in Quick Actions. */
+	private renderGithubPullRules(containerEl: HTMLElement) {
+		const header = containerEl.createDiv({ cls: 'zettel-section-header' });
+		const icon = header.createDiv({ cls: 'zettel-section-icon' });
+		setIcon(icon, 'download');
+		const text = header.createDiv({ cls: 'zettel-section-text' });
+		text.createEl('h2', { text: 'GitHub pull rules', cls: 'zettel-section-title' });
+		text.createEl('p', {
+			text: 'Each rule pulls the files directly inside a repo folder whose name matches a pattern into a folder of the research project. Add rules to a project from its Quick Actions; the repo comes from the project dashboard. Pulled files are overwritten when they change in the repo.',
+			cls: 'zettel-section-desc',
+		});
+
+		const card = containerEl.createDiv({ cls: 'zettel-settings-card' });
+		const rules = this.plugin.settings.githubPullRules ?? [];
+		if (rules.length === 0) {
+			card.createEl('p', { text: 'No rules yet.', cls: 'setting-item-description' });
+		}
+		rules.forEach((rule, idx) => {
+			const block = card.createDiv({ cls: 'zk-ai-rule-block' });
+			const problem = block.createDiv({ cls: 'setting-item-description' });
+			const showProblem = () => {
+				const message = validatePullRule(rule);
+				problem.setText(message ?? '');
+				problem.style.color = message ? 'var(--text-error)' : '';
+			};
+			const save = async () => {
+				showProblem();
+				await this.plugin.saveSettings();
+			};
+
+			new Setting(block)
+				.setName(`Rule ${rule.id}`)
+				.setDesc('Id used by projects (stored in their github_pull list).')
+				.addExtraButton((b) =>
+					b.setIcon('copy').setTooltip('Copy id').onClick(async () => {
+						try {
+							await navigator.clipboard.writeText(rule.id);
+							new Notice(`Copied ${rule.id}`);
+						} catch {
+							new Notice(rule.id);
+						}
+					})
+				)
+				.addExtraButton((b) =>
+					b.setIcon('trash').setTooltip('Remove rule').onClick(async () => {
+						this.plugin.settings.githubPullRules = rules.filter((_, i) => i !== idx);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+				);
+			new Setting(block).setName('Label').addText((t) =>
+				t.setPlaceholder('e.g. Run notes').setValue(rule.label ?? '').onChange(async (v) => {
+					rule.label = v.trim() || undefined;
+					await save();
+				})
+			);
+			new Setting(block).setName('Repo folder').setDesc('Only files directly in this folder are pulled.').addText((t) =>
+				t.setPlaceholder('e.g. pkm').setValue(rule.sourceDir).onChange(async (v) => {
+					rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, '');
+					await save();
+				})
+			);
+			new Setting(block).setName('File name pattern').setDesc('Regular expression tested against the file name.').addText((t) =>
+				t.setPlaceholder('e.g. \\.md$').setValue(rule.filePattern).onChange(async (v) => {
+					rule.filePattern = v;
+					await save();
+				})
+			);
+			new Setting(block).setName('Target folder').setDesc('Inside the research project folder.').addText((t) =>
+				t.setPlaceholder('e.g. runs').setValue(rule.target).onChange(async (v) => {
+					rule.target = v.trim();
+					await save();
+				})
+			);
+			showProblem();
+		});
+
+		new Setting(card).addButton((btn) =>
+			btn.setButtonText('Add pull rule').onClick(async () => {
+				const list = this.plugin.settings.githubPullRules ?? [];
+				list.push({
+					id: generateRuleId(list.map((r) => r.id)),
+					sourceDir: '',
+					filePattern: '\\.md$',
+					target: '',
+				});
+				this.plugin.settings.githubPullRules = list;
+				await this.plugin.saveSettings();
+				this.display();
+			})
+		);
 	}
 
 	private renderDataviewSettings(containerEl: HTMLElement) {

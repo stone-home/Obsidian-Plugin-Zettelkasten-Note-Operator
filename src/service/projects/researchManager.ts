@@ -5,12 +5,24 @@ import {
 	NoteTemplateConfig,
 	NoteTemplateSection,
 } from "markdown-note-orm";
-import { ZettelkastenSettings } from "../../types";
+import { GithubPullRule, ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
 import { stripMdExtension } from "../../utils/path";
 import { GitHubClient } from "../github/githubClient";
 import { describeGitHubError } from "../github/errors";
 import { bytesToBase64, gitBlobSha } from "../github/gitHash";
+import { GitHubContentEntry, resolvePullTarget, selectPullFiles } from "../github/repoPull";
+
+/** Outcome of one Pull from GitHub. */
+export interface PullSummary {
+	added: number;
+	updated: number;
+	skipped: number;
+	failed: number;
+	/** Ids in the Dashboard's github_pull that match no rule in Settings. */
+	unknownRules: string[];
+	warnings: string[];
+}
 
 const GITHUB_GRAPHQL_URL = "https://api.github.com/graphql";
 
@@ -650,6 +662,155 @@ export class ResearchManager {
 		};
 	}
 
+	/** Sets which pull rules (by id) this project uses; written to the Dashboard's github_pull. */
+	async setPullRules(projectFile: TFile, ids: string[]): Promise<void> {
+		await this.app.fileManager.processFrontMatter(projectFile, (fm) => {
+			fm.github_pull = [...ids];
+		});
+	}
+
+	/**
+	 * Downloads the files selected by the project's pull rules from the Dashboard's repo.
+	 * The repo wins: changed files overwrite the local copy; local files are never deleted.
+	 * Throws for a missing repo or PAT; problems with single folders or files are reported
+	 * in the summary and do not stop the other rules.
+	 */
+	async pullFromGitHub(projectFile: TFile, tokenKey?: string): Promise<PullSummary> {
+		const fm = this.app.metadataCache.getFileCache(projectFile)?.frontmatter ?? {};
+		const repo = String(fm.repo ?? "").trim();
+		if (!repo.includes("/")) {
+			throw new Error("Missing repo field (owner/name) in the research dashboard.");
+		}
+		const branch = String(fm.defaultBranch || "main");
+		const key = tokenKey ?? (fm.github_token_key as string | undefined) ?? "";
+		let token = "";
+		if (key) {
+			token = await this.readPat(key);
+		} else if (fm.public_repo !== true) {
+			throw new Error("Pulling from this repo needs a PAT. Pick one in Quick Actions, or tick Public if the repo is public.");
+		}
+
+		const [owner, repoName] = repo.split("/");
+		const client = new GitHubClient(token);
+		const projectFolder = this.getProjectFolder(projectFile);
+		const rulesById = new Map((this.settings.githubPullRules ?? []).map((r) => [r.id, r] as [string, GithubPullRule]));
+		const ids: string[] = Array.isArray(fm.github_pull) ? fm.github_pull.map((id: unknown) => String(id)) : [];
+		const summary: PullSummary = { added: 0, updated: 0, skipped: 0, failed: 0, unknownRules: [], warnings: [] };
+
+		for (const id of ids) {
+			const rule = rulesById.get(id);
+			if (!rule) {
+				summary.unknownRules.push(id);
+				continue;
+			}
+			let entries: GitHubContentEntry[];
+			try {
+				const listing = await client.listDirectory(owner, repoName, rule.sourceDir, branch);
+				if (!Array.isArray(listing)) {
+					throw new Error(`${rule.sourceDir} is a file, not a folder`);
+				}
+				entries = listing;
+			} catch (err) {
+				summary.failed++;
+				summary.warnings.push(describeGitHubError(err, `Listing ${rule.sourceDir} in ${repo}`, !!token, "path"));
+				continue;
+			}
+			if (entries.length >= 1000) {
+				summary.warnings.push(`${rule.sourceDir} has 1000 or more entries; GitHub lists at most 1000, so some files may be missing.`);
+			}
+			for (const entry of selectPullFiles(entries, rule)) {
+				await this.pullOneFile(client, owner, repoName, branch, projectFolder, rule, entry, !!token, summary);
+			}
+		}
+
+		const unknown = summary.unknownRules.length > 0 ? ` Unknown rule ids: ${summary.unknownRules.join(", ")}.` : "";
+		new Notice(
+			`Pulled from GitHub: ${summary.added} added, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.failed} failed.${unknown}`,
+		);
+		if (summary.warnings.length > 0) {
+			new Notice(summary.warnings.join("\n"), 15000);
+		}
+		return summary;
+	}
+
+	private async pullOneFile(
+		client: GitHubClient,
+		owner: string,
+		repoName: string,
+		branch: string,
+		projectFolder: string,
+		rule: GithubPullRule,
+		entry: GitHubContentEntry,
+		authed: boolean,
+		summary: PullSummary,
+	): Promise<void> {
+		const path = resolvePullTarget(projectFolder, rule.target, entry.name);
+		if (!path) {
+			summary.failed++;
+			summary.warnings.push(`Skipped "${entry.name}": the file name or the target folder "${rule.target}" cannot be used in this vault.`);
+			return;
+		}
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing && !(existing instanceof TFile)) {
+			summary.failed++;
+			summary.warnings.push(`Skipped "${path}": a folder with that name already exists.`);
+			return;
+		}
+		if (existing instanceof TFile) {
+			const local = await this.app.vault.readBinary(existing);
+			if ((await gitBlobSha(local)) === entry.sha) {
+				summary.skipped++;
+				return;
+			}
+		}
+		const repoPath = entry.path || `${rule.sourceDir}/${entry.name}`;
+		let data: ArrayBuffer;
+		try {
+			data = await client.downloadRaw(owner, repoName, repoPath, branch);
+		} catch (err) {
+			summary.failed++;
+			summary.warnings.push(describeGitHubError(err, `Downloading ${repoPath}`, authed, "path"));
+			return;
+		}
+		if (existing instanceof TFile) {
+			await this.app.vault.modifyBinary(existing, data);
+			summary.updated++;
+		} else {
+			await this.ensureFolderPath(path.slice(0, path.lastIndexOf("/")));
+			await this.app.vault.createBinary(path, data);
+			summary.added++;
+		}
+	}
+
+	/** Creates each missing folder of `folderPath`, one segment at a time. */
+	private async ensureFolderPath(folderPath: string): Promise<void> {
+		let current = "";
+		for (const segment of folderPath.split("/").filter((s) => s.length > 0)) {
+			current = current ? `${current}/${segment}` : segment;
+			if (!this.app.vault.getAbstractFileByPath(current)) {
+				await this.app.vault.createFolder(current);
+			}
+		}
+	}
+
+	/** Secret stored under `key`; throws when SecretStorage or the secret is missing. */
+	private async readPat(key: string): Promise<string> {
+		const storage = (this.app as any).secretStorage;
+		if (!storage || typeof storage.getSecret !== "function") {
+			throw new Error("SecretStorage is not available in this Obsidian version.");
+		}
+		let token = "";
+		try {
+			token = (await storage.getSecret(key)) || "";
+		} catch {
+			token = "";
+		}
+		if (!token) {
+			throw new Error(`No PAT found for key "${key}". Set it in Settings, or mark the repo as Public.`);
+		}
+		return token;
+	}
+
 	private getProjectFolder(projectFile: TFile): string {
 		return projectFile.path.replace(/\/Dashboard\.md$/, "");
 	}
@@ -736,6 +897,7 @@ export class ResearchManager {
 				conferences: [],
 				granularity: "day",
 				project_code: "",
+				github_pull: [],
 			},
 			[
 				{

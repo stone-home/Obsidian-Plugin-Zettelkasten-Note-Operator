@@ -7,20 +7,47 @@ export class GitHubClient {
 		this.token = token;
 	}
 
-	private async getJson<T>(url: string): Promise<T> {
+	private async get(url: string, accept: string = "application/vnd.github+json") {
 		const headers: Record<string, string> = {
-			Accept: "application/vnd.github+json",
+			Accept: accept,
 			"X-GitHub-Api-Version": "2022-11-28",
 		};
 		if (this.token) {
 			headers.Authorization = `Bearer ${this.token}`;
 		}
-		const response = await requestUrl({
+		return await requestUrl({
 			url,
 			method: "GET",
 			headers,
 		});
-		return response.json as T;
+	}
+
+	private async getJson<T>(url: string): Promise<T> {
+		return (await this.get(url)).json as T;
+	}
+
+	/** Contents API URL with every path segment and the ref URI-encoded. */
+	private contentsUrl(owner: string, repo: string, path: string, ref: string): string {
+		const encodedPath = path
+			.split("/")
+			.filter((segment) => segment.length > 0)
+			.map((segment) => encodeURIComponent(segment))
+			.join("/");
+		return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`;
+	}
+
+	/** Entries directly inside a repo folder (GitHub returns at most 1000). */
+	async listDirectory(owner: string, repo: string, path: string, ref: string): Promise<any[]> {
+		return await this.getJson(this.contentsUrl(owner, repo, path, ref));
+	}
+
+	/** The exact bytes of one file. */
+	async downloadRaw(owner: string, repo: string, path: string, ref: string): Promise<ArrayBuffer> {
+		const response = await this.get(
+			this.contentsUrl(owner, repo, path, ref),
+			"application/vnd.github.raw+json",
+		);
+		return response.arrayBuffer;
 	}
 
 	/**

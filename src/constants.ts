@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: ZettelkastenSettings = {
 	aiPromptMaxDepth: 1,
 	aiPromptMaxCharsPerNote: 4000,
 	aiPromptWrapperStyle: 'xml',
+	githubPullRules: [],
 };
 
 

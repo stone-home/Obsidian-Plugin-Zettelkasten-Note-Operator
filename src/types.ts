@@ -93,6 +93,17 @@ export interface ZettelkastenSettings {
 	aiPromptWrapperStyle?: "markdown" | "xml";
 	/** System-level prompt prepended to the top of every generated prompt (before note-level AI prompt). */
 	aiPromptSystemPrompt?: string;
+	/** Rules for pulling files from a research project's GitHub repo; projects pick them by id. */
+	githubPullRules?: GithubPullRule[];
+}
+
+/** Pull the files directly inside `sourceDir` whose name matches `filePattern` into `<project>/<target>`. */
+export interface GithubPullRule {
+	id: string;
+	label?: string;
+	sourceDir: string;
+	filePattern: string;
+	target: string;
 }
 
 export interface NoteCategory {
