@@ -7,7 +7,13 @@ import {
 } from "markdown-note-orm";
 import { ZettelkastenSettings } from "../../types";
 import { GitHubClient } from "../github/githubClient";
+import { describeGitHubError } from "../github/errors";
 import { stripMdExtension } from "../../utils/path";
+
+export interface RefreshSummary {
+	releases: number;
+	unreleasedCommits: number;
+}
 
 export class CodeProjectManager {
 	private app: App;
@@ -252,13 +258,17 @@ export class CodeProjectManager {
 		);
 	}
 
-	async refreshProject(projectFile: TFile, tokenKey?: string): Promise<void> {
+	/**
+	 * Syncs releases and unreleased commits from GitHub into the project folder.
+	 * Throws an Error with a user-facing message when the dashboard, the PAT or a
+	 * GitHub request is the problem; callers show it as a Notice.
+	 */
+	async refreshProject(projectFile: TFile, tokenKey?: string): Promise<RefreshSummary> {
 		const cache = this.app.metadataCache.getFileCache(projectFile)?.frontmatter || {};
 		const repo: string = cache.repo;
 		const defaultBranch: string = cache.defaultBranch || "trunk";
 		if (!repo || !repo.includes("/")) {
-			new Notice("Missing repo field (owner/name) in project dashboard.");
-			return;
+			throw new Error("Missing repo field (owner/name) in project dashboard.");
 		}
 
 		// Determine which token key to use:
@@ -270,19 +280,23 @@ export class CodeProjectManager {
 			? ""
 			: (tokenKey !== undefined ? tokenKey : (cache.github_token_key || ""));
 
-		let token: string | null = null;
-		if (!resolvedKey) {
-			// Public repo or no token configured
-			token = "";
-		} else {
+		let token = "";
+		if (resolvedKey) {
 			const storage = (this.app as any).secretStorage;
 			if (!storage || typeof storage.getSecret !== "function") {
-				new Notice("SecretStorage is not available in this Obsidian version.");
-				return;
+				throw new Error("SecretStorage is not available in this Obsidian version.");
 			}
-			token = await storage.getSecret(resolvedKey);
-			if (!token) {
+			try {
+				token = (await storage.getSecret(resolvedKey)) || "";
+			} catch {
 				token = "";
+			}
+			// A named key without a secret used to fall back to an anonymous request,
+			// which turns a private repo into a confusing 404.
+			if (!token) {
+				throw new Error(
+					`No PAT found for key "${resolvedKey}". Set it in Settings, or mark the repo as Public.`,
+				);
 			}
 		}
 		// Update frontmatter if tokenKey was explicitly provided and differs
@@ -293,8 +307,13 @@ export class CodeProjectManager {
 		}
 
 		const [owner, repoName] = repo.split("/");
-		const client = new GitHubClient(token || "");
-		const releases = await client.listReleases(owner, repoName);
+		const client = new GitHubClient(token);
+		let releases: any[];
+		try {
+			releases = (await client.listReleases(owner, repoName)) || [];
+		} catch (err) {
+			throw new Error(describeGitHubError(err, `Listing releases of ${repo}`, !!token, "repo"));
+		}
 
 		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
 		await this.ensureFolder(`${projectFolder}/releases`);
@@ -305,18 +324,36 @@ export class CodeProjectManager {
 			await this.upsertRelease(projectFolder, projectFile, rel);
 		}
 
+		const summary: RefreshSummary = { releases: releases.length, unreleasedCommits: 0 };
 		if (latestRelease?.tag_name) {
-			const compare = await client.compareCommits(
-				owner,
-				repoName,
-				latestRelease.tag_name,
-				defaultBranch,
-			);
+			let compare: any;
+			try {
+				compare = await client.compareCommits(
+					owner,
+					repoName,
+					latestRelease.tag_name,
+					defaultBranch,
+				);
+			} catch (err) {
+				throw new Error(
+					`Synced ${releases.length} releases, but ` +
+						describeGitHubError(
+							err,
+							`comparing ${latestRelease.tag_name}...${defaultBranch}`,
+							!!token,
+							"ref",
+						),
+				);
+			}
 			const commits = compare?.commits || [];
 			for (const commit of commits) {
 				await this.upsertCommit(projectFolder, projectFile, commit);
 			}
+			summary.unreleasedCommits = commits.length;
 		}
+
+		new Notice(`Synced ${summary.releases} releases, ${summary.unreleasedCommits} unreleased commits.`);
+		return summary;
 	}
 
 	private async upsertRelease(

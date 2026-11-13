@@ -234,10 +234,15 @@ export class CodeProjectsModal extends Modal {
 			const tokenKey =
 				this.selectedTokenKey ||
 				this.getFrontmatter(this.selectedProject as TFile).github_token_key;
-			await this.manager.refreshProject(this.selectedProject as TFile, tokenKey);
+			try {
+				// Shows its own summary Notice on success.
+				await this.manager.refreshProject(this.selectedProject as TFile, tokenKey);
+			} catch (err) {
+				new Notice("Refresh failed: " + (err instanceof Error ? err.message : String(err)));
+				return;
+			}
 			this.freshFrontmatter = await this.readFrontmatterFromVault(this.selectedProject as TFile);
 			await this.refresh();
-			new Notice("Project data refreshed.");
 		};
 	}
 
