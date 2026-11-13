@@ -72,8 +72,10 @@ export interface ZettelkastenSettings {
 	dataviewEnabled: boolean;
 	dataviewQueryPath: string;
 	dataviewCodeBlockType: string;
-	/** When true, default scripts are overwritten on plugin load; when false, keep user-edited scripts (raw). */
+	/** When true, built-in scripts you have not edited are updated to new defaults on load; when false, existing built-in scripts are never changed. */
 	dataviewReloadDefaultsOnLoad?: boolean;
+	/** Per built-in script: hash of the content the plugin last wrote, and of the default last evaluated. */
+	dataviewDefaultScriptHashes?: Record<string, { written: string; seen: string }>;
 	/** When true, show debug panels in built-in Dataview scripts (e.g. last request, PAT/repo info). */
 	dataviewDebugPanels?: boolean;
 	ganttStatusColors: IGanttStatusColorMap;
@@ -91,6 +93,17 @@ export interface ZettelkastenSettings {
 	aiPromptWrapperStyle?: "markdown" | "xml";
 	/** System-level prompt prepended to the top of every generated prompt (before note-level AI prompt). */
 	aiPromptSystemPrompt?: string;
+	/** Rules for pulling files from a research project's GitHub repo; projects pick them by id. */
+	githubPullRules?: GithubPullRule[];
+}
+
+/** Pull the files directly inside `sourceDir` whose name matches `filePattern` into `<project>/<target>`. */
+export interface GithubPullRule {
+	id: string;
+	label?: string;
+	sourceDir: string;
+	filePattern: string;
+	target: string;
 }
 
 export interface NoteCategory {

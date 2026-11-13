@@ -29,11 +29,11 @@ activate RM
 
 RM -> RM : getProjectFolder(projectFile) -> projectFolder\nfolder = projectFolder + "/drafts"
 RM -> Vault : ensureFolder(folder)
-RM -> RM : sanitizeSegment(title) -> safeTitle\nfilePath = folder + "/" + safeTitle + ".md"
+RM -> RM : sanitizeSegment(title) -> safeTitle\nprefix = getProjectPrefix(projectFile) (project code + create date)\nfilePath = folder + "/" + prefix + " - " + safeTitle + ".md"
 alt File already exists
   RM --> API : throw new Error("Draft with this title already exists.")
 end
-RM -> Lib : createByType(app, filePath, "fleeting", safeTitle, config)\nconfig: tags type/research-draft, project, title, section_title, status
+RM -> Lib : createByType(app, filePath, "fleeting", fileName, config)\nconfig: tags type/research-draft, project, title, section_title, status
 Lib -> Vault : create file
 Vault --> Lib : (file)
 Lib --> RM : (note)

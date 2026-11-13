@@ -7,202 +7,42 @@ An Obsidian plugin for managing Zettelkasten notes with integrated project manag
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Architecture](#architecture)
 - [Zettelkasten Notes](#zettelkasten-notes)
 - [Research Project Management](#research-project-management)
 - [Code Project Management](#code-project-management)
 - [Dataview Integration](#dataview-integration)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [License](#license)
 
 ## Features
 
-- **Zettelkasten Note Types**: Create and manage four core note types (Fleeting, Literature, Atom, Permanent)
-- **Research Projects**: Manage academic research with objectives, steps, experiments, and requirements
-- **Code Projects**: Track GitHub releases, commits, and link requirements to releases
-- **Gantt Charts**: Visualize project timelines with PlantUML Gantt charts
-- **Dataview Integration**: Custom Dataview scripts with file watching and hot-reload
-- **Template System**: Configurable note templates with custom frontmatter properties
+- **Zettelkasten note types**: create Fleeting, Literature, Atom and Permanent notes from templates, and derive a new note from the current one (Upgrade). Creating a note over an existing file asks first.
+- **Research projects**: objectives, steps, experiments, requirements and drafts under one dashboard, with a PlantUML Gantt chart, target conferences and draft tracking.
+- **AI prompts**: build a prompt from a draft by following its links with configurable rules, then push the prompts to GitHub in a single commit.
+- **Pull from GitHub**: download experiment notes, results or figures from the project's repo into the project folder, using rules defined once in the settings.
+- **Code projects**: sync GitHub releases, keep the commits after the latest release in one note, and link requirements to releases.
+- **Dataview scripts**: reusable DataviewJS scripts loaded by ID from a code block, with 16 built-in scripts that power the dashboards.
+- **Templates**: configurable note templates with folders, title prefixes, frontmatter and body sections.
 
 ## Installation
 
-1. Download the latest release from GitHub
-2. Extract to your vault's `.obsidian/plugins/` folder
-3. Enable the plugin in Obsidian Settings → Community Plugins
+1. Install and enable the [Dataview](https://github.com/blacksmithgu/obsidian-dataview) plugin, and turn on **Enable JavaScript Queries** in its settings. The dashboards and every `zettelkasten-query` block run through Dataview; without it a block shows "Dataview plugin not found or not enabled".
+2. Download `main.js`, `manifest.json` and `styles.css` from the latest GitHub release into `.obsidian/plugins/<folder>/` in your vault.
+3. Enable the plugin in Settings → Community plugins.
+
+To run from a clone of this repo instead, run `npm ci` and `npm run build` in the clone; the build writes `main.js` and `styles.css` next to `manifest.json`. A clone without a build has no `main.js`, and Obsidian then fails to load the plugin with `ENOENT ... main.js`.
 
 ## Usage
 
-Examples of common workflows:
+Common workflows:
 
-- **Create a new note**: Click the **+** ribbon icon or run command *Create New Zettel Note* → choose note type (Fleeting / Literature / Atom / Permanent) → pick a template → enter title. The note is created in the folder set for that type (e.g. `004-Permanent/`).
-- **Search and link**: Run *Open Zettelkasten Search* (or click Search in the dashboard). Set target folder, type to filter, then **Open** a result or **Insert** a `[[path|name]]` wikilink at the cursor. Double-click a result to add the current note to that note’s `sources` frontmatter.
-- **Research project**: From the dashboard click **Research** → create or open a project. In the project’s `Dashboard.md`, use the Quick Actions block (objectives, steps, experiments, drafts). The **Drafts** section lists all files in `&lt;project&gt;/drafts` with a **Generate AI Prompt** and **Push to GitHub** button per draft. Create a draft, then click **Generate AI Prompt** for that row (or use the command *Generate AI Prompt from current draft* with a draft file active). **Push to GitHub** uploads the project's `prompts/` folder (generated AI prompts) to the configured repo.
-- **Code project**: From the dashboard click **Projects** → create or open a project. In `Dashboard.md` set `repo` (e.g. `owner/repo`), choose PAT if private, then **Refresh** to sync releases and unreleased commits. Create requirements and link them to releases in the Requirements table.
-- **Call plugin from a script**: In a Dataview JS block you can use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`, or `ZettelkastenOperator.renderDraftsTable(container, dv.current().file.path)` to render the drafts table. See [API Reference](#api-reference) and [docs/architecture.md](docs/architecture.md).
-
-## Architecture
-
-High-level: the plugin has a **core** (main, settings, types), a **service layer** (note factory, research/code managers, draft compiler, prompt generator, GitHub client), a **Dataview layer** (code-block processor + script manager), and a **UI layer** (dashboard, search, template/filename/project modals). Entry points are the ribbon, commands, and `window.ZettelkastenOperator`; Dataview blocks in notes call that API to create items. **For detailed architecture, component descriptions, call flows, and a debugging guide for new maintainers, see [docs/architecture.md](docs/architecture.md).** **For all PlantUML diagrams (class diagram and sequence diagrams), see [docs/diagrams.md](docs/diagrams.md).**
-
-### Class Hierarchy (quick reference)
-
-```mermaid
-classDiagram
-    class MyPlugin {
-        +settings: ZettelkastenSettings
-        +factory: NoteFactory
-        +dataview: DataviewCommand
-        +onload()
-        +saveSettings()
-        -registerGlobalActions()
-    }
-
-    class NoteFactory {
-        -app: App
-        -settings: ZettelkastenSettings
-        +initialize(settings)
-        +openCreationModal()
-        +createZettel(type, title, folder)
-        +loadNote(path)
-    }
-
-    class DataviewCommand {
-        -manager: DataviewJSManager
-        +initialize()
-        +unload()
-    }
-
-    class DataviewJSManager {
-        -scripts: Map
-        -scriptCache: Map
-        +onload()
-        +getScript(id)
-        +executeScript(id, params)
-        -createDefaultScripts()
-        -registerFileWatchers()
-    }
-
-    class ResearchManager {
-        -app: App
-        -settings: ZettelkastenSettings
-        +createProject(name)
-        +createObjective(project, title)
-        +createStep(project, objective, title)
-        +createExperiment(project, title)
-        +createRequirement(project, title)
-        +listProjects()
-    }
-
-    class CodeProjectManager {
-        -app: App
-        -settings: ZettelkastenSettings
-        +createProject(name)
-        +createRequirement(project, title)
-        +refreshProject(project, tokenKey)
-        +listProjects()
-        -upsertRelease(folder, project, release)
-        -upsertCommit(folder, project, commit)
-    }
-
-    class GitHubClient {
-        -token: string
-        +listReleases(owner, repo)
-        +compareCommits(owner, repo, base, head)
-    }
-
-    MyPlugin --> NoteFactory
-    MyPlugin --> DataviewCommand
-    DataviewCommand --> DataviewJSManager
-    MyPlugin ..> ResearchManager : creates
-    MyPlugin ..> CodeProjectManager : creates
-    CodeProjectManager --> GitHubClient
-```
-
-### Module Structure (quick reference)
-
-```mermaid
-graph TB
-    subgraph "Plugin Core"
-        main[main.ts<br/>MyPlugin]
-        settings[settings.ts<br/>SampleSettingTab]
-        types[types.ts<br/>Interfaces]
-        constants[constants.ts<br/>Defaults]
-    end
-
-    subgraph "Service Layer"
-        factory[service/factory.ts<br/>NoteFactory]
-        research[service/projects/researchManager.ts<br/>ResearchManager]
-        code[service/projects/codeProjectManager.ts<br/>CodeProjectManager]
-        github[service/github/githubClient.ts<br/>GitHubClient]
-    end
-
-    subgraph "Dataview System"
-        dv_cmd[dataview/command.ts<br/>DataviewCommand]
-        dv_mgr[dataview/manager.ts<br/>DataviewJSManager]
-        dv_builder[dataview/builder.ts<br/>DataviewScriptBuilder]
-        dv_types[dataview/types.ts<br/>Script Interfaces]
-    end
-
-    subgraph "UI Layer"
-        dashboard[modals/dashboard.ts<br/>Dashboard Modal]
-        template[modals/template.ts<br/>Template Picker]
-        research_modal[modals/researchProjectsModal.ts]
-        code_modal[modals/codeProjectsModal.ts]
-    end
-
-    main --> settings
-    main --> factory
-    main --> dv_cmd
-    main --> research
-    main --> code
-    
-    dv_cmd --> dv_mgr
-    dv_mgr --> dv_builder
-    
-    code --> github
-    
-    factory --> dashboard
-    dashboard --> template
-    dashboard --> research_modal
-    dashboard --> code_modal
-```
-
-### Data Flow
-
-```mermaid
-flowchart LR
-    subgraph User
-        UI[User Interface]
-    end
-
-    subgraph Plugin
-        Modal[Dashboard Modal]
-        Factory[NoteFactory]
-        RM[ResearchManager]
-        CM[CodeProjectManager]
-    end
-
-    subgraph Vault
-        Notes[(Markdown Notes)]
-        Scripts[(Dataview Scripts)]
-    end
-
-    subgraph External
-        GH[GitHub API]
-    end
-
-    UI --> Modal
-    Modal --> Factory
-    Modal --> RM
-    Modal --> CM
-    
-    Factory --> Notes
-    RM --> Notes
-    CM --> Notes
-    CM --> GH
-    
-    Scripts --> Notes
-```
+- **Create a new note**: click the **+** ribbon icon or run *Create New Zettel Note* → choose a note type → pick a template → enter a title. The note is created in the folder set for that type (e.g. `004-Permanent/`). If a note with that name already exists, you are asked before it is overwritten.
+- **Search and link**: run *Open Zettelkasten Search* (or click Search in the dashboard). Set the target folder, type to filter, then **Open** a result or **Insert** a `[[path|name]]` wikilink at the cursor. Double-click a result to add the current note to that note's `sources` frontmatter.
+- **Research project**: from the dashboard click **Research** → create or open a project. In the project's `Dashboard.md`, use Quick Actions to create objectives, steps, experiments and drafts. The **Drafts** list has a **Generate AI Prompt** and a **Push to GitHub** button per draft; the command *Generate AI Prompt from current draft* does the same for the active draft. See [Pulling files from GitHub](#pulling-files-from-github) to bring results back from the repo.
+- **Code project**: from the dashboard click **Projects** → create or open a project. In `Dashboard.md` set `repo` (e.g. `owner/repo`), pick a PAT for a private repo or tick **Public**, then click **Refresh** to sync releases and unreleased commits. Create requirements and link them to releases in the Requirements table.
+- **Call the plugin from a script**: in a DataviewJS block use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`. See [API Reference](#api-reference).
 
 ## Zettelkasten Notes
 
@@ -215,9 +55,24 @@ The plugin supports four core Zettelkasten note types:
 | **Atom** | Single concept notes | `003-Atom/` |
 | **Permanent** | Refined, permanent notes | `004-Permanent/` |
 
+Lexicon (`005-Lexicon/`) and Hub (`006-Hubs/`) folders are also configurable; the AI prompt rules and the research tables read from them.
+
+### Creating Notes
+
+1. Click the **+** ribbon icon or run *Create New Zettel Note*.
+2. Select the note type.
+3. Choose a template (Settings → Templates).
+4. Enter the note title. The template's prefix (e.g. `$date`) is added in front of it.
+
+If the resulting file already exists, a dialog asks whether to overwrite it; Cancel (or Esc) leaves the existing note untouched.
+
+### Upgrade
+
+With a note open, the dashboard's **Upgrade** section creates a new note derived from it, and writes a link back to the current note into the new note's `sources`. The types offered depend on the current note's type (for example a Fleeting note offers Atom and Permanent). For a type outside the four core types (such as `run` or `objective`), the section says the type is not in the upgrade range.
+
 ### Note Type Hierarchy
 
-All project-related notes use `type: permanent` as the base type with subtypes stored in tags:
+All project-related notes use `type: permanent` as the base type, with the subtype stored in tags:
 
 ```yaml
 ---
@@ -229,82 +84,90 @@ status: active
 ---
 ```
 
-### Creating Notes
-
-1. Click the **+** ribbon icon or use command palette
-2. Select note type category
-3. Choose or create a template
-4. Enter note title
-
 ## Research Project Management
 
-Research projects help manage academic papers with a structured hierarchy.
+Research projects manage academic papers with a structured hierarchy.
 
 ### Project Structure
 
 ```plain-text
 Research/
 └── MyProject/
-    ├── Dashboard.md          # Project overview with Gantt chart
+    ├── Dashboard.md          # Research Command Center
     ├── objectives/           # High-level goals
-    │   └── Objective1.md
     ├── steps/                # Tasks linked to objectives
-    │   └── Step1.md
     ├── experiments/          # Research experiments
-    │   └── Experiment1.md
     ├── requirements/         # Project requirements
-    │   └── Requirement1.md
+    ├── drafts/               # Paper drafts
+    ├── materials/            # Compiled drafts (command "Compile current draft to materials")
     └── prompts/              # Generated AI prompts (pushed to GitHub)
 ```
 
-### Dashboard Features
+Objectives, steps, experiments and drafts get a project prefix in their file name: the project code (Dashboard `project_code`, or initials derived from the folder name) plus the project's creation date, e.g. `MR2620260213 - Baseline`.
 
-The research dashboard includes:
+### Dashboard
 
-- **Quick Actions**: Create objectives, steps, experiments, requirements
-- **Gantt Chart**: PlantUML timeline visualization
-- **Data Pipeline**: Track AI-processed papers
-- **Tables**: List all objectives, steps, experiments
+A new research dashboard contains these sections, each a `zettelkasten-query` block:
 
-### Example: Research Dashboard
+| Section | Script | Shows |
+|---------|--------|-------|
+| Quick Actions | `zk-research-quick-actions` | Create objectives, steps, experiments and drafts; repo, branch, PAT, Public and push folder settings; the Pull group; the drafts list |
+| Data Pipeline Visualization | `zk-research-target-conference` | The takeaway workflow diagram and the target conferences from `conferences` |
+| AI Pipeline Tracking | `zk-research-ai-pipeline-tracking` | Drafts with their status, prompt copies and latest prompt |
+| Atomic Intelligence | `zk-research-ai-pipeline`, `zk-research-atomic-notes` | Literature, Atom, Permanent and Lexicon notes whose `projects` contains this project's `project_id` |
+| Production Staging | `zk-research-materials` | Files in `materials/` |
+| Objectives Timeline | `zk-research-gantt` | PlantUML Gantt chart |
+| Objectives / Steps / Experiments | `zk-research-objectives`, `zk-research-steps`, `zk-research-experiments` | Tables of those notes |
 
-```markdown
----
-type: permanent
-tags:
-  - type/research-project
-project_id: ml_paper
-project_name: ML Paper
-status: active
-start: 2024-01-01
-end: 2024-06-30
----
+Dashboard frontmatter used by the plugin:
 
-# Research Command Center
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `project_id`, `project_name` | Identity; notes link to the project through `project_id` in their `projects` list | from the project name |
+| `project_code` | Prefix code for child note names; empty means initials of the folder name | empty |
+| `repo`, `defaultBranch` | GitHub repo (`owner/name`) and branch for push and pull | empty, `main` |
+| `github_token_key`, `public_repo` | Selected PAT (SecretStorage key) and whether the repo is public | empty, `true` |
+| `github_target_folder` | Repo folder that prompts are pushed to ("Push folder" in Quick Actions) | `prompts` |
+| `github_pull` | Ids of the pull rules this project uses | `[]` |
+| `conferences` | Links to CFP notes for the target conference table | `[]` |
+| `granularity` | Gantt scale: `day`, `week` or `month` | `day` |
 
-## Quick Actions
+### Gantt Chart
 
-```zettelkasten-query
-zk-research-quick-actions
-```
+The chart shows drafts, experiments and objectives. Drafts and experiments start at `start` (or `due`, or the file's modification date) and end at `end` (or `due`, or the modification date); an end that was not set explicitly and falls before the start is drawn as a one-day task. Objectives need both `start` and `end`. Items whose dates are invalid (e.g. `tbd`, `2026-02-30`) or whose explicit `end` is before `start` are left out of the chart and listed under it in a **Not drawn** table with the note, field, value and reason.
 
-## Objectives Timeline (PlantUML Gantt)
-
-```zettelkasten-query
-zk-research-gantt
-```
-
-### Gantt Chart Status Colors
-
-Configure status colors in Settings → Project Management → Gantt Chart Status Colors:
+Configure status colors in Settings → Projects → Gantt Chart Status Colors:
 
 | Status | Color | Description |
 |--------|-------|-------------|
 | `completed` / `done` | Green | Finished tasks |
 | `active` / `in-progress` | Orange | Current work |
 | `planned` / `todo` | Gray | Not started |
+| `proposed` | Blue | Proposed |
 | `blocked` | Red | Blocked tasks |
 | `cancelled` | Dark Gray | Cancelled tasks |
+
+### AI Prompts and Push to GitHub
+
+**Generate AI Prompt** builds a prompt from a draft and saves it as `prompts/<draft>_prompt_v<date>.md`. It follows the draft's links with the rules in Settings → Projects → AI Prompt Generation (see [Configuration](#configuration)). A section titled `## AI prompt` in the draft is moved to the top, after the optional system prompt.
+
+**Push to GitHub** uploads the `.md` files in `prompts/` to `<github_target_folder>/` on the dashboard's repo and branch. It needs a PAT. All changed prompts go into one commit; prompts that are already identical on GitHub are skipped, and if nothing changed no commit is made. If the branch moves while pushing, the plugin reads it again and retries once. A missing branch or a GitHub error is reported in a notice.
+
+### Pulling files from GitHub
+
+Pull experiment notes, results or figures from the project's repo (the dashboard's `repo`, `defaultBranch` and PAT) into the project folder.
+
+1. In **Settings → Projects → GitHub pull rules**, click **Add pull rule** and fill in:
+   - **Repo folder**: a folder in the repo, e.g. `pkm`. Only files directly inside it are pulled (no subfolders).
+   - **File name pattern**: a regular expression tested against the file name, e.g. `\.md$` or `\.(png|pdf|csv)$`.
+   - **Download folder**: a relative path that starts from the research project folder, e.g. `runs` puts files in `<project>/runs` and `results/figures` in `<project>/results/figures`. A leading `/` or `..` is rejected. Missing folders are created.
+   Each rule gets a random id, shown in the settings.
+2. In the project dashboard's **Quick Actions**, pick a rule in the **Pull** dropdown and click **Add**. The ids are stored in the dashboard's `github_pull` list; **Remove** takes a rule out again.
+3. Click **Pull from GitHub**.
+
+A public repo can be pulled without a PAT: tick **Public** in Quick Actions. Without a PAT, GitHub allows 60 requests per hour, and each listed folder and each downloaded file is one request.
+
+The repo wins: a file that changed in the repo overwrites the local copy, so edits made in the vault to pulled files are lost on the next pull. Files that are unchanged (same git blob id) are skipped, and local files are never deleted. A problem with one rule or file is reported and the rest still runs. A notice reports how many files were added, updated, skipped or failed. GitHub lists at most 1000 entries per folder.
 
 ## Code Project Management
 
@@ -315,74 +178,45 @@ Manage code projects with GitHub integration for tracking releases and commits.
 ```plain-text
 Projects/
 └── MyCodeProject/
-    ├── Dashboard.md          # Project overview
-    ├── releases/             # GitHub releases (auto-synced)
+    ├── Dashboard.md            # Project overview
+    ├── Unreleased Commits.md   # Commits after the latest release, rewritten on every Refresh
+    ├── releases/               # One note per GitHub release
     │   ├── v1.0.0.md
     │   └── v1.1.0.md
-    ├── commits/              # Unreleased commits
-    │   └── abc1234.md
-    └── requirements/         # Feature requirements
+    └── requirements/           # Feature requirements
         └── Feature1.md
 ```
 
-### Dashboard Features
+### Dashboard
 
-- **Quick Actions**: Create requirements, refresh GitHub data
-- **PAT Selector**: Choose GitHub Personal Access Token
-- **Public Repo Toggle**: Mark repository as public (no PAT needed)
-- **Requirements Table**: Link requirements to releases
-- **Releases Table**: List all GitHub releases
-- **Commits Table**: Show unreleased commits
+- **Quick Actions** (`zk-project-quick-actions`): create requirements, pick a PAT or tick **Public**, and **Refresh**.
+- **Requirements** (`zk-project-requirements`): requirements with status and priority; a dropdown per row links a requirement to a release.
+- **Releases** (`zk-project-releases`): all synced releases.
+- **Unreleased Commits** (`zk-project-commits`): the commits stored in `Unreleased Commits.md`.
 
-### Example: Code Project Dashboard
+Dashboard frontmatter: `repo` (`owner/name`), `defaultBranch` (default `trunk`), `github_token_key`, `public_repo`, and `legacy_commits` (see below).
 
-```markdown
----
-type: permanent
-tags:
-  - type/code-project
-project_name: MyPlugin
-repo: username/repo-name
-defaultBranch: trunk
-github_token_key: github_token
-public_repo: false
----
-```
+### Refresh
 
-# Code Project Dashboard
+**Refresh** lists the repo's releases and writes one note per release in `releases/` (version, date, URL and release notes). It then compares the latest release with the default branch and rewrites `Unreleased Commits.md` as a whole: the commits as frontmatter (short sha, first message line, date, URL) plus a readable table. When there is no release yet, or the comparison fails, the note is rewritten with an empty list (and the reason). A notice summarises the result.
 
-## Quick Actions
+Problems are reported with what to fix: a missing `repo`, a selected PAT key with no stored secret, a rejected PAT (401), missing access or the hourly limit for requests without a PAT (403), a missing or hidden repo, or a missing tag or branch (404).
 
-```zettelkasten-query
-zk-project-quick-actions
-```
-
-## Requirements
-
-```zettelkasten-query
-zk-project-requirements
-```
-
-## Releases
-
-```zettelkasten-query
-zk-project-releases
-```
-```
+Older versions saved each unreleased commit as `commits/<sha>.md`. On the first Refresh after updating, the plugin offers to move those notes to the trash. If you decline, `legacy_commits: keep` is written to the dashboard and you are not asked again.
 
 ### GitHub Token Setup
 
-1. Create a Personal Access Token at GitHub → Settings → Developer settings
-2. In Obsidian, store the token in SecretStorage using another plugin or the console
-3. Configure the token key name in plugin settings
+1. Create a Personal Access Token at GitHub → Settings → Developer settings. Pushing prompts needs write access to the repo's contents.
+2. Store the token in Obsidian's SecretStorage, for example with another plugin or from the developer console.
+3. Pick it in the project's Quick Actions. The PAT dropdowns list every secret stored in SecretStorage; the chosen key is saved as `github_token_key` in the dashboard.
 
 ## Dataview Integration
 
-The plugin provides a custom Dataview code block processor for loading reusable scripts.
+The plugin registers a code block processor that runs reusable DataviewJS scripts. It requires the Dataview plugin with JavaScript queries enabled.
 
 ### Script Storage
 
-Scripts are stored in the configurable scripts folder (default: `dataview-scripts/`):
+Scripts are `.js` files in the scripts folder (default `dataview-scripts/`). The built-in scripts are written there on load:
 
 ```plain-text
 dataview-scripts/
@@ -392,6 +226,8 @@ dataview-scripts/
 └── custom-script.js
 ```
 
+They can be edited in Settings → Dataview → Scripts or as files; changes are picked up without restarting.
+
 ### Using Scripts
 
 Load a script by ID in a code block:
@@ -400,33 +236,49 @@ Load a script by ID in a code block:
 ```zettelkasten-query
 script-id
 param1: value1
-param2: value2
+param2 = value2
 ```
 ````
+
+Each parameter line is split at its first `:` or `=`; the rest of the line is the value, parsed as JSON when possible (e.g. `["a", "b"]`, `3`). The script reads them from `input`.
 
 ### Built-in Scripts
 
 | Script ID | Purpose |
 |-----------|---------|
-| `zk-research-quick-actions` | Research project quick action buttons |
-| `zk-research-gantt` | PlantUML Gantt chart for objectives |
-| `zk-research-objectives` | Table of all objectives |
-| `zk-research-steps` | Table of all steps |
-| `zk-research-experiments` | Table of all experiments |
-| `zk-research-requirements` | Table of research requirements |
-| `zk-project-quick-actions` | Code project quick actions |
-| `zk-project-requirements` | Requirements table with release linking |
-| `zk-project-releases` | GitHub releases table |
-| `zk-project-commits` | Unreleased commits table |
+| `zk-research-quick-actions` | Research dashboard quick actions, Pull group and drafts list |
+| `zk-research-ai-pipeline-tracking` | Drafts with status, section, prompt copies and latest prompt |
+| `zk-research-ai-pipeline` | Literature notes linked to the project |
+| `zk-research-atomic-notes` | Atom, Permanent and Lexicon notes linked to the project |
+| `zk-research-materials` | Files in `materials/` |
+| `zk-research-gantt` | PlantUML Gantt chart, with the Not drawn table |
+| `zk-research-objectives` | Objectives with status, start and end |
+| `zk-research-steps` | Steps with their objective and status |
+| `zk-research-objective-steps` | Steps of one objective (used inside objective notes) |
+| `zk-research-experiments` | Experiments with status |
+| `zk-research-requirements` | Research requirements with status and priority |
+| `zk-research-target-conference` | Target conferences from the dashboard's `conferences` |
+| `zk-project-quick-actions` | Code dashboard quick actions and Refresh |
+| `zk-project-requirements` | Requirements with a release dropdown per row |
+| `zk-project-releases` | Synced releases |
+| `zk-project-commits` | Commits from `Unreleased Commits.md` |
+
+`zk-research-objective-steps` matches steps by the file their `objective` link points to. Its optional `objectivePath` parameter names an objective; if that name no longer resolves (for example after a rename), the block shows "Objective not found".
+
+### Built-in Script Updates
+
+With **Reload default scripts on load** on (the default), the plugin records a hash of each built-in script it writes. On load, a built-in script you have not edited is updated to the latest default, an identical one is left alone, and one you edited is kept; a notice names edited scripts once when a newer default could not be applied. Use **Reset** in Settings → Dataview to restore a default. With the setting off, existing built-in scripts are never changed.
 
 ### Custom Scripts
 
-Create custom scripts with a metadata header:
+Start a custom script with a block-comment header. The opening `/**` must be on its own line, and each tag is written as `@tag value` (no colon). Without a header, the script ID is the file name.
 
 ```javascript
-// @id: my-custom-script
-// @name: My Custom Script
-// @description: Does something useful
+/**
+ * @id my-custom-script
+ * @name My Custom Script
+ * @description Does something useful
+ */
 
 const folder = dv.current().file.folder;
 dv.table(['Name', 'Status'],
@@ -436,57 +288,69 @@ dv.table(['Name', 'Status'],
 
 ## Configuration
 
-### Settings Overview
+Settings are grouped in four tabs.
+
+**General**
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Fleeting Path** | Folder for fleeting notes | `001-Fleeting` |
-| **Literature Path** | Folder for literature notes | `002-Literature` |
-| **Atom Path** | Folder for atom notes | `003-Atom` |
-| **Permanent Path** | Folder for permanent notes | `004-Permanent` |
-| **Research Root Path** | Root folder for research projects | `Research` |
-| **Projects Root Path** | Root folder for code projects | `Projects` |
-| **Dataview Enabled** | Enable Dataview integration | `true` |
-| **Dataview Scripts Folder** | Folder for Dataview scripts | `dataview-scripts` |
-| **Code Block Type** | Custom code block language | `zettelkasten-query` |
-| **GitHub Token Keys** | Comma-separated SecretStorage keys | `github_token` |
+| Fleeting / Literature / Atom / Permanent Default Path | Folder for each note type | `001-Fleeting`, `002-Literature`, `003-Atom`, `004-Permanent` |
+| Lexicon / Hub Default Path | Folders read by AI prompt rules and research tables | `005-Lexicon`, `006-Hubs` |
+| Search default folder | Starting folder of the search modal | `002-Literature` |
 
-**AI Prompt Generation** (Settings → Projects → AI Prompt Generation): Configure how linked notes are used when generating AI prompts from drafts. Options include **Zotero path** (optional override for literature), **max recursion depth** (link-following depth), **max chars per note** (truncation), **wrapper style** (XML or Markdown), and **rules** that match notes by folder/tag/regex and apply actions: *import full*, *import summary*, *citation only*, or *ignore*. A draft section titled `## AI prompt` is moved to the top of the generated prompt. Citation list entries use `citationKey → Title` for Zotero/Pandoc.
+**Projects**
 
-### Template Configuration
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Research Root Path | Root folder for research projects | `Research` |
+| Projects Root Path | Root folder for code projects | `Projects` |
+| Gantt Chart Status Colors | PlantUML color per status | see [Gantt Chart](#gantt-chart) |
+| AI Prompt Generation | System prompt, Zotero/literature path, max recursion depth, max chars per note, wrapper style (XML or Markdown), and rules | depth `1`, `4000` chars, XML |
+| GitHub pull rules | Rules for [pulling files from GitHub](#pulling-files-from-github) | none |
 
-Templates can be configured with:
+AI prompt rules match linked notes by folder, tag or regex and apply *import full*, *import summary* (named sections), *citation only*, or *ignore*. Citation list entries use `citationKey → Title` for Zotero/Pandoc.
 
-- **Template Name**: Display name
-- **Category**: Note type (fleeting, literature, atom, permanent)
-- **Specific Folder**: Target folder for notes
-- **Prefix**: Filename prefix (e.g., `$date`)
-- **Frontmatter Properties**: Custom YAML properties
-- **Body Sections**: Predefined markdown sections
+**Dataview**
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Enable Dataview scripts | Register the code block processor | on |
+| Dataview scripts folder | Folder for script files | `dataview-scripts` |
+| Dataview code block type | Language of the code block | `zettelkasten-query` |
+| Reload default scripts on load | Keep unedited built-in scripts up to date (see [Built-in Script Updates](#built-in-script-updates)) | on |
+| Show debug panels | Debug output in built-in scripts (last push request, PAT/repo info) | off |
+| Scripts | List, edit and reset scripts | |
+
+**Templates**
+
+Each template has a name, category (note type), specific folder, filename prefix (`$date`, `$datetime`, `$year`, `$month`, `$day` or plain text), frontmatter properties and body sections.
 
 ## API Reference
 
 ### Global Window Object
 
-The plugin exposes `window.ZettelkastenOperator` for use in Dataview scripts:
+The plugin exposes `window.ZettelkastenOperator` for use in Dataview scripts. Methods that take `projectPath` expect the path of the project's `Dashboard.md`.
 
 ```typescript
 interface ZettelkastenOperator {
-  // Research Project Methods
+  // Research projects
   createResearchObjective(projectPath: string, title: string): Promise<TFile>
   createResearchStep(projectPath: string, objectivePath: string, title: string): Promise<TFile>
   createResearchExperiment(projectPath: string, title: string): Promise<TFile>
   createResearchRequirement(projectPath: string, title: string): Promise<TFile>
   createResearchDraft(projectPath: string, title: string, templateOptionIndex?: number): Promise<TFile>
   updateResearchDashboardProperties(projectPath: string, updates: object): Promise<void>
-  pushToGitHub(projectPath: string, tokenKey?: string): Promise<void>
+  pushToGitHub(projectPath: string, tokenKey?: string): Promise<{ successCount: number; errorCount: number; lastRequestDebug?: object }>
+  getPullRules(): GithubPullRule[]
+  setResearchPullRules(projectPath: string, ids: string[]): Promise<void>
+  pullFromGitHub(projectPath: string, tokenKey?: string): Promise<{ added: number; updated: number; skipped: number; failed: number; unknownRules: string[]; warnings: string[] }>
 
-  // Code Project Methods
+  // Code projects (throws an Error with a readable message on failure)
   createCodeRequirement(projectPath: string, title: string): Promise<TFile>
-  refreshCodeProject(projectPath: string, tokenKey?: string): Promise<void>
+  refreshCodeProject(projectPath: string, tokenKey?: string): Promise<{ releases: number; unreleasedCommits: number; legacyCommitNotes: number }>
   updateProjectDashboardProperties(projectPath: string, updates: object): Promise<void>
 
-  // Draft / AI Pipeline
+  // Drafts and AI prompts
   compileDraft(draftPath: string): Promise<string>
   generateAIPrompt(draftFileOrPath: TFile | string): Promise<string>
   renderDraftsTable(container: HTMLElement, projectPath: string): void
@@ -495,24 +359,36 @@ interface ZettelkastenOperator {
   getGithubTokenKeys(): Promise<string[]>
   getGanttStatusColors(): Record<string, string>
   getSettings(): ZettelkastenSettings
+  getLastPushRequestDebug(): object | null
 }
 ```
+
+`tokenKey` is a SecretStorage key; pass `""` for a public repo without a PAT.
 
 ### Usage in Dataview Scripts
 
 ```javascript
 const zk = window.ZettelkastenOperator;
+const projectPath = dv.current().file.path;
 
 // Create a new objective
-await zk.createResearchObjective(dv.current().file.path, "New Objective");
+await zk.createResearchObjective(projectPath, "New Objective");
 
-// Refresh GitHub data
-await zk.refreshCodeProject(dv.current().file.path, "github_token");
+// Pull files with the rules listed in this dashboard's github_pull
+const result = await zk.pullFromGitHub(projectPath);
 
-// Get configured status colors
-const colors = zk.getGanttStatusColors();
+// Refresh a code project (errors are thrown with a readable message)
+try {
+  await zk.refreshCodeProject(projectPath, "github_token");
+} catch (err) {
+  new Notice(err.message);
+}
 ```
+
+## Architecture
+
+The plugin has a core (main, settings, types), a service layer (note factory, research and code project managers, draft compiler, prompt generator, GitHub client and helpers), a Dataview layer (code block processor and script manager) and a UI layer (dashboard, search and project modals). For components, call flows and a debugging guide see [docs/architecture.md](docs/architecture.md); for the PlantUML diagrams see [docs/diagrams.md](docs/diagrams.md).
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT (as declared in `package.json`).

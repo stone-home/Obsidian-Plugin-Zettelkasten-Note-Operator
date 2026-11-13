@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { App, Component, Notice } from 'obsidian';
+import { App, Component, Notice, normalizePath } from 'obsidian';
 import {
 	ObsidianNoteFactory as LibFactory,
 	ZettelNoteModel,
@@ -7,9 +7,10 @@ import {
 	NoteTypeMap,
 	NoteTemplateConfig, INoteFrontmatter,
 } from 'markdown-note-orm';
-import { ZettelkastenSettings } from '../types';
+import { INoteOption, ZettelkastenSettings } from '../types';
 import { Logger } from '../logger';
 import { Dashboard } from '../modals/dashboard';
+import { confirmAction } from '../modals/confirmModal';
 
 /**
  * Resolves built-in prefix placeholders ($date, $datetime, $year, $month, $day) to actual values.
@@ -42,9 +43,18 @@ export class NoteFactory extends Component {
 	private logger = Logger.createLogger('NoteFactory');
 	private settings!: ZettelkastenSettings;
 
+	/** Asks whether an existing note may be overwritten. Replaceable (tests, scripts). */
+	public confirmOverwrite: (path: string) => Promise<boolean>;
+
 	constructor(app: App) {
 		super();
 		this.app = app;
+		this.confirmOverwrite = (path: string) =>
+			confirmAction(this.app, {
+				title: 'Overwrite note?',
+				message: `"${path}" already exists. Overwrite it?`,
+				confirmText: 'Overwrite',
+			});
 	}
 
 	public async initialize(settings: ZettelkastenSettings): Promise<void> {
@@ -72,34 +82,56 @@ export class NoteFactory extends Component {
 			this,
 			async (option, title) => {
 				try {
-					console.error("option", option);
-					if (option.extraInfo?.prefix) {
-						const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
-						title = `${resolved} - ${title}`;
-					}
-					let targetFolder = option.specificFolder;
-					// Dashboard passes a one-off option: Create New Note has sources: [], Upgrade has sources: [link]
-					const note = await this.createZettel(
-						option.type,
-						title,
-						targetFolder,
-						option.templateConfig,
-						option.extraInfo?.properties
-					);
-
-					if (option.openAfterCreation || this.settings.autoOpenNewNote) {
-						// this.app.workspace.openLinkText(...)
-						const fullPath = `${targetFolder}/${title}.md`;
-						await this.app.workspace.openLinkText(fullPath, "", false, {
-							state: { mode: "source" },
-						});
-					}
+					await this.createNoteFromOption(option, title);
 				} catch (error) {
 					this.logger.error('Failed to create note', error);
 					new Notice(`Error creating note: ${error}`);
 				}
 			}
 		).open();
+	}
+
+	/**
+	 * Creates a note from a template option and the title the user typed.
+	 * When a file with the resulting name already exists, asks before overwriting it.
+	 * @returns the new note, or null when the user declined to overwrite.
+	 */
+	public async createNoteFromOption(
+		option: INoteOption,
+		title: string
+	): Promise<ZettelNoteModel | null> {
+		let finalTitle = title;
+		if (option.extraInfo?.prefix) {
+			const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
+			finalTitle = `${resolved} - ${title}`;
+		}
+		const targetFolder = option.specificFolder;
+		const fullPath = normalizePath(`${targetFolder}/${finalTitle}.md`);
+
+		// adapter.exists also matches names that differ only in case on case-insensitive file systems.
+		if (await this.app.vault.adapter.exists(fullPath)) {
+			const overwrite = await this.confirmOverwrite(fullPath);
+			if (!overwrite) {
+				new Notice(`Cancelled: "${fullPath}" already exists.`);
+				return null;
+			}
+		}
+
+		// Dashboard passes a one-off option: Create New Note has sources: [], Upgrade has sources: [link]
+		const note = await this.createZettel(
+			option.type,
+			finalTitle,
+			targetFolder,
+			option.templateConfig,
+			option.extraInfo?.properties
+		);
+
+		if (option.openAfterCreation || this.settings.autoOpenNewNote) {
+			await this.app.workspace.openLinkText(fullPath, "", false, {
+				state: { mode: "source" },
+			});
+		}
+		return note;
 	}
 
 	public async createZettel<K extends NoteType>(

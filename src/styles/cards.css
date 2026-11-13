@@ -3,7 +3,7 @@
 /* --- Project Quick Actions (fancy single row) --- */
 .zk-pqa {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	flex-direction: column;
 	align-items: stretch;
 	gap: 16px;
@@ -90,6 +90,82 @@
 	outline: none;
 	border-color: var(--interactive-accent);
 	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+/* Group title inside Quick Actions (GitHub, Pull). */
+.zk-pqa-title {
+	margin-top: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+/* GitHub settings: labelled fields, two per line, left-aligned at a readable width. */
+.zk-pqa-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 440px));
+	gap: 8px 32px;
+}
+
+.zk-pqa-field {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.zk-pqa-field .zk-pqa-label {
+	flex: 0 0 8.5em;
+	white-space: nowrap;
+}
+
+.zk-pqa-field .zk-pqa-input,
+.zk-pqa-field .zk-pqa-select {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* Pull: the project's rules, then the add row with the one filled button. */
+.zk-pqa-pull {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zk-pqa-rule-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.zk-pqa-rule-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 0.9rem;
+	overflow-wrap: anywhere;
+}
+
+.zk-pqa-pull-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+
+.zk-pqa-pull-foot .zk-pqa-btn-primary {
+	margin-left: auto;
+}
+
+/* Secondary action: not filled, so the primary button stands out. */
+.zk-pqa-btn.zk-pqa-btn-secondary {
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: none;
+	font-weight: 500;
+	padding: 6px 12px;
 }
 
 /* Toggle Switch */
@@ -325,38 +401,6 @@
 	margin-left: auto;
 }
 
-/* --- 1. Summary View Cards --- */
-/* [UI]: Styling for the card look in lists */
-.zettel-template-card {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	padding: 12px 16px;
-	border-radius: 8px;
-	margin-bottom: 8px;
-	transition: transform 0.1s ease;
-}
-
-/* [UI]: Hover effect - lift up slightly */
-.zettel-template-card:hover {
-	transform: translateY(-1px);
-	border-color: var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.zettel-card-label {
-	font-weight: bold;
-	font-size: 1em;
-}
-
-.zettel-card-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
 /* --- 2. Modal Grid Cards --- */
 /* [UI]: The grid layout used in the 'Note Creation Modal' */
 .note-cards-container {
@@ -398,303 +442,93 @@
 	color: var(--text-normal);
 }
 
-/* --- 3. Category Box (Collapsible Accordion) --- */
-/* [UI]: The main container for a Category (e.g., FLEETING) */
-.zettel-type-box {
-	background-color: var(--background-secondary);
+/* --- Settings page: list objects --- */
+/* The one boxed element of the settings page. A box means "one item of a list
+   that has several fields": an AI prompt rule, a pull rule, a script, a note type. */
+.zk-object {
+	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	margin-bottom: 15px;
-	overflow: hidden; /* Ensures the list is hidden when collapsed */
-	transition: box-shadow 0.2s ease;
+	border-radius: var(--radius-m);
+	padding: 10px 14px 12px;
 }
 
-.zettel-type-box:hover {
-	box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-	border-color: var(--interactive-accent);
+.zk-object + .zk-object {
+	margin-top: var(--zk-gap-s);
 }
 
-/* [UI]: The Header Bar of the category box */
-.zettel-type-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 15px 20px;
-	cursor: pointer; /* Indicates it's clickable */
-	background-color: var(--background-secondary-alt);
-	border-bottom: 1px solid transparent;
-}
-
-/* [UI]: Visual change when expanded */
-.zettel-type-box.is-expanded .zettel-type-header {
-	border-bottom-color: var(--background-modifier-border);
-}
-
-.zettel-type-info {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.zettel-type-title {
-	font-weight: 700;
-	font-size: 1.1em;
-	text-transform: uppercase;
-	color: var(--text-normal);
-}
-
-.zettel-type-meta {
-	font-size: 0.85em;
-	color: var(--text-muted);
-	display: flex;
-	gap: 10px;
-}
-
-/* --- [NEW] Header Actions (Right Side) --- */
-/* [UI]: Container for the Plus button and Chevron */
-.zettel-type-header-actions {
+.zk-object-head {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: var(--zk-gap-s);
+	min-height: var(--input-height);
 }
 
-/* [UI]: Style for icon buttons in the header */
-.zettel-header-icon, .zettel-type-toggle {
-	color: var(--text-muted);
+.zk-object-head.is-clickable {
 	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 6px;
-	border-radius: 4px;
-	transition: all 0.2s ease;
 }
 
-.zettel-header-icon:hover, .zettel-type-toggle:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-
-/* [UI]: Rotate the chevron arrow based on state */
-.zettel-type-toggle svg {
-	transition: transform 0.2s ease;
-	transform: rotate(-90deg); /* Pointing Left (Collapsed) */
-}
-
-.zettel-type-box.is-expanded .zettel-type-toggle svg {
-	transform: rotate(0deg); /* Pointing Down (Expanded) */
-}
-
-/* --- 4. Scrollable Template List --- */
-/* [UI]: The area containing the actual templates */
-.zettel-template-list {
-	display: none; /* Hidden by default */
-	max-height: 300px; /* Force scrolling if too tall */
-	overflow-y: auto;
-	padding: 10px;
-	background-color: var(--background-primary);
-}
-
-/* [UI]: Show list when parent has 'is-expanded' class */
-.zettel-type-box.is-expanded .zettel-template-list {
-	display: block;
-}
-
-/* [UI]: A single row in the template list */
-.zettel-list-item {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 8px 12px;
-	border-radius: 6px;
-	margin-bottom: 4px;
-	transition: background 0.2s;
-}
-
-.zettel-list-item:hover {
-	background-color: var(--background-secondary);
-}
-
-.zettel-item-name {
-	flex: 1;
-	font-weight: 500;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.zettel-item-actions {
-	display: flex;
-	gap: 6px;
-	opacity: 0.6;
-}
-
-.zettel-list-item:hover .zettel-item-actions {
-	opacity: 1;
-}
-
-/* --- 5. Default Star Icon --- */
-.zettel-default-icon {
-	color: var(--text-faint);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	padding: 4px;
-	border-radius: 4px;
-	transition: color 0.2s ease;
-}
-
-.zettel-default-icon:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-
-/* [UI]: Force gold color when selected */
-.zettel-default-icon.is-selected {
-	color: var(--interactive-accent) !important;
-	opacity: 1;
-}
-
-.zettel-default-icon svg {
-	width: 16px;
-	height: 16px;
-}
-
-/* --- AI Prompt Rules (Settings > Projects) --- */
-.zk-ai-system-prompt-section {
-	margin-bottom: 20px;
-}
-.zk-ai-system-prompt-section .zk-ai-rules-title {
-	margin-bottom: 6px !important;
-}
-.zk-ai-system-prompt-desc {
-	margin: 0 0 10px 0 !important;
-	font-size: 0.9rem;
-	color: var(--text-muted);
-}
-.zk-ai-system-prompt-row {
-	width: 100%;
-	margin-top: 4px;
-}
-.zk-ai-system-prompt-row textarea {
-	box-sizing: border-box;
-}
-.zk-ai-rules-list {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	margin-top: 16px;
-}
-
-.zk-ai-rules-title {
-	margin: 0 0 12px 0 !important;
-	font-size: 0.95rem;
-	font-weight: 600;
-	color: var(--text-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.zk-ai-rule-block {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	margin: 14px 0;
-	padding: 16px 18px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.zk-ai-rule-block:hover {
-	border-color: var(--background-modifier-border-hover);
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
-}
-
-/* Row 1: Label | Match | Value — grid so each field has space */
-.zk-ai-rule-row-main {
-	display: grid;
-	grid-template-columns: minmax(80px, 1fr) minmax(100px, auto) minmax(120px, 2fr);
-	align-items: end;
-	gap: 14px;
-	width: 100%;
-}
-
-.zk-ai-rule-row-main .setting-item {
-	border: none !important;
-	padding: 0 !important;
+.zk-object-name {
 	min-width: 0;
+	font-weight: var(--font-semibold);
+	overflow-wrap: anywhere;
 }
 
-.zk-ai-rule-row-main .setting-item-info {
-	flex-shrink: 0;
+.zk-object-name.is-capitalized {
+	text-transform: capitalize;
 }
 
-.zk-ai-rule-row-main .setting-item-control input,
-.zk-ai-rule-row-main .setting-item-control select {
-	min-width: 0;
-	width: 100%;
+.zk-object-id {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
 }
 
-/* Row 2: Action dropdown (full text) + Remove button */
-.zk-ai-rule-row-actions {
+.zk-object-actions {
+	margin-left: auto;
 	display: flex;
-	align-items: center;
-	gap: 16px;
-	width: 100%;
 	flex-wrap: wrap;
+	gap: var(--zk-gap-s);
+	justify-content: flex-end;
 }
 
-.zk-ai-rule-row-actions .setting-item {
-	border: none !important;
-	padding: 0 !important;
-	flex: 1;
-	min-width: 180px;
+.zk-object-body {
+	margin-top: 6px;
 }
 
-.zk-ai-rule-row-actions .setting-item-control select {
-	min-width: 180px;
-	width: 100%;
-	max-width: 240px;
-	padding: 6px 10px;
-}
-
-.zk-ai-rule-remove-wrap {
-	flex-shrink: 0;
-}
-
-.zk-ai-rule-remove-wrap button {
-	white-space: nowrap;
-	min-width: 72px;
-}
-
-.zk-ai-rule-row .setting-item-description {
+.zk-object-body:empty {
 	display: none;
 }
 
-.zk-ai-rule-summary-row {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 12px 16px;
-	margin-top: 4px;
-	background: var(--background-secondary-alt);
-	border-radius: 10px;
-	border-left: 4px solid var(--interactive-accent);
+/* A body that lists rows (the templates of a note type): set it apart from the head. */
+.zk-object-rows {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--background-modifier-border);
 }
 
-.zk-ai-rule-summary-row .setting-item {
-	border: none !important;
-	padding: 0 !important;
-	flex: 1;
+/* Title input of a template body section. */
+.zk-object-head > input[type="text"] {
+	flex: 1 1 auto;
 	min-width: 0;
+	font-weight: var(--font-semibold);
 }
 
-.zk-ai-rule-summary-row .setting-item-description {
-	display: block;
-	color: var(--text-muted);
-	font-size: 0.82em;
+.zk-object-body textarea {
+	width: 100%;
+	min-height: 80px;
+	resize: vertical;
+}
+
+/* Script preview inside a script object. */
+.zk-script-snippet {
+	margin-top: var(--zk-gap-s);
+	padding: 10px 12px;
+	max-height: 320px;
+	overflow: auto;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	white-space: pre;
 }

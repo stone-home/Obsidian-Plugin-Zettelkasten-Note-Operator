@@ -1,6 +1,6 @@
 # Zettelkasten Operator — Architecture & Maintenance Guide
 
-This document describes the plugin’s architecture, how components communicate, and **how to debug issues** when maintaining the project. For high-level overview and usage examples, see the [README Architecture section](../README.md#architecture).
+This document describes the plugin's architecture, how components communicate, and how to debug issues when maintaining the project. For features and usage, see the [README](../README.md).
 
 ---
 
@@ -21,14 +21,16 @@ The plugin is structured in four layers:
 
 | Layer | Location | Responsibility |
 |-------|----------|-----------------|
-| **Plugin core** | `main.ts`, `settings.ts`, `types.ts`, `constants.ts` | Bootstrap, settings UI, global API (`window.ZettelkastenOperator`), commands |
-| **Service layer** | `service/` | Note creation, research/code project management, draft compile, AI prompt, GitHub |
-| **Dataview layer** | `dataview/` | Custom code-block processor, script loading, file watchers, execution via Dataview API |
-| **UI layer** | `modals/`, `styles/` | Dashboard, search, template picker, project modals |
+| **Plugin core** | `main.ts`, `settings.ts`, `types.ts`, `constants.ts`, `logger.ts` | Bootstrap, settings UI, global API (`window.ZettelkastenOperator`), commands |
+| **Service layer** | `service/` | Note creation, research and code project management, draft compile, AI prompts, GitHub access |
+| **Dataview layer** | `dataview/` | Code block processor, built-in and custom scripts, file watchers, execution through the Dataview API |
+| **UI layer** | `modals/`, `styles/` | Dashboard, search, template picker, project modals, confirm dialog, script editor |
 
-- **Single source of truth**: `ZettelkastenSettings` in `types.ts`; defaults in `constants.ts`.
-- **Note creation**: All new notes go through `markdown-note-orm` (`LibFactory.createByType`) — used by `NoteFactory`, `ResearchManager`, and `CodeProjectManager`.
-- **Dataview scripts** run in note context; they call `window.ZettelkastenOperator` to create items (objectives, drafts, requirements, etc.) or refresh code projects.
+- **Single source of truth**: `ZettelkastenSettings` in `types.ts`; defaults in `constants.ts` (`DEFAULT_SETTINGS`).
+- **Note creation**: new notes go through `markdown-note-orm` (`LibFactory.createByType`) in `NoteFactory`, `ResearchManager` and `CodeProjectManager`. `createByType` seeds per-type default frontmatter (e.g. `url: ""` for permanent notes) and keeps existing scalar values when a template is applied, so a value passed in `extraProps` for such a field is ignored unless it is set explicitly afterwards (`CodeProjectManager.createNote` does this with `note.properties.set`).
+- **Generated notes**: `CodeProjectManager` writes `Unreleased Commits.md` directly with `vault.create` / `vault.modify` (frontmatter from `stringifyYaml`), not through the ORM, because the whole note is replaced on every refresh.
+- **Dataview scripts** run in note context; they call `window.ZettelkastenOperator` to create items, refresh code projects, push or pull.
+- **Dependency**: execution needs the Dataview plugin with JavaScript queries enabled; the plugin itself only registers the code block processor.
 
 ---
 
@@ -38,68 +40,76 @@ The plugin is structured in four layers:
 
 | File | Purpose | Key exports / usage |
 |------|---------|----------------------|
-| **main.ts** | Plugin entry. Creates `NoteFactory`, optional `DataviewCommand`, registers commands and ribbon, exposes `window.ZettelkastenOperator`. | `MyPlugin` (default export). Commands: `create-zettel-note`, `open-zettelkasten-search`, `compile-current-draft`, `generate-ai-prompt`. |
-| **settings.ts** | Settings tab with 4 tabs: General, Projects, Dataview, Templates. Renders path inputs, Gantt colors, template list/detail. | `SampleSettingTab`. Toggling Dataview recreates `DataviewCommand`. |
-| **types.ts** | Shared interfaces: `ZettelkastenSettings`, `INoteOption`, `NoteCategory`, `IGanttStatusColorMap`. | Used by main, settings, services, modals. |
-| **constants.ts** | Default settings, Gantt color options, prefix placeholders, `DEFAULT_NOTE_CATEGORIES`. | Imported by main, settings, factory/dashboard. |
-| **logger.ts** | Central logging; supports debug mode and context loggers. | `Logger`, `ContextLogger`; used across services and dataview. |
+| **main.ts** | Plugin entry. Creates `NoteFactory`, optional `DataviewCommand`, registers commands and the ribbon icon, exposes `window.ZettelkastenOperator` in `registerGlobalActions()`. | `MyPlugin` (default export). Commands: `create-zettel-note`, `open-zettelkasten-search`, `compile-current-draft`, `generate-ai-prompt`. |
+| **settings.ts** | Settings tab with four tabs: General, Projects, Dataview, Templates. Projects holds root paths, Gantt colors, AI prompt generation and GitHub pull rules. Redrawing the same tab keeps the scroll position. | `SampleSettingTab`. Toggling Dataview or changing its folder recreates `DataviewCommand`. |
+| **types.ts** | Shared interfaces: `ZettelkastenSettings`, `INoteOption`, `NoteCategory`, `AIPromptRule`, `GithubPullRule`, `IGanttStatusColorMap`. | Used by main, settings, services, modals. |
+| **constants.ts** | `DEFAULT_SETTINGS`, Gantt color options and defaults, prefix placeholders, `DEFAULT_AI_PROMPT_RULES`, `DEFAULT_NOTE_CATEGORIES` (with upgrade paths). | Imported by main, settings, factory, dashboard. |
+| **logger.ts** | Central logging with context loggers; console output is prefixed `[Zettelkasten]` / `[Zettelkasten:<Context>]`. | `Logger.createLogger(context)`, `Logger.setDebugMode(true)`, `Logger.getErrorMessage(err)`. |
 
 ### 2.2 Service Layer
 
 | File | Purpose | How to call |
 |------|---------|-------------|
-| **service/factory.ts** | Creates Zettel notes by type (fleeting/literature/atom/permanent) with optional template and extra frontmatter. | From main: `factory.openCreationModal()`, `factory.createZettel()`, `factory.loadNote()`. From Dashboard: callback uses `createZettel`. |
-| **service/projects/researchManager.ts** | Research project lifecycle: create project/dashboard, objectives, steps, experiments, requirements, drafts; update dashboard frontmatter; push prompts to GitHub. Renders **Drafts table** (list of drafts with Generate AI Prompt and Push to GitHub per row) via `renderDraftsTable(container, projectPath, callbacks)`. | Via `window.ZettelkastenOperator` (e.g. `createResearchObjective`, `createResearchDraft`, `pushToGitHub`, `renderDraftsTable`) or from main when registering global actions. Each call instantiates `new ResearchManager(app, settings)`. |
-| **service/projects/codeProjectManager.ts** | Code project lifecycle: create project/dashboard, requirements; refresh from GitHub (releases, unreleased commits); update dashboard frontmatter. | Via `window.ZettelkastenOperator` (e.g. `createCodeRequirement`, `refreshCodeProject`, `updateProjectDashboardProperties`) or from main. Each call instantiates `new CodeProjectManager(app, settings)`. |
-| **service/compiler/draftCompiler.ts** | Compile a draft: resolve project config from dashboard, expand wiki links, write versioned file to `materials/`, update `config/paper_manifest.json`. | From main command `compile-current-draft` or via `window.ZettelkastenOperator.compileDraft(draftPath)`. |
-| **service/compiler/promptGenerator.ts** | Generate AI prompt from draft: extract optional "AI prompt" section (moved to top), resolve links with configurable rules (folder/tag/regex → import_full, import_summary, citation_only, ignore), recursion with depth and cycle detection, token truncation, XML or Markdown wrapping, citation list (citationKey → Title). Saves to `project/prompts/`. | From main command `generate-ai-prompt`, via `window.ZettelkastenOperator.generateAIPrompt(draftFileOrPath)`, or from the Drafts table rendered by `renderDraftsTable`. |
-| **service/github/githubClient.ts** | GitHub API: list releases, compare commits. Used only by `CodeProjectManager`. | `CodeProjectManager.refreshProject()` uses it; no direct use from UI. |
+| **service/factory.ts** | Creates Zettel notes by type with an optional template and extra frontmatter. `createNoteFromOption(option, title)` resolves the title prefix, checks `vault.adapter.exists` (catches case-only collisions) and asks `confirmOverwrite(path)` before overwriting; it returns `null` on cancel. | `factory.openCreationModal()` (ribbon/command) → Dashboard → `createNoteFromOption`. `createZettel()` creates without the check. `confirmOverwrite` is a replaceable property (default: `confirmAction` modal). |
+| **service/projects/researchManager.ts** | Research project lifecycle: project and dashboard, objectives, steps, experiments, requirements, drafts; dashboard frontmatter; **push** of `prompts/` as one GraphQL commit; **pull** of repo files by rules (`setPullRules`, `pullFromGitHub`); renders the drafts table. | Via `window.ZettelkastenOperator` (`createResearch*`, `pushToGitHub`, `setResearchPullRules`, `pullFromGitHub`, `renderDraftsTable`). Each call creates `new ResearchManager(app, settings)`. |
+| **service/projects/codeProjectManager.ts** | Code project lifecycle: project and dashboard, requirements; `refreshProject(file, tokenKey?, { confirmLegacyCleanup? })` syncs releases, rewrites `Unreleased Commits.md` (`buildUnreleasedCommitsNote`), offers to trash legacy `commits/*.md`, and throws readable errors. | Via `window.ZettelkastenOperator` (`createCodeRequirement`, `refreshCodeProject`, `updateProjectDashboardProperties`) and `CodeProjectsModal`. Both pass a `confirmLegacyCleanup` built on `askLegacyCommitCleanup`. |
+| **service/compiler/draftCompiler.ts** | Compiles a draft: resolves project config from the dashboard, expands wiki links, writes a versioned file to `materials/`, updates `config/paper_manifest.json`. | Command `compile-current-draft` or `ZettelkastenOperator.compileDraft(draftPath)`. |
+| **service/compiler/promptGenerator.ts** | Generates an AI prompt from a draft: system prompt first, then the draft's `## AI prompt` section, then linked notes resolved with the rules (folder/tag/regex → import_full, import_summary, citation_only, ignore), recursion depth, cycle detection, truncation, XML or Markdown wrapping, citation list. Saves `prompts/<draft>_prompt_v<date>.md`. | Command `generate-ai-prompt`, `ZettelkastenOperator.generateAIPrompt(draftFileOrPath)`, or the drafts table. |
+| **service/github/githubClient.ts** | GitHub access over Obsidian's `requestUrl`: `listReleases`, `compareCommits`, `graphql` (POST to `/graphql`, a 200 with `errors` throws), `listDirectory` and `downloadRaw` (contents API, path segments and ref encoded, raw media type for bytes). | Used by `CodeProjectManager` (releases, compare) and `ResearchManager` (push, pull). |
+| **service/github/errors.ts** | `githubErrorStatus(err)` and `describeGitHubError(err, action, authed, notFound)` → "`<action>` failed (`<status>`): `<hint>`" with hints for 401, 403 (with or without PAT), and 404 for a repo, a tag/branch, or a folder/file. | Shared by refresh, push and pull. |
+| **service/github/gitHash.ts** | `gitBlobSha(bytes)` (git blob id, SHA-1 of `blob <len>\0` + bytes via `crypto.subtle`) and `bytesToBase64(bytes)` (chunked). | Push skips prompts whose blob id matches the remote; pull skips files whose blob id matches the listing's `sha`. |
+| **service/github/repoPull.ts** | Pure helpers for pull rules: `generateRuleId`, `validatePullRule`, `selectPullFiles` (plain files with a `download_url`, name matches the regex), `resolvePullTarget` (rejects `..` with either separator, paths outside the project, and names Obsidian rejects). | Used by settings (ids, validation) and `ResearchManager.pullFromGitHub`. |
 
 ### 2.3 Dataview Layer
 
 | File | Purpose | How to call |
 |------|---------|-------------|
-| **dataview/command.ts** | Registers a markdown code-block processor for `dataviewCodeBlockType` (e.g. `zettelkasten-query`). Parses first line as script ID, rest as params; delegates to manager. | Automatically when a note with a matching code block is rendered. |
-| **dataview/manager.ts** | Ensures scripts folder exists, creates default scripts (quick-actions, gantt, tables, etc.), loads `.js` from vault, caches content, watches for file changes. Executes script via `app.plugins.plugins.dataview.api.executeJs()`. | Called by `DataviewCommand.processDvjsBlock()` with script ID, container element, and params. |
-| **dataview/builder.ts** | Fluent API to build and register a script (id, name, description, parameters, content). | Used programmatically if adding scripts from code; default scripts are created directly in manager. |
+| **dataview/command.ts** | Registers the code block processor for `dataviewCodeBlockType` (e.g. `zettelkasten-query`). `scheduleProcessDvjsBlock` creates a `MarkdownRenderChild` for the block (added to the context synchronously), then renders: elements not yet in the document render after `setTimeout(0)` and two animation frames; elements already in the document are debounced 350 ms per block, one pending render per element, and elements removed in the meantime are skipped. `runDvjsBlock` takes the script ID from the first line and parameters from the rest (split at the first `:` or `=`, JSON values parsed). | Automatically when a note with a matching block renders. It also wires the manager's options to plugin settings (`dataviewReloadDefaultsOnLoad`, `dataviewDefaultScriptHashes`, `saveSettings`, Notices). |
+| **dataview/manager.ts** | Creates the scripts folder, writes the 16 built-in scripts, loads `.js` files (metadata from a multi-line `/** @id … */` header, else the file name), caches content, watches create/modify/rename/delete. Built-in scripts are written according to a per-script hash state `{ written, seen }` (see 4). `executeScript(id, container, params, ctx, component)` runs the script with `dataviewApi.executeJs`, attaching Dataview's renderer to the block's own component. | Called by `DataviewCommand`. `getDefaultScriptContent(id)` and `hashContent()` are exported (settings Reset, tests). |
+| **dataview/builder.ts** | Fluent API to build and register a script. | Programmatic use; built-in scripts are defined directly in the manager. |
 | **dataview/types.ts** | Interfaces for script metadata and execution. | Used by manager and builder. |
 
 ### 2.4 UI Layer (Modals)
 
 | File | Purpose | How to call |
 |------|---------|-------------|
-| **modals/dashboard.ts** | Main “Zettelkasten Control” modal: Quick Actions (Search, Research, Projects), Create New Note (by type), Active Context, Upgrade. | `factory.openCreationModal()` from main (ribbon/command) or from Search modal when creating a new note. |
-| **modals/searchModal.ts** | Search notes in a folder, optional tag filter; Open / Insert wikilink; Enter = create/open or open Dashboard. | Command `open-zettelkasten-search` or Dashboard “Search” button. |
-| **modals/template.ts** | Grid of templates for a note type (from settings). | Opened by Dashboard when user clicks a note-type card. |
-| **modals/filename.ts** | Text input for note title; duplicate/similar file hints. | Opened by Dashboard after template selection. |
-| **modals/researchProjectsModal.ts** | List research projects; create or open. | Dashboard “Research” button. |
-| **modals/codeProjectsModal.ts** | List code projects; create or open. | Dashboard “Projects” button. |
+| **modals/dashboard.ts** | "Zettelkasten Control" modal: Quick Actions (Search, Research, Projects), Create New Note, Active Context (with Move), Upgrade. Upgrade shows a notice instead of failing for note types outside the four core types. | `factory.openCreationModal()` from the ribbon/command, or from the Search modal. |
+| **modals/confirmModal.ts** | `ConfirmModal` and `confirmAction(app, { title, message, confirmText?, cancelText? })` → `Promise<boolean>`; closing without a button counts as Cancel. | Note overwrite (factory) and legacy commit cleanup (`askLegacyCommitCleanup`). |
+| **modals/searchModal.ts** | Search notes in a folder with an optional tag filter; Open / Insert wikilink; double-click adds the current note to the result's `sources`. | Command `open-zettelkasten-search` or the Dashboard's Search button. |
+| **modals/template.ts** | Grid of templates for a note type. | Opened by the Dashboard when a note-type card is clicked. |
+| **modals/filename.ts** | Title input with hints about similar existing files. | Opened after a template is picked. |
+| **modals/researchProjectsModal.ts** | List, create, import and open research projects. | Dashboard's Research button. |
+| **modals/codeProjectsModal.ts** | List, create, import, open and refresh code projects; exports `askLegacyCommitCleanup(app, count)`. | Dashboard's Projects button; `main.ts` uses `askLegacyCommitCleanup` for the global API. |
+| **modals/dataviewScriptEditorModal.ts** | Editor for a Dataview script's ID, name and content. | Settings → Dataview → Scripts. |
 
 ---
 
 ## 3. Entry Points & Call Flow
 
-- **Ribbon icon (plus-square)** → `factory.openCreationModal()` → Dashboard.
-- **Command “Create New Zettel Note”** → same as ribbon.
-- **Command “Open Zettelkasten Search”** → `new SearchModal(app, settings, factory).open()`.
-- **Command “Compile current draft to materials”** → active file must be under `.../drafts/` → `DraftCompiler.resolveConfig` + `compileDraft` + `updateManifest`.
-- **Command “Generate AI Prompt from current draft”** → active file under `.../drafts/` → `PromptGenerator.generatePrompt`.
-- **Markdown code block** (e.g. ` ```zettelkasten-query `) → `DataviewCommand.processDvjsBlock` → `DataviewJSManager.executeScript` → Dataview’s `executeJs`; scripts then call `window.ZettelkastenOperator` as needed.
-- **Research Quick Actions (Dashboard)** → script calls `ZettelkastenOperator.renderDraftsTable(container, projectPath)`; ResearchManager renders the drafts list (per-draft Generate AI Prompt and Push to GitHub buttons).
-- **Dashboard Quick Actions** → Search / Research / Projects open the corresponding modal (and close Dashboard).
+- **Ribbon icon (plus-square)** and command **Create New Zettel Note** → `factory.openCreationModal()` → Dashboard → template → title → `createNoteFromOption`.
+- **Command Open Zettelkasten Search** → `new SearchModal(app, settings, factory).open()`.
+- **Command Compile current draft to materials** → active file under `.../drafts/` → `DraftCompiler.resolveConfig` + `compileDraft` + `updateManifest`.
+- **Command Generate AI Prompt from current draft** → active file under `.../drafts/` → `PromptGenerator.generatePrompt`.
+- **Markdown code block** (` ```zettelkasten-query `) → `DataviewCommand.scheduleProcessDvjsBlock` → `runDvjsBlock` → `DataviewJSManager.executeScript` → Dataview `executeJs`; scripts then call `window.ZettelkastenOperator`.
+- **Research Quick Actions** (`zk-research-quick-actions`) → create buttons, GitHub settings (via `updateResearchDashboardProperties`), the Pull group (`getPullRules`, `setResearchPullRules`, `pullFromGitHub`), and `renderDraftsTable` for per-draft Generate AI Prompt / Push to GitHub.
+- **Code Quick Actions** (`zk-project-quick-actions`) → `createCodeRequirement`, `updateProjectDashboardProperties`, `refreshCodeProject`.
+- **Dashboard Quick Actions** → Search / Research / Projects modals.
 
-All project/draft/requirement creation from **within a note** (e.g. Research Dashboard) goes through `window.ZettelkastenOperator`, which resolves the project file by path and delegates to the right manager.
+All creation, refresh, push and pull from within a note goes through `window.ZettelkastenOperator`, which resolves the dashboard file by path and delegates to the right manager.
 
 ---
 
 ## 4. Communication & Data Flow
 
-- **Plugin → Factory**: Main holds `this.factory` and passes `this.settings`; Factory gets settings at `initialize()` and uses them for paths and templates.
-- **Plugin → Dataview**: Main creates one `DataviewCommand` when Dataview is enabled; settings changes that toggle or change scripts folder recreate it and call `dataview.initialize()` again.
-- **Plugin → Global API**: `registerGlobalActions()` in main attaches `window.ZettelkastenOperator`. Each method receives `projectPath` (or similar), resolves `TFile` with `app.vault.getAbstractFileByPath`, then instantiates the right manager and calls it. No long-lived manager instances.
-- **Dataview scripts → Plugin**: Scripts run in Dataview’s JS context; they use `dv.current().file.path` and call e.g. `ZettelkastenOperator.createResearchDraft(projectPath, title)`. Errors surface via `Notice` and logger.
-- **Managers → Vault**: All create/update operations use `app.vault` and `app.fileManager.processFrontMatter` or raw read/modify. ResearchManager also uses `requestUrl` for GitHub push.
-- **Settings**: Changed in Settings tab → `plugin.saveSettings()` (writes to Obsidian’s plugin data). Dataview toggle/path/code-block type trigger `refreshDataview()` in settings, which recreates `DataviewCommand`.
+- **Plugin → Factory**: main holds `this.factory` and passes `this.settings` at `initialize()`.
+- **Plugin → Dataview**: main creates one `DataviewCommand` when Dataview is enabled; settings changes that toggle it or change the scripts folder recreate it and call `initialize()` again.
+- **Plugin → Global API**: `registerGlobalActions()` attaches `window.ZettelkastenOperator`. Each method resolves the `TFile` with `app.vault.getAbstractFileByPath`, creates the manager and calls it. No long-lived manager instances.
+- **Dataview scripts → Plugin**: scripts use `dv.current().file.path` as `projectPath`. Research create methods and push/pull report through Notices; `refreshCodeProject` throws Errors with readable messages, which the built-in script shows as "Refresh failed: …".
+- **Built-in script state**: on load, for each built-in script the manager compares the file with the new default. Missing → create. Identical → no write. Hash equals the recorded `written` (or no record yet, which means an older version force-wrote it) → update to the new default. Otherwise the user edited it → keep it and report a new default once (tracked by `seen`). With "Reload default scripts on load" off, existing files and the state are left alone. The state is saved once per load in `settings.dataviewDefaultScriptHashes`.
+- **Code project refresh**: `listReleases` → one note per release in `releases/` → `compareCommits(latestTag, defaultBranch)` → rewrite `Unreleased Commits.md` (empty list when there is no release or the compare fails, then the compare error is thrown) → optional legacy cleanup via the callback (`fileManager.trashFile`, falling back to `vault.trash(file, true)`; a decline writes `legacy_commits: keep`).
+- **Research push**: read `prompts/*.md` bytes → one GraphQL query for the branch head and the target folder's entries → `createCommitOnBranch` with only changed files and `expectedHeadOid` → on "Expected branch to point to …" query again and retry once. `lastRequestDebug` (token masked) is stored on the plugin for the debug panel.
+- **Research pull**: Dashboard `github_pull` ids → rules from settings → per rule `listDirectory(sourceDir)` → `selectPullFiles` → per file `resolvePullTarget`, compare `gitBlobSha(local)` with the listing `sha`, `downloadRaw` → `modifyBinary` or (after creating missing folders one segment at a time) `createBinary`. Each rule and file is isolated; problems become `failed` plus a warning.
+- **Settings**: changed in the Settings tab → `plugin.saveSettings()`. Dataview toggle, folder or code block type trigger `refreshDataview()`, which recreates `DataviewCommand`.
 
 ---
 
@@ -107,64 +117,64 @@ All project/draft/requirement creation from **within a note** (e.g. Research Das
 
 ### 5.1 Enable Logging
 
-- The codebase uses `Logger` and `ContextLogger` from `src/logger.ts`.
-- Set **debug mode** (e.g. in browser console after plugin load):
-  ```js
-  // In DevTools console (with plugin loaded):
-  require('obsidian').require('path').require('fs'); // not needed for Logger
-  // If you expose it: window.ZettelkastenOperator.setDebugMode(true)
-  ```
-  Or set `Logger.isDebugMode = true` in `logger.ts` temporarily; then `Logger.debug()` and `Logger.http()` will print.
-- Loggers are created per module, e.g. `Logger.createLogger('NoteFactory')`. Search for `createLogger(` to see all contexts.
-- **Where to look**: `Logger.info` / `error` / `warn` in factory, researchManager, codeProjectManager, draftCompiler, promptGenerator, dataview/manager. Errors often surface as `Notice` + `Logger.error` or `logError`.
+- Logging goes through `Logger` in `src/logger.ts`; each module has a context logger (`Logger.createLogger('NoteFactory')` etc.). Search for `createLogger(` to see all contexts.
+- `Logger.debug()` and `Logger.http()` print only in debug mode. Call `Logger.setDebugMode(true)` (temporarily in code, e.g. in `onload`) while investigating.
+- Errors surface as a `Notice` plus `logger.error` / `logError`, prefixed `[Zettelkasten]` in the console.
 
 ### 5.2 Where to Set Breakpoints
 
 | Symptom | Suggested breakpoints / files |
 |--------|-------------------------------|
-| Note not created | `factory.ts`: `createZettel`, and inside `LibFactory.createByType` (from markdown-note-orm). Check `option.specificFolder`, `title`, and template. |
-| Wrong folder or frontmatter | `constants.ts` (default paths), `settings.ts` (path inputs), and the manager that creates the note (researchManager / codeProjectManager): `createNote` and the `extraProps` passed in. |
-| Dashboard / Quick Actions not working | `main.ts`: `registerGlobalActions` (object shape). In a Research dashboard note: first line of the script in `dataview/manager.ts` for `zk-research-quick-actions` (e.g. check `dv.current().file.path`). |
-| “Script not found” or wrong script | `dataview/command.ts`: `processDvjsBlock` (scriptId). `dataview/manager.ts`: `getScript(scriptId)`, `executeScript`, and `scriptCache`. Ensure script ID in the note matches the script `id` (and file name) in `dataview-scripts/`. |
-| Dataview block does nothing or shows error | `dataview/manager.ts`: `executeScript` (check `dataviewApi` and `executeJs`). In DevTools, check for JS errors in the script (e.g. `dv.current()` null, or `ZettelkastenOperator` undefined). |
-| Research project/draft/objective creation fails | `main.ts`: the `createResearchDraft` / `createResearchObjective` branch in `registerGlobalActions`. `researchManager.ts`: `createDraft`, `createObjective`, `ensureFolder`, and `createNote`. Check project path and that dashboard file exists. |
-| Code project refresh fails | `codeProjectManager.ts`: `refreshProject` (token, repo, `listReleases`, `compareCommits`). `github/githubClient.ts`: `listReleases`, `compareCommits`. Check `repo` frontmatter and token/key. |
-| Compile draft fails | `draftCompiler.ts`: `resolveConfig` (draft path must contain `/drafts/`), `compileDraft` (wiki link expansion), `updateManifest`. Check dashboard exists and `config/paper_manifest.json` if used. |
-| Settings not persisting | `settings.ts`: any `onChange` that calls `plugin.saveSettings()`. `main.ts`: `loadSettings` / `saveSettings`. Check that you’re not replacing `plugin.settings` with a new object before save. |
+| Note not created or overwrite dialog unexpected | `factory.ts`: `createNoteFromOption` (prefix, `adapter.exists`, `confirmOverwrite`), then `createZettel` and `LibFactory.createByType`. |
+| Wrong folder or frontmatter | `constants.ts` (default paths), `settings.ts` (path inputs), and the manager's `createNote` with its `extraProps`. Remember that ORM defaults win over template values unless set explicitly. |
+| Dashboard / Quick Actions not working | `main.ts`: `registerGlobalActions`. The script text in `dataview/manager.ts` (e.g. `zk-research-quick-actions`); check `dv.current().file.path`. |
+| "Script not found" or wrong script | `dataview/command.ts`: `runDvjsBlock` (script ID). `dataview/manager.ts`: `getScript`, `loadScript` (header parsing), `executeScript`. |
+| Block renders twice, never, or in only one pane | `dataview/command.ts`: `scheduleProcessDvjsBlock` (first-paint path vs. per-block debounce, `isConnected`). |
+| Built-in script not updated or user edit overwritten | `dataview/manager.ts`: `createDefaultScripts` and the saved `dataviewDefaultScriptHashes`. |
+| Code project refresh fails | `codeProjectManager.ts`: `refreshProject` (repo, token, `listReleases`, `compareCommits`, note write, legacy cleanup); `github/errors.ts` for the message. |
+| Push fails or commits too much | `researchManager.ts`: `pushToGitHub`, `readPromptsOnBranch`; `gitHash.ts`. Turn on "Show debug panels" to see the last request in Quick Actions. |
+| Pull skips, fails or writes in the wrong place | `researchManager.ts`: `pullFromGitHub`, `pullOneFile`; `repoPull.ts`: `selectPullFiles`, `resolvePullTarget`, `validatePullRule`. |
+| Compile draft fails | `draftCompiler.ts`: `resolveConfig` (path must contain `/drafts/`), `compileDraft`, `updateManifest`. |
+| Settings not persisting | `settings.ts`: `onChange` handlers calling `plugin.saveSettings()`; `main.ts`: `loadSettings` / `saveSettings`. |
 
 ### 5.3 Common Issues and Fixes
 
-- **“Project not found”**: Caller passes a path that isn’t a dashboard file (e.g. folder path). Global API expects the **dashboard file path** (e.g. `Research/MyProject/Dashboard.md`). Check `dv.current().file.path` in the script and what’s passed to `createResearchDraft` etc.
-- **“Script 'zk-...' not found”**: Script not loaded — either the script file is missing in `dataview-scripts/`, or the ID in the code block doesn’t match (first line of block = script ID). Reload the note or toggle Dataview off/on in settings to force script reload; check `manager.scripts` in debugger.
-- **“Dataview plugin not found or not enabled”**: Dataview must be installed and enabled. Our plugin only registers a code-block processor; execution is done by Dataview’s API.
-- **Duplicate or “already registered” processor**: Main creates `DataviewCommand` once when enabled; settings “refresh” unloads and recreates it. If you see “already registered”, avoid registering the same code-block type twice (e.g. guard with a flag; see `processorRegistered` in command.ts).
-- **Gantt / Quick Actions not updating**: Dataview re-renders blocks when the note or linked files change. If content comes from other notes (e.g. objectives), editing those notes should trigger re-render. For script changes, save the script file in `dataview-scripts/`; file watchers reload it.
+- **Plugin fails to load with `ENOENT ... main.js`**: the plugin folder is a source checkout without a build. Run `npm ci && npm run build` there, or copy `main.js` and `styles.css` from a release or build.
+- **"Dataview plugin not found or not enabled"**: `app.plugins.plugins.dataview.api` is missing. Install and enable Dataview, turn on its JavaScript queries, and check in the console: `app.plugins.manifests.dataview` (installed), `app.plugins.enabledPlugins.has("dataview")` (enabled), `!!app.plugins.plugins.dataview?.api` (loaded).
+- **"Project not found"**: the caller passed something other than the dashboard file path (e.g. a folder). The global API expects e.g. `Research/MyProject/Dashboard.md`.
+- **"Script 'zk-...' not found"**: the script file is missing in the scripts folder or the block's first line does not match its ID. Custom scripts need a multi-line `/** @id … */` header or a matching file name.
+- **"No PAT found for key …"**: the selected `github_token_key` has no secret in SecretStorage. Store the token, pick another key, or tick Public for a public repo.
+- **"Objective not found: …"** in an objective's steps table: the block's `objectivePath` no longer resolves, usually after a rename. Update or remove the parameter.
+- **Duplicate or "already registered" processor**: `DataviewCommand` registers once (`processorRegistered`); avoid registering the same code block type twice.
+- **Tables not updating**: Dataview re-renders when its index changes; renderers belong to the block's `MarkdownRenderChild` and unload with it. Script file changes are picked up by the manager's file watchers.
 
 ### 5.4 Running Tests
 
-- Unit tests live under `src/__tests__/` (e.g. constants, logger, dataview builder/command/manager, factory, researchManager, codeProjectManager, githubClient).
-- Run tests: `npm test` (or `npx jest`). Use tests to verify default script IDs, path resolution, and manager behavior after refactors.
-- After changing default scripts in `dataview/manager.ts`, run the dataview manager tests so “default script list” expectations stay in sync.
+- Tests live under `src/__tests__/`, with Obsidian and markdown-note-orm mocks in `src/__mocks__/` (`testHelpers.ts` has a fake GitHub GraphQL server, contents API routes and a fake Dataview harness). `src/__tests__/verify/` holds independent acceptance checks.
+- Run `npm test`; `npx jest --coverage` enforces the thresholds in `jest.config.ts`. Type check with `npx tsc -noEmit -skipLibCheck`; build with `npm run build`.
+- The ORM mock can mimic the real library's merge rule with `setOrmMergeMode("preserve-existing")`.
+- Built-in script text can be run in tests with `getDefaultScriptContent(id)` and `runDataviewScript` from the helpers.
 
 ### 5.5 Checklist for a New Bug
 
-1. Reproduce in a minimal vault (one project, one dashboard).
-2. Open DevTools (Console + Sources), reproduce, and note any red errors or our `[Zettelkasten]` logs.
-3. Identify the entry point (command, ribbon, or code block) and set a breakpoint in the corresponding file (main, factory, command, or manager).
-4. For “create” bugs, step into the manager’s `createNote` and the library’s `createByType`; confirm path and frontmatter.
-5. For script bugs, confirm script ID, that the script is in `manager.scripts` and `scriptCache`, and that `ZettelkastenOperator` is defined when the script runs.
+1. Reproduce in a minimal vault (one project, one dashboard) with Dataview enabled.
+2. Open DevTools (Console + Sources), reproduce, and note red errors or `[Zettelkasten]` logs.
+3. Identify the entry point (command, ribbon, code block or global API method) and set a breakpoint in the corresponding file.
+4. For "create" bugs, step into the manager's `createNote` and the library's `createByType`; confirm path and frontmatter.
+5. For script bugs, confirm the script ID, that it is in the manager's `scripts` and `scriptCache`, and that `ZettelkastenOperator` is defined when the script runs.
+6. For GitHub bugs, read the Notice text (it names the action and status) and, for push, the debug panel.
 
 ---
 
 ## 6. Diagram Index
 
-**All diagrams with explanations are in [diagrams.md](diagrams.md).** That document includes:
+All diagrams are PlantUML files in [diagrams/](diagrams/); [diagrams.md](diagrams.md) lists them with their purpose and what to look at when debugging:
 
-- **Class Diagram**: Complete class structure and relationships
-- **Sequence: Create Note**: Flow from ribbon click to vault creation
-- **Sequence: Dataview Execution**: How code blocks trigger scripts and call back to plugin
+- **Class Diagram**: classes and relationships across the four layers
+- **Sequence: Create Note**: ribbon click to vault write, including the overwrite confirmation
+- **Sequence: Dataview Execution**: code block rendering, debounce and script execution
 - **Sequence: Research Create Draft**: Quick Action flow from dashboard to vault
-- **Sequence: Code Project Refresh**: GitHub API integration and file sync
-- **Sequence: Compile Draft**: Wiki link expansion and materials generation
-
-Each diagram includes PlantUML source code (render with [PlantUML](https://plantuml.com/) CLI, VS Code extension, or online) and explanations of when to reference it for debugging.
+- **Sequence: Research Push**: prompts to one GitHub commit
+- **Sequence: Research Pull**: pull rules to files in the project folder
+- **Sequence: Code Project Refresh**: releases, the Unreleased Commits note and legacy cleanup
+- **Sequence: Compile Draft**: wiki link expansion and materials generation

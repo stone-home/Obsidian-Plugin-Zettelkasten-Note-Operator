@@ -1,17 +1,18 @@
 import MyPlugin from "../main";
-import { App, Notice } from "obsidian";
+import { App, Component, MarkdownRenderChild, Notice } from "obsidian";
 import { DataviewJSManager } from "./manager";
 import type { IDataviewScript } from "./types";
 
 /** Delay before re-running Dataview JS after the user stops typing (Live Preview). Reduces cursor jumps from rapid re-renders. */
 const CODE_BLOCK_DEBOUNCE_MS = 350;
 
-type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any };
+/** `component` owns the Dataview renderer so it is unloaded together with the code block. */
+type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any; component?: Component };
 
+/** Debounced renders of one block, one payload per element (several panes can show the same block). */
 type PendingDvjsEntry = {
 	timer: ReturnType<typeof setTimeout> | null;
-	seq: number;
-	latest: PendingDvjsPayload | null;
+	byElement: Map<HTMLElement, PendingDvjsPayload>;
 };
 
 export class DataviewCommand {
@@ -30,6 +31,16 @@ export class DataviewCommand {
 			{
 				getOverwriteDefaultsOnLoad: () =>
 					this.plugin.settings.dataviewReloadDefaultsOnLoad !== false,
+				getDefaultScriptState: () =>
+					this.plugin.settings.dataviewDefaultScriptHashes ?? {},
+				saveDefaultScriptState: async (state) => {
+					this.plugin.settings.dataviewDefaultScriptHashes = state;
+					// Some callers (tests, early startup) pass a plugin without saveSettings.
+					if (typeof this.plugin.saveSettings === "function") {
+						await this.plugin.saveSettings();
+					}
+				},
+				notify: (message) => new Notice(message, 15000),
 			},
 		);
 	}
@@ -127,51 +138,60 @@ export class DataviewCommand {
 			return;
 		}
 
+		// Register the block's own child synchronously, while Obsidian is still processing it.
+		let component: Component | undefined;
+		if (typeof ctx?.addChild === "function") {
+			const child = new MarkdownRenderChild(el);
+			ctx.addChild(child);
+			component = child;
+		}
+		const payload: PendingDvjsPayload = { source, el, ctx, component };
+
+		// Reading mode / first paint: `el` is not in the document yet. Render it on its own
+		// (no debounce key), after it has had a chance to be attached.
+		if (el.isConnected !== true) {
+			setTimeout(() => {
+				const run = () => {
+					void this.runDvjsBlock(payload);
+				};
+				if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
+					requestAnimationFrame(() => {
+						requestAnimationFrame(run);
+					});
+				} else {
+					run();
+				}
+			}, 0);
+			return;
+		}
+
+		// Live Preview: `el` is in the document while typing. Debounce per block to avoid cursor
+		// jumps, but keep one payload per element so a second pane showing the same block renders too.
 		const key = this.debounceKeyForBlock(el, ctx, source);
 		let entry = this.pendingDvjsByKey.get(key);
 		if (!entry) {
-			entry = { timer: null, seq: 0, latest: null };
+			entry = { timer: null, byElement: new Map() };
 			this.pendingDvjsByKey.set(key, entry);
 		}
-
-		entry.latest = { source, el, ctx };
-		entry.seq += 1;
-		const generation = entry.seq;
+		entry.byElement.set(el, payload);
 
 		if (entry.timer != null) {
 			clearTimeout(entry.timer);
-			entry.timer = null;
 		}
-
-		// Live Preview: `el` is in-document while typing — debounce to avoid cursor jumps.
-		// Reading mode / first paint: `el` is often not connected yet — run ASAP (0) and rAF-wait if still detached.
-		const debounceMs = el.isConnected === true ? CODE_BLOCK_DEBOUNCE_MS : 0;
-
-		entry.timer = setTimeout(() => {
-			const e = entry;
-			e.timer = null;
-			if (e.seq !== generation) {
-				return;
+		const current = entry;
+		current.timer = setTimeout(() => {
+			current.timer = null;
+			// Drop the entry so it no longer holds the elements.
+			this.pendingDvjsByKey.delete(key);
+			for (const pending of current.byElement.values()) {
+				// An element that left the document was replaced by a newer render of the block.
+				if (pending.el.isConnected === false) continue;
+				void this.runDvjsBlock(pending);
 			}
-			const payload = e.latest;
-			if (!payload) {
-				this.pendingDvjsByKey.delete(key);
-				return;
-			}
-			const run = () => {
-				void this.runDvjsBlock(payload.source, payload.el, payload.ctx);
-			};
-			if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
-				requestAnimationFrame(() => {
-					requestAnimationFrame(run);
-				});
-			} else {
-				run();
-			}
-		}, debounceMs);
+		}, CODE_BLOCK_DEBOUNCE_MS);
 	}
 
-	private async runDvjsBlock(source: string, el: HTMLElement, ctx: any): Promise<void> {
+	private async runDvjsBlock({ source, el, ctx, component }: PendingDvjsPayload): Promise<void> {
 		const lines = source.trim().split("\n").filter((line) => line.trim().length);
 		const scriptId = lines[0];
 		if (!scriptId) {
@@ -180,9 +200,11 @@ export class DataviewCommand {
 
 		const params: Record<string, any> = {};
 		lines.slice(1).forEach((line) => {
-			const [key, ...rest] = line.split(/[=:]/);
-			const value = rest.join(":").trim();
-			const normalizedKey = key?.trim();
+			// Split at the first "=" or ":" only; the value keeps any later separators as typed.
+			const sep = line.search(/[=:]/);
+			if (sep < 0) return;
+			const normalizedKey = line.slice(0, sep).trim();
+			const value = line.slice(sep + 1).trim();
 			if (!normalizedKey || value.length === 0) return;
 			try {
 				params[normalizedKey] = JSON.parse(value);
@@ -192,7 +214,7 @@ export class DataviewCommand {
 		});
 
 		try {
-			await this.dataviewManager.executeScript(scriptId, el, params, ctx);
+			await this.dataviewManager.executeScript(scriptId, el, params, ctx, component);
 		} catch (error) {
 			new Notice(
 				`Error executing script ${scriptId}: ${error instanceof Error ? error.message : "Unknown error"}`,

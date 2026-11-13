@@ -1,6 +1,6 @@
 import { Plugin, TFile, Notice } from 'obsidian';
 import { NoteTemplateConfig } from 'markdown-note-orm';
-import { ZettelkastenSettings } from "./types";
+import { GithubPullRule, ZettelkastenSettings } from "./types";
 import { DEFAULT_SETTINGS, DEFAULT_AI_PROMPT_RULES } from "./constants"
 import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
@@ -11,6 +11,7 @@ import {
 	type LastPushRequestDebug,
 } from "./service/projects/researchManager";
 import { CodeProjectManager } from "./service/projects/codeProjectManager";
+import { askLegacyCommitCleanup } from "./modals/codeProjectsModal";
 import { DraftCompiler } from "./service/compiler/draftCompiler";
 import { PromptGenerator } from "./service/compiler/promptGenerator";
 
@@ -206,7 +207,9 @@ export default class MyPlugin extends Plugin {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
 				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
 				if (!file) throw new Error("Project not found");
-				return await manager.refreshProject(file, tokenKey);
+				return await manager.refreshProject(file, tokenKey, {
+					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(plugin.app, count),
+				});
 			},
 			updateProjectDashboardProperties: async (
 				projectPath: string,
@@ -263,6 +266,19 @@ export default class MyPlugin extends Plugin {
 				const result = await manager.pushToGitHub(file, tokenKey);
 				if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
 				return result;
+			},
+			getPullRules: (): GithubPullRule[] => plugin.settings.githubPullRules ?? [],
+			setResearchPullRules: async (projectPath: string, ids: string[]) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				await manager.setPullRules(file, ids);
+			},
+			pullFromGitHub: async (projectPath: string, tokenKey?: string) => {
+				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				if (!file) throw new Error("Project not found");
+				return await manager.pullFromGitHub(file, tokenKey);
 			},
 			renderDraftsTable: (container: HTMLElement, projectPath: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);

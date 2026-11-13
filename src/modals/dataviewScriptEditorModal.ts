@@ -78,7 +78,7 @@ function mountCodeMirror(
 /**
  * Single script editor modal: edit existing script content or create new (id, name, content).
  * Uses CodeMirror as dedicated code window (syntax highlight, line numbers, theme).
- * Width: ~70% of 1680px/98vw (minWidth 1176px, width 68.6vw).
+ * Width: up to 1176px, never wider than 92% of the window; the editor is at most half the window high.
  */
 export class DataviewScriptEditorModal extends Modal {
 	private plugin: MyPlugin;
@@ -107,9 +107,8 @@ export class DataviewScriptEditorModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("zettelkasten-script-editor-modal");
-		this.modalEl.style.minWidth = "1176px";
-		this.modalEl.style.width = "68.6vw";
-		this.modalEl.style.maxWidth = "68.6vw";
+		this.modalEl.style.width = "min(1176px, 92vw)";
+		this.modalEl.style.maxWidth = "92vw";
 
 		const { contentEl } = this;
 		contentEl.addClass("zettelkasten-script-editor-content");
@@ -148,7 +147,7 @@ export class DataviewScriptEditorModal extends Modal {
 			(val) => {
 				this.currentContent = val;
 			},
-			{ height: "420px" }
+			{ height: "min(420px, 50vh)" }
 		);
 
 		const buttonRow = contentEl.createDiv({ cls: "zk-script-editor-buttons" });
@@ -183,7 +182,6 @@ export class DataviewScriptEditorModal extends Modal {
 		}
 		this.contentEl.empty();
 		this.modalEl.removeClass("zettelkasten-script-editor-modal");
-		this.modalEl.style.minWidth = "";
 		this.modalEl.style.width = "";
 		this.modalEl.style.maxWidth = "";
 	}

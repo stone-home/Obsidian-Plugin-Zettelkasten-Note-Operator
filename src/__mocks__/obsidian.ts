@@ -118,10 +118,244 @@ export class Component {
 	}
 }
 
+// ==================== normalizePath ====================
+/**
+ * Mirrors Obsidian's normalizePath: unify slashes, collapse duplicates,
+ * strip leading/trailing slashes, replace non-breaking spaces, NFC-normalize.
+ */
+export function normalizePath(path: string): string {
+	let p = String(path ?? "")
+		.replace(/([\\/])+/g, "/")
+		.replace(/(^\/+|\/+$)/g, "");
+	if (p === "") p = "/";
+	return p.replace(/ | /g, " ").normalize("NFC");
+}
+
+// ==================== YAML (stringifyYaml / parseYaml) ====================
+const YAML_PLAIN_SAFE = /^[A-Za-z_][A-Za-z0-9_ .\/\-]*$/;
+const YAML_RESERVED = /^(true|false|null|yes|no|on|off|~)$/i;
+
+function yamlScalar(value: any): string {
+	if (value === null || value === undefined) return "null";
+	if (typeof value === "boolean") return value ? "true" : "false";
+	if (typeof value === "number") return Number.isFinite(value) ? String(value) : JSON.stringify(String(value));
+	if (value instanceof Date) return JSON.stringify(value.toISOString());
+	if (Array.isArray(value)) return JSON.stringify(value);
+	if (typeof value === "object") return JSON.stringify(value);
+	const s = String(value);
+	if (YAML_PLAIN_SAFE.test(s) && !YAML_RESERVED.test(s) && !/\s$/.test(s)) return s;
+	return JSON.stringify(s);
+}
+
+function yamlKey(key: string): string {
+	return /^[A-Za-z_][A-Za-z0-9_\-]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+/**
+ * Simple deterministic YAML serializer (subset): scalars, arrays of scalars,
+ * arrays of flat objects, and one level of nested maps. Output ends with "\n"
+ * (like Obsidian's stringifyYaml) unless the object is empty.
+ */
+export function stringifyYaml(obj: any): string {
+	if (obj === null || obj === undefined) return "";
+	if (typeof obj !== "object") return yamlScalar(obj) + "\n";
+	const lines: string[] = [];
+	const emitArrayItems = (arr: any[], indent: string) => {
+		for (const item of arr) {
+			if (item !== null && typeof item === "object" && !Array.isArray(item) && !(item instanceof Date)) {
+				const entries = Object.entries(item).filter(([, v]) => v !== undefined);
+				if (entries.length === 0) {
+					lines.push(`${indent}- {}`);
+					continue;
+				}
+				entries.forEach(([k, v], i) => {
+					const prefix = i === 0 ? `${indent}- ` : `${indent}  `;
+					lines.push(`${prefix}${yamlKey(k)}: ${yamlScalar(v)}`);
+				});
+			} else {
+				lines.push(`${indent}- ${yamlScalar(item)}`);
+			}
+		}
+	};
+	if (Array.isArray(obj)) {
+		emitArrayItems(obj, "");
+	} else {
+		for (const [key, value] of Object.entries(obj)) {
+			if (value === undefined) continue;
+			if (Array.isArray(value)) {
+				if (value.length === 0) {
+					lines.push(`${yamlKey(key)}: []`);
+				} else {
+					lines.push(`${yamlKey(key)}:`);
+					emitArrayItems(value, "  ");
+				}
+			} else if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+				const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+				if (entries.length === 0) {
+					lines.push(`${yamlKey(key)}: {}`);
+				} else {
+					lines.push(`${yamlKey(key)}:`);
+					for (const [k, v] of entries) lines.push(`  ${yamlKey(k)}: ${yamlScalar(v)}`);
+				}
+			} else {
+				lines.push(`${yamlKey(key)}: ${yamlScalar(value)}`);
+			}
+		}
+	}
+	return lines.length ? lines.join("\n") + "\n" : "";
+}
+
+function parseYamlScalar(raw: string): any {
+	const s = raw.trim();
+	if (s === "") return "";
+	if (s === "null" || s === "~") return null;
+	if (s === "true") return true;
+	if (s === "false") return false;
+	if (s === "[]") return [];
+	if (s === "{}") return {};
+	if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+	if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+		try {
+			return JSON.parse(s);
+		} catch {
+			return s.slice(1, -1);
+		}
+	}
+	if (s.startsWith("'") && s.endsWith("'") && s.length >= 2) {
+		return s.slice(1, -1).replace(/''/g, "'");
+	}
+	if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("{") && s.endsWith("}"))) {
+		try {
+			return JSON.parse(s);
+		} catch {
+			return s; // e.g. an unquoted [[wikilink]] written by the ORM mock
+		}
+	}
+	return s;
+}
+
+function splitYamlKeyValue(line: string): [string, string] | null {
+	const m = line.match(/^("(?:[^"\\]|\\.)*"|[^\s:"][^:]*?):(?:\s+(.*))?$/);
+	if (!m) return null;
+	let key = m[1].trim();
+	if (key.startsWith('"')) {
+		try {
+			key = JSON.parse(key);
+		} catch {
+			key = key.slice(1, -1);
+		}
+	}
+	return [key, m[2] ?? ""];
+}
+
+/**
+ * Parser for the YAML subset produced by stringifyYaml above and by the ORM mock.
+ * Unparseable lines are ignored.
+ */
+export function parseYaml(text: string): any {
+	const result: Record<string, any> = {};
+	const lines = String(text ?? "").split(/\r?\n/);
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		if (!line.trim() || line.trim().startsWith("#") || /^\s/.test(line)) {
+			i++;
+			continue;
+		}
+		const kv = splitYamlKeyValue(line);
+		if (!kv) {
+			i++;
+			continue;
+		}
+		const [key, rawValue] = kv;
+		i++;
+		if (rawValue.trim() !== "") {
+			result[key] = parseYamlScalar(rawValue);
+			continue;
+		}
+		// Block value: list or nested map (indented lines), or empty.
+		const block: string[] = [];
+		while (i < lines.length && (/^\s+\S/.test(lines[i]) || lines[i].trim() === "")) {
+			if (lines[i].trim() !== "") block.push(lines[i]);
+			i++;
+		}
+		if (block.length === 0) {
+			result[key] = "";
+			continue;
+		}
+		if (/^\s*- /.test(block[0]) || /^\s*-$/.test(block[0])) {
+			const arr: any[] = [];
+			let current: Record<string, any> | null = null;
+			for (const bl of block) {
+				const itemMatch = bl.match(/^(\s*)- ?(.*)$/);
+				if (itemMatch) {
+					const body = itemMatch[2];
+					const inner = splitYamlKeyValue(body);
+					const looksLikeMapItem =
+						inner !== null && !body.startsWith('"') && !body.startsWith("'") && !body.startsWith("[") && !/^https?:/.test(body);
+					if (looksLikeMapItem && inner) {
+						current = { [inner[0]]: parseYamlScalar(inner[1]) };
+						arr.push(current);
+					} else {
+						current = null;
+						arr.push(body.trim() === "{}" ? {} : parseYamlScalar(body));
+					}
+				} else if (current) {
+					const inner = splitYamlKeyValue(bl.trim());
+					if (inner) current[inner[0]] = parseYamlScalar(inner[1]);
+				}
+			}
+			result[key] = arr;
+		} else {
+			const map: Record<string, any> = {};
+			for (const bl of block) {
+				const inner = splitYamlKeyValue(bl.trim());
+				if (inner) map[inner[0]] = parseYamlScalar(inner[1]);
+			}
+			result[key] = map;
+		}
+	}
+	return result;
+}
+
+/** Splits "---\n<yaml>\n---\n<body>" into parsed frontmatter and body (test helper, not an Obsidian API). */
+export function _splitFrontmatter(content: string): { frontmatter: Record<string, any>; body: string; hasFrontmatter: boolean } {
+	const match = String(content ?? "").match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
+	if (!match) return { frontmatter: {}, body: content ?? "", hasFrontmatter: false };
+	return {
+		frontmatter: parseYaml(match[1] ?? ""),
+		body: content.slice(match[0].length),
+		hasFrontmatter: true,
+	};
+}
+
+// ==================== DataAdapter ====================
+export class DataAdapter {
+	private vault: Vault;
+
+	constructor(vault: Vault) {
+		this.vault = vault;
+	}
+
+	getName(): string {
+		return "mock-adapter";
+	}
+
+	/**
+	 * True if a file or folder exists at the path. Case-insensitive by default
+	 * (mimics macOS/Windows file systems); pass sensitive=true for an exact match.
+	 */
+	async exists(normalizedPath: string, sensitive?: boolean): Promise<boolean> {
+		return (this.vault as any)._existsPath(normalizedPath, sensitive === true);
+	}
+}
+
 // ==================== Vault ====================
 export class Vault extends Events {
 	private files: Map<string, { file: TFile; content: string }> = new Map();
 	private folders: Set<string> = new Set();
+	private binaries: Map<string, ArrayBuffer> = new Map();
+	adapter: DataAdapter = new DataAdapter(this);
 
 	async create(path: string, content: string): Promise<TFile> {
 		const file = new TFile(path, content);
@@ -159,6 +393,16 @@ export class Vault extends Events {
 		return null;
 	}
 
+	getFileByPath(path: string): TFile | null {
+		const found = this.getAbstractFileByPath(path);
+		return found instanceof TFile ? found : null;
+	}
+
+	getFolderByPath(path: string): TFolder | null {
+		const found = this.getAbstractFileByPath(path);
+		return found instanceof TFolder ? found : null;
+	}
+
 	getAllLoadedFiles(): TAbstractFile[] {
 		const result: TAbstractFile[] = [];
 		for (const [, entry] of this.files) {
@@ -174,10 +418,71 @@ export class Vault extends Events {
 		return Array.from(this.files.values()).map((entry) => entry.file);
 	}
 
+	async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
+		const file = new TFile(path);
+		file.stat.size = data.byteLength;
+		this.files.set(path, { file, content: "" });
+		this.binaries.set(path, data);
+		return file;
+	}
+
+	async modifyBinary(file: TFile, data: ArrayBuffer): Promise<void> {
+		if (this.files.has(file.path)) {
+			this.binaries.set(file.path, data);
+		}
+	}
+
+	async readBinary(file: TFile): Promise<ArrayBuffer> {
+		const bin = this.binaries.get(file.path);
+		if (bin) return bin;
+		const content = this.files.get(file.path)?.content ?? "";
+		const bytes = new TextEncoder().encode(content);
+		return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+	}
+
+	async trash(file: TAbstractFile, system: boolean): Promise<void> {
+		this._removePath(file.path);
+	}
+
 	// Test helper methods
 	_clear(): void {
 		this.files.clear();
 		this.folders.clear();
+		this.binaries.clear();
+	}
+
+	/** Removes a file, or a folder and everything under it. */
+	_removePath(path: string): void {
+		this.files.delete(path);
+		this.binaries.delete(path);
+		if (this.folders.has(path)) {
+			this.folders.delete(path);
+			const prefix = path + "/";
+			for (const key of Array.from(this.files.keys())) {
+				if (key.startsWith(prefix)) {
+					this.files.delete(key);
+					this.binaries.delete(key);
+				}
+			}
+			for (const folder of Array.from(this.folders)) {
+				if (folder.startsWith(prefix)) this.folders.delete(folder);
+			}
+		}
+	}
+
+	/** File or folder (explicit, or implied by a file below it) exists at path. */
+	_existsPath(path: string, sensitive: boolean = false): boolean {
+		const norm = (s: string) => (sensitive ? s : s.toLowerCase());
+		const target = norm(path);
+		const candidates: string[] = [...this.files.keys(), ...this.folders];
+		for (const candidate of candidates) {
+			if (norm(candidate) === target) return true;
+			const parts = candidate.split("/");
+			for (let i = 1; i < parts.length; i++) {
+				if (norm(parts.slice(0, i).join("/")) === target) return true;
+			}
+		}
+		return false;
 	}
 
 	_getContent(path: string): string | undefined {
@@ -252,13 +557,45 @@ export class MetadataCache extends Events {
 
 // ==================== FileManager ====================
 export class FileManager {
+	private app: App | undefined;
+	/**
+	 * Instance property (not a prototype method) so a test can remove it with
+	 * `delete (app.fileManager as any).trashFile` to simulate older Obsidian.
+	 */
+	trashFile?: (file: TAbstractFile) => Promise<void>;
+
+	constructor(app?: App) {
+		this.app = app;
+		this.trashFile = async (file: TAbstractFile): Promise<void> => {
+			if (this.app) (this.app.vault as any)._removePath(file.path);
+		};
+	}
+
+	/**
+	 * Persists changes: the callback gets the current frontmatter (file content
+	 * merged with the metadata cache; cache wins because tests set it on purpose),
+	 * and the result is written back to both the metadata cache and the file.
+	 */
 	async processFrontMatter(
 		file: TFile,
 		fn: (frontmatter: Record<string, any>) => void
 	): Promise<void> {
-		// Mock implementation - just call the function with empty object
-		const fm: Record<string, any> = {};
+		if (!this.app) {
+			const fm: Record<string, any> = {};
+			fn(fm);
+			return;
+		}
+		const vault = this.app.vault as any;
+		const content: string | undefined = vault._getContent(file.path);
+		const { frontmatter: fileFm, body } = _splitFrontmatter(content ?? "");
+		const cacheEntry = this.app.metadataCache.getFileCache(file);
+		const fm: Record<string, any> = { ...fileFm, ...(cacheEntry?.frontmatter ?? {}) };
 		fn(fm);
+		(this.app.metadataCache as any)._setCache(file.path, { ...(cacheEntry ?? {}), frontmatter: fm });
+		if (content !== undefined) {
+			const stored = vault.getAbstractFileByPath(file.path) as TFile;
+			await vault.modify(stored, `---\n${stringifyYaml(fm)}---\n${body}`);
+		}
 	}
 }
 
@@ -273,7 +610,7 @@ export class App {
 		this.vault = new Vault();
 		this.workspace = new Workspace();
 		this.metadataCache = new MetadataCache();
-		this.fileManager = new FileManager();
+		this.fileManager = new FileManager(this);
 	}
 }
 
@@ -356,9 +693,23 @@ export class Modal {
 }
 
 // ==================== Notice ====================
+const noticeLog: string[] = [];
+
 export class Notice {
-	constructor(message: string, timeout?: number) {}
+	constructor(message: string | DocumentFragment, timeout?: number) {
+		noticeLog.push(String(message));
+	}
 	hide(): void {}
+}
+
+/** Messages of every Notice created since the last _clearNotices() (test helper, not an Obsidian API). */
+export function _getNotices(): string[] {
+	return [...noticeLog];
+}
+
+/** Forgets recorded Notice messages (test helper). */
+export function _clearNotices(): void {
+	noticeLog.length = 0;
 }
 
 // ==================== Setting ====================
@@ -620,6 +971,10 @@ export default {
 	ButtonComponent,
 	FuzzySuggestModal,
 	MarkdownRenderChild,
+	DataAdapter,
 	requestUrl,
 	setIcon,
+	normalizePath,
+	stringifyYaml,
+	parseYaml,
 };

@@ -3,6 +3,30 @@ import { IDataviewScript, IDataviewParameter } from "./types";
 import { DataviewScriptBuilder } from "./builder";
 import { Logger } from "../logger";
 
+/**
+ * Per built-in script: `written` = hash of the content the plugin last wrote to the file,
+ * `seen` = hash of the default content last evaluated (used to report a skipped default once).
+ */
+export type DefaultScriptState = Record<string, { written: string; seen: string }>;
+
+export interface DataviewJSManagerOptions {
+	getOverwriteDefaultsOnLoad?: () => boolean;
+	getDefaultScriptState?: () => DefaultScriptState;
+	saveDefaultScriptState?: (state: DefaultScriptState) => void | Promise<void>;
+	notify?: (message: string) => void;
+}
+
+/** FNV-1a (32-bit) over the content with line endings normalised to LF; returned as hex. */
+export function hashContent(content: string): string {
+	const text = content.replace(/\r\n/g, "\n");
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		hash ^= text.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, "0");
+}
+
 export class DataviewJSManager extends Component {
 	static defaultContentById: Map<string, string> = new Map();
 
@@ -11,18 +35,18 @@ export class DataviewJSManager extends Component {
 	private scripts: Map<string, IDataviewScript> = new Map();
 	private scriptCache: Map<string, string> = new Map();
 	private scriptsFolder: string;
-	private getOverwriteDefaultsOnLoad: (() => boolean) | undefined;
+	private options: DataviewJSManagerOptions;
 	private logger = Logger.createLogger("DataviewJSManager");
 
 	constructor(
 		app: App,
 		scriptsFolder: string = "dataview-scripts",
-		options?: { getOverwriteDefaultsOnLoad?: () => boolean },
+		options: DataviewJSManagerOptions = {},
 	) {
 		super();
 		this.app = app;
 		this.scriptsFolder = scriptsFolder;
-		this.getOverwriteDefaultsOnLoad = options?.getOverwriteDefaultsOnLoad;
+		this.options = options;
 	}
 
 	/** Update scripts folder and clear cache so next onload() loads from new path. Call cleanUpFileWatchers() before this when refreshing. */
@@ -141,32 +165,25 @@ export class DataviewJSManager extends Component {
 					"    draftInput.value = '';",
 					"    templateSelect.value = '-1';",
 					'  };',
-					'  // GitHub settings row',
-					"  const ghGroup = container.createDiv({ cls: 'zk-pqa-group' });",
-					'  ghGroup.style.cssText = rowStyle;',
-					"  ghGroup.createSpan({ text: 'Repo', cls: 'zk-pqa-label' });",
-					"  const repoInput = ghGroup.createEl('input', { type: 'text', placeholder: 'owner/repo', cls: 'zk-pqa-input' });",
-					"  repoInput.style.flex = '1';",
+					'  // GitHub settings: two labelled fields per line',
+					"  container.createDiv({ text: 'GitHub', cls: 'zk-pqa-title' });",
+					"  const ghGroup = container.createDiv({ cls: 'zk-pqa-fields' });",
+					'  const ghField = (label) => {',
+					"    const field = ghGroup.createDiv({ cls: 'zk-pqa-field' });",
+					"    field.createSpan({ text: label, cls: 'zk-pqa-label' });",
+					'    return field;',
+					'  };',
+					"  const repoInput = ghField('Repo').createEl('input', { type: 'text', placeholder: 'owner/repo', cls: 'zk-pqa-input' });",
 					"  repoInput.value = cur.repo || '';",
 					"  repoInput.addEventListener('change', () => {",
 					'    zk.updateResearchDashboardProperties(projectPath, { repo: repoInput.value });',
 					'  });',
-					"  ghGroup.createSpan({ text: 'Branch', cls: 'zk-pqa-label' });",
-					"  const branchInput = ghGroup.createEl('input', { type: 'text', placeholder: 'main', cls: 'zk-pqa-input' });",
-					"  branchInput.style.minWidth = '80px';",
+					"  const branchInput = ghField('Branch').createEl('input', { type: 'text', placeholder: 'main', cls: 'zk-pqa-input' });",
 					"  branchInput.value = cur.defaultBranch || 'main';",
 					"  branchInput.addEventListener('change', () => {",
 					"    zk.updateResearchDashboardProperties(projectPath, { defaultBranch: branchInput.value || 'main' });",
 					'  });',
-					"  ghGroup.createSpan({ text: 'Target folder', cls: 'zk-pqa-label' });",
-					"  const targetFolderInput = ghGroup.createEl('input', { type: 'text', placeholder: 'prompts', cls: 'zk-pqa-input' });",
-					"  targetFolderInput.style.minWidth = '80px';",
-					"  targetFolderInput.value = cur.github_target_folder || 'prompts';",
-					"  targetFolderInput.addEventListener('change', () => {",
-					"    zk.updateResearchDashboardProperties(projectPath, { github_target_folder: targetFolderInput.value || 'prompts' });",
-					'  });',
-					"  ghGroup.createSpan({ text: 'PAT', cls: 'zk-pqa-label' });",
-					"  const tokenSelect = ghGroup.createEl('select', { cls: 'zk-pqa-select' });",
+					"  const tokenSelect = ghField('PAT').createEl('select', { cls: 'zk-pqa-select' });",
 					"  tokenKeys.forEach(key => tokenSelect.createEl('option', { text: key, value: key }));",
 					"  const currentKey = String(cur.github_token_key || '');",
 					'  if (tokenKeys.includes(currentKey)) tokenSelect.value = currentKey;',
@@ -174,12 +191,68 @@ export class DataviewJSManager extends Component {
 					"  tokenSelect.addEventListener('change', () => {",
 					'    zk.updateResearchDashboardProperties(projectPath, { github_token_key: tokenSelect.value });',
 					'  });',
-					"  ghGroup.createSpan({ text: 'Public', cls: 'zk-pqa-label' });",
-					"  const publicToggle = ghGroup.createEl('input', { type: 'checkbox' });",
+					"  const publicToggle = ghField('Public').createEl('input', { type: 'checkbox' });",
 					'  publicToggle.checked = !!cur.public_repo;',
 					"  publicToggle.addEventListener('change', () => {",
 					'    zk.updateResearchDashboardProperties(projectPath, { public_repo: publicToggle.checked });',
 					'  });',
+					"  const targetFolderInput = ghField('Push folder').createEl('input', { type: 'text', placeholder: 'prompts', cls: 'zk-pqa-input' });",
+					"  targetFolderInput.value = cur.github_target_folder || 'prompts';",
+					"  targetFolderInput.addEventListener('change', () => {",
+					"    zk.updateResearchDashboardProperties(projectPath, { github_target_folder: targetFolderInput.value || 'prompts' });",
+					'  });',
+					'  // Pull: rules come from Settings → Projects → GitHub pull rules; this project keeps their ids in github_pull.',
+					"  container.createDiv({ text: 'Pull', cls: 'zk-pqa-title' });",
+					"  const pullGroup = container.createDiv({ cls: 'zk-pqa-pull' });",
+					'  const pullRules = zk.getPullRules ? zk.getPullRules() : [];',
+					'  let pullIds = cur.github_pull ? Array.from(cur.github_pull).map(String) : [];',
+					"  const ruleText = (r) => (r.label ? r.label + ' (' : '') + r.sourceDir + ' → ' + r.target + (r.label ? ')' : '');",
+					'  let pullInner = null;',
+					'  const renderPull = () => {',
+					'    if (pullInner) pullInner.remove();',
+					"    pullInner = pullGroup.createDiv({ cls: 'zk-pqa-pull' });",
+					'    // Rules of this project: name on the left, Remove on the right.',
+					"    if (!pullIds.length) pullInner.createDiv({ text: 'No pull rules in this project yet. Pick one below and click Add.', cls: 'zk-pqa-desc' });",
+					'    pullIds.forEach(id => {',
+					'      const rule = pullRules.find(r => r.id === id);',
+					"      const row = pullInner.createDiv({ cls: 'zk-pqa-rule-row' });",
+					"      row.createSpan({ text: rule ? ruleText(rule) : id + ' (rule not found)', cls: 'zk-pqa-rule-name' });",
+					"      const removeBtn = row.createEl('button', { text: 'Remove', cls: 'zk-pqa-btn zk-pqa-btn-secondary' });",
+					'      removeBtn.onclick = async () => {',
+					'        await savePullIds(pullIds.filter(x => x !== id));',
+					'      };',
+					'    });',
+					'    // One filled button (Pull from GitHub); adding a rule is a secondary action.',
+					"    const foot = pullInner.createDiv({ cls: 'zk-pqa-pull-foot' });",
+					'    const available = pullRules.filter(r => !pullIds.includes(r.id));',
+					"    const ruleSelect = foot.createEl('select', { cls: 'zk-pqa-select' });",
+					"    available.forEach(r => ruleSelect.createEl('option', { text: ruleText(r), value: r.id }));",
+					"    if (!available.length) ruleSelect.createEl('option', { text: pullRules.length ? 'All rules added' : 'No rules yet: add them in Settings → Projects', value: '' });",
+					"    const addBtn = foot.createEl('button', { text: 'Add', cls: 'zk-pqa-btn zk-pqa-btn-secondary' });",
+					'    addBtn.onclick = async () => {',
+					'      if (!ruleSelect.value) return;',
+					'      await savePullIds([...pullIds, ruleSelect.value]);',
+					'    };',
+					"    const pullBtn = foot.createEl('button', { text: 'Pull from GitHub', cls: 'zk-pqa-btn zk-pqa-btn-primary' });",
+					'    pullBtn.onclick = async () => {',
+					'      try {',
+					"        await zk.pullFromGitHub(projectPath, publicToggle.checked ? '' : (tokenSelect.value || undefined));",
+					'      } catch (err) {',
+					"        new Notice('Pull failed: ' + (err instanceof Error ? err.message : String(err)));",
+					'      }',
+					'    };',
+					'  };',
+					'  const savePullIds = async (ids) => {',
+					'    try {',
+					'      await zk.setResearchPullRules(projectPath, ids);',
+					'    } catch (err) {',
+					"      new Notice('Could not update the pull rules: ' + (err instanceof Error ? err.message : String(err)));",
+					'      return;',
+					'    }',
+					'    pullIds = ids;',
+					'    renderPull();',
+					'  };',
+					'  renderPull();',
 					'  // Debug: private repo needs PAT for Push to GitHub',
 					'  if (!cur.public_repo && (!cur.repo || !cur.github_token_key)) {',
 					"    const hint = container.createDiv({ cls: 'zk-pqa-debug' });",
@@ -333,14 +406,18 @@ export class DataviewJSManager extends Component {
 					"const objectives = dv.pages('\"' + objectivesFolder + '\"');",
 					"const drafts = dv.pages('\"' + draftsFolder + '\"');",
 					"const experiments = dv.pages('\"' + experimentsFolder + '\"');",
-					'const toDateStr = (val) => {',
-					'  if (!val) return null;',
-					'  try {',
-					"    if (typeof val === 'string') return val.slice(0, 10);",
-					"    if (val && typeof val.toISODate === 'function') return val.toISODate();",
-					'    if (val instanceof Date) return val.toISOString().slice(0, 10);',
-					'    return String(val).slice(0, 10);',
-					'  } catch { return null; }',
+					'// A date field: { date } for a valid YYYY-MM-DD, { invalid } for anything else, null when empty.',
+					'const readDate = (val) => {',
+					"  if (val === undefined || val === null || val === '') return null;",
+					'  let iso = null;',
+					"  if (typeof val === 'object' && typeof val.toISODate === 'function') iso = val.isValid === false ? null : val.toISODate();",
+					'  else if (val instanceof Date) iso = isNaN(val.getTime()) ? null : val.toISOString().slice(0, 10);',
+					'  else iso = String(val).trim().slice(0, 10);',
+					"  if (!iso || !/^\\d{4}-\\d{2}-\\d{2}$/.test(iso)) return { invalid: String(val) };",
+					"  const [y, m, d] = iso.split('-').map(Number);",
+					'  const check = new Date(Date.UTC(y, m - 1, d));',
+					'  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m - 1 || check.getUTCDate() !== d) return { invalid: String(val) };',
+					'  return { date: iso };',
 					'};',
 					'const getStatusColor = (status) => {',
 					"  const s = String(status || '').toLowerCase();",
@@ -358,52 +435,67 @@ export class DataviewJSManager extends Component {
 					'  const name = afterHyphen || full;',
 					"  return (sectionPrefix ? sectionPrefix + ' ' : '') + name;",
 					'};',
+					'// Items that cannot be drawn are listed under the chart instead of breaking it.',
+					'const problems = [];',
+					"const badDate = 'not a valid date (YYYY-MM-DD)';",
+					'const report = (page, field, value, problem) => problems.push([page.file.link, field, String(value), problem]);',
+					'// Drafts and experiments: start falls back to due / file.mtime; an end that was not set explicitly',
+					'// (due / file.mtime) is clamped to the start. Objectives need an explicit start and end.',
+					'const planTask = (page, prefix, isObjective) => {',
+					"  const startField = isObjective || page.start ? 'start' : page.due ? 'due' : 'file.mtime';",
+					"  const start = readDate(startField === 'file.mtime' ? page.file.mtime : page[startField]);",
+					"  const hasEnd = page.end !== undefined && page.end !== null && page.end !== '';",
+					'  if (isObjective && (!start || !hasEnd)) {',
+					"    if (start && start.invalid) report(page, 'start', start.invalid, badDate);",
+					"    else if (hasEnd && readDate(page.end).invalid) report(page, 'end', readDate(page.end).invalid, badDate);",
+					'    return null;',
+					'  }',
+					'  if (!start) return null;',
+					'  if (start.invalid) {',
+					'    report(page, startField, start.invalid, badDate);',
+					'    return null;',
+					'  }',
+					'  let end = start.date;',
+					'  if (hasEnd) {',
+					'    const explicit = readDate(page.end);',
+					"    if (explicit.invalid) { report(page, 'end', explicit.invalid, badDate); return null; }",
+					"    if (explicit.date < start.date) { report(page, 'end', explicit.date, 'ends before it starts (' + start.date + ')'); return null; }",
+					'    end = explicit.date;',
+					'  } else {',
+					'    const implicit = readDate(page.due || page.file.mtime);',
+					'    if (implicit && implicit.date && implicit.date >= start.date) end = implicit.date;',
+					'  }',
+					'  return { name: ganttDisplayName(page.title || page.file.name, prefix), start: start.date, end, color: getStatusColor(page.status) };',
+					'};',
+					'const sections = [',
+					"  ['Writing', drafts.array().map(p => planTask(p, 'Draft', false))],",
+					"  ['Experiments', experiments.array().map(p => planTask(p, 'Exp', false))],",
+					"  ['Other', objectives.array().map(p => planTask(p, '', true))],",
+					'];',
 					'const today = new Date().toISOString().slice(0, 10);',
-					'const allStarts = objectives.map(o => toDateStr(o.start)).where(d => d).array()',
-					'  .concat(drafts.map(d => toDateStr(d.start || d.due || d.file.mtime)).where(d => d).array())',
-					'  .concat(experiments.map(e => toDateStr(e.start || e.due || e.file.mtime)).where(d => d).array());',
-					'const projectStart = allStarts.length ? allStarts.sort()[0] : today;',
+					'const starts = sections.flatMap(([, tasks]) => tasks.filter(t => t).map(t => t.start)).sort();',
+					'const projectStart = starts.length ? starts[0] : today;',
 					'const lines = [];',
 					"lines.push('@startgantt');",
 					"lines.push('Project starts ' + projectStart);",
 					'lines.push(scaleLine);',
 					"lines.push('today is ' + today);",
 					"lines.push('today is colored in #FF6B6B');",
-					"lines.push('');",
-					"lines.push('-- Writing --');",
-					'drafts.forEach(d => {',
-					'  const start = toDateStr(d.start || d.due || d.file.mtime);',
-					'  const end = toDateStr(d.end || d.due || d.file.mtime) || start;',
-					'  if (!start) return;',
-					"  const name = ganttDisplayName(d.title || d.file.name, 'Draft');",
-					'  const color = getStatusColor(d.status);',
-					"  lines.push('[' + name + '] starts ' + start + ' and ends ' + end);",
-					"  lines.push('[' + name + '] is colored in ' + color);",
-					'});',
-					"lines.push('');",
-					"lines.push('-- Experiments --');",
-					'experiments.forEach(e => {',
-					'  const start = toDateStr(e.start || e.due || e.file.mtime);',
-					'  const end = toDateStr(e.end || e.due || e.file.mtime) || start;',
-					'  if (!start) return;',
-					"  const name = ganttDisplayName(e.title || e.file.name, 'Exp');",
-					'  const color = getStatusColor(e.status);',
-					"  lines.push('[' + name + '] starts ' + start + ' and ends ' + end);",
-					"  lines.push('[' + name + '] is colored in ' + color);",
-					'});',
-					"lines.push('');",
-					"lines.push('-- Other --');",
-					'objectives.forEach(o => {',
-					'  const start = toDateStr(o.start);',
-					'  const end = toDateStr(o.end);',
-					'  if (!start || !end) return;',
-					"  const name = ganttDisplayName(o.title || o.file.name, '');",
-					'  const color = getStatusColor(o.status);',
-					"  lines.push('[' + name + '] starts ' + start + ' and ends ' + end);",
-					"  lines.push('[' + name + '] is colored in ' + color);",
-					'});',
+					'for (const [title, tasks] of sections) {',
+					"  lines.push('');",
+					"  lines.push('-- ' + title + ' --');",
+					'  for (const t of tasks) {',
+					'    if (!t) continue;',
+					"    lines.push('[' + t.name + '] starts ' + t.start + ' and ends ' + t.end);",
+					"    lines.push('[' + t.name + '] is colored in ' + t.color);",
+					'  }',
+					'}',
 					"lines.push('@endgantt');",
 					"dv.paragraph('```plantuml\\n' + lines.join('\\n') + '\\n```');",
+					'if (problems.length) {',
+					"  dv.paragraph('**Not drawn**: fix these dates to show the items in the chart.');",
+					"  dv.table(['Note', 'Field', 'Value', 'Problem'], problems);",
+					'}',
 				]),
 			},
 			{
@@ -435,19 +527,36 @@ export class DataviewJSManager extends Component {
 				name: 'Research Objective Steps',
 				overwrite: true,
 				script: join([
-					'const rawPath = input.objectivePath || dv.current().file.path;',
-					"const objectivePath = rawPath.replace(/\\.md$/i, '');",
-					'const objectiveLink = `[[${objectivePath}]]`;',
-					"const projectFolder = dv.current().file.folder.replace(/\\/objectives$/, '');",
-					"const stepsFolder = projectFolder + '/steps';",
-					"const rows = dv.pages('\"' + stepsFolder + '\"')",
-					'  .where(p => {',
-					"    const obj = String(p.objective || '');",
-					'    return obj === objectiveLink || obj.includes(objectivePath);',
-					'  })',
-					'  .sort(p => p.file.name)',
-					'  .map(p => [p.file.link, p.status]);',
-					"dv.table(['Step', 'status'], rows);",
+					'// Match steps by the file their objective link resolves to, not by substring.',
+					'const metadataCache = dv.app.metadataCache;',
+					'const currentPath = dv.current().file.path;',
+					"const stripMd = (p) => String(p || '').replace(/\\.md$/i, '');",
+					'// Bare linkpath of a Link object, "[[target#heading|alias]]" or plain text.',
+					'const linkpathOf = (value) => {',
+					"  if (value && typeof value === 'object' && typeof value.path === 'string') return value.path;",
+					"  const text = String(value || '').trim();",
+					'  const wiki = text.match(/^!?\\[\\[([^\\]]+)\\]\\]$/);',
+					"  return (wiki ? wiki[1] : text).split('|')[0].split('#')[0].trim();",
+					'};',
+					'const resolvePath = (value) => {',
+					'  const linkpath = linkpathOf(value);',
+					'  if (!linkpath) return null;',
+					'  const file = metadataCache.getFirstLinkpathDest(stripMd(linkpath), currentPath);',
+					'  if (file) return stripMd(file.path);',
+					"  return value && typeof value === 'object' && typeof value.path === 'string' ? stripMd(value.path) : null;",
+					'};',
+					'const targetName = input.objectivePath;',
+					'const targetPath = targetName ? resolvePath(targetName) : stripMd(currentPath);',
+					'if (!targetPath) {',
+					"  dv.paragraph('Objective not found: ' + targetName);",
+					'} else {',
+					"  const projectFolder = dv.current().file.folder.replace(/\\/objectives$/, '');",
+					"  const rows = dv.pages('\"' + projectFolder + '/steps\"')",
+					'    .where(p => p.objective && resolvePath(p.objective) === targetPath)',
+					'    .sort(p => p.file.name)',
+					'    .map(p => [p.file.link, p.status]);',
+					"  dv.table(['Step', 'status'], rows);",
+					'}',
 				]),
 			},
 			{
@@ -669,23 +778,81 @@ export class DataviewJSManager extends Component {
 				name: 'Project Commits',
 				overwrite: true,
 				script: join([
-					"const folder = dv.current().file.folder + '/commits';",
-					"dv.table(['sha', 'message', 'date', 'url'],",
-					"  dv.pages('\"' + folder + '\"').where(p => p.released === false).sort(p => p.date, 'desc')",
-					'    .map(p => [p.sha, p.message, p.date, p.url])',
-					');',
+					'// Unreleased commits live in one note that every Refresh rewrites.',
+					"const note = dv.page(dv.current().file.folder + '/Unreleased Commits');",
+					'if (!note) {',
+					"  dv.paragraph('No unreleased commits loaded yet. Click Refresh in Quick Actions.');",
+					'} else {',
+					'  const commits = note.commits ? Array.from(note.commits) : [];',
+					"  dv.table(['sha', 'message', 'date', 'url'], commits.map(c => [c.sha, c.message, c.date, c.url]));",
+					'}',
 				]),
 			},
 		];
 
-		const overwriteDefaults = this.getOverwriteDefaultsOnLoad?.() !== false;
+		const overwriteDefaults = this.options.getOverwriteDefaultsOnLoad?.() !== false;
+		const state: DefaultScriptState = { ...(this.options.getDefaultScriptState?.() ?? {}) };
+		let stateChanged = false;
+		const notApplied: string[] = [];
+
 		for (const script of scripts) {
-			await this.createScript(script.id, script.name, script.script, {
-				overwrite: script.overwrite && overwriteDefaults,
-			});
 			const fullContent =
 				this.buildScriptHeader(script.id, script.name) + script.script;
 			DataviewJSManager.defaultContentById.set(script.id, fullContent);
+
+			const defaultHash = hashContent(fullContent);
+			const recorded = state[script.id];
+			const existing = this.app.vault.getAbstractFileByPath(
+				`${this.scriptsFolder}/${script.id}.js`,
+			);
+
+			if (!(existing instanceof TFile)) {
+				await this.createScript(script.id, script.name, script.script);
+				if (overwriteDefaults) {
+					state[script.id] = { written: defaultHash, seen: defaultHash };
+					stateChanged = true;
+				}
+				continue;
+			}
+
+			const currentHash = hashContent(await this.app.vault.read(existing));
+			if (currentHash === defaultHash) {
+				if (overwriteDefaults && (recorded?.written !== defaultHash || recorded?.seen !== defaultHash)) {
+					state[script.id] = { written: defaultHash, seen: defaultHash };
+					stateChanged = true;
+				}
+				continue;
+			}
+
+			// No record yet: the file was force-overwritten on every load by older versions,
+			// so it holds an old default. Update it once; from then on edits are protected.
+			const unedited = !recorded || currentHash === recorded.written;
+			if (overwriteDefaults && script.overwrite !== false && unedited) {
+				await this.createScript(script.id, script.name, script.script, { overwrite: true });
+				state[script.id] = { written: defaultHash, seen: defaultHash };
+				stateChanged = true;
+				continue;
+			}
+
+			// Updates are off: leave both the file and its state alone, so the "no record yet"
+			// rule above still applies once the setting is turned back on.
+			if (!overwriteDefaults) continue;
+
+			// Edited by the user: keep the file, report this default once.
+			if (recorded?.seen !== defaultHash) {
+				notApplied.push(script.id);
+				state[script.id] = { written: recorded?.written ?? "", seen: defaultHash };
+				stateChanged = true;
+			}
+		}
+
+		if (stateChanged) {
+			await this.options.saveDefaultScriptState?.(state);
+		}
+		if (notApplied.length > 0) {
+			this.options.notify?.(
+				`Zettelkasten Operator: newer defaults were not applied to these edited built-in Dataview scripts: ${notApplied.join(", ")}. Use Reset in Settings → Dataview to get the new default.`,
+			);
 		}
 	}
 
@@ -927,6 +1094,7 @@ export class DataviewJSManager extends Component {
 		container: HTMLElement,
 		parameters: Record<string, any> = {},
 		ctx?: any,
+		component?: Component,
 	): Promise<void> {
 		const script = this.getScript(scriptId);
 		if (!script) {
@@ -964,10 +1132,12 @@ export class DataviewJSManager extends Component {
 
 			const codeWithParams = `const input = ${JSON.stringify(parameters)};\n${cleanCode}`;
 
+			// Dataview attaches its renderer to `component`; the block's own child unloads it
+			// with the block, while the manager (fallback) lives until the plugin unloads.
 			await dataviewApi.executeJs(
 				codeWithParams,
 				container,
-				this,
+				component ?? this,
 				ctx ? ctx.sourcePath : script.filePath,
 			);
 		} catch (error) {

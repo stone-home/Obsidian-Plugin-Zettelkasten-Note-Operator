@@ -1,13 +1,56 @@
-import { App, TFile, TFolder, Notice, requestUrl } from "obsidian";
+import { App, TFile, TFolder, Notice } from "obsidian";
 import {
 	ObsidianNoteFactory as LibFactory,
 	NoteType,
 	NoteTemplateConfig,
 	NoteTemplateSection,
 } from "markdown-note-orm";
-import { ZettelkastenSettings } from "../../types";
+import { GithubPullRule, ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
 import { stripMdExtension } from "../../utils/path";
+import { GitHubClient } from "../github/githubClient";
+import { describeGitHubError } from "../github/errors";
+import { bytesToBase64, gitBlobSha } from "../github/gitHash";
+import { GitHubContentEntry, resolvePullTarget, selectPullFiles, validatePullRule } from "../github/repoPull";
+
+/** Outcome of one Pull from GitHub. */
+export interface PullSummary {
+	added: number;
+	updated: number;
+	skipped: number;
+	failed: number;
+	/** Ids in the Dashboard's github_pull that match no rule in Settings. */
+	unknownRules: string[];
+	warnings: string[];
+}
+
+const GITHUB_GRAPHQL_URL = "https://api.github.com/graphql";
+
+/** Head commit of a branch and the entries of one folder in that same commit. */
+const READ_FOLDER_QUERY = `query ($owner: String!, $name: String!, $ref: String!, $path: String!) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $ref) {
+      target {
+        ... on Commit {
+          oid
+          file(path: $path) {
+            object {
+              ... on Tree {
+                entries { name oid type }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+const CREATE_COMMIT_MUTATION = `mutation ($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) {
+    commit { oid }
+  }
+}`;
 
 /** Debug info for the last Push to GitHub request (headers/body/params), for display in Quick Actions. */
 export type LastPushRequestDebug = {
@@ -91,8 +134,9 @@ export class ResearchManager {
 		const draftsFolder = this.app.vault.getAbstractFileByPath(draftsPath);
 
 		const section = container.createDiv({ cls: "zk-pqa-group" });
-		section.style.cssText = "display:flex; flex-direction:column; gap:8px; width:100%;";
-		section.createSpan({ text: "Drafts", cls: "zk-pqa-label" });
+		// align-items: zk-pqa-group centres its children, which put the title in the middle.
+		section.style.cssText = "display:flex; flex-direction:column; align-items:stretch; gap:8px; width:100%;";
+		section.createDiv({ text: "Drafts", cls: "zk-pqa-title" });
 
 		if (!draftsFolder || !(draftsFolder instanceof TFolder)) {
 			section.createSpan({ text: "No drafts folder found.", cls: "zk-pqa-desc" });
@@ -103,6 +147,9 @@ export class ResearchManager {
 			(f): f is TFile => f instanceof TFile && f.extension === "md",
 		);
 
+		if (drafts.length === 0) {
+			section.createSpan({ text: "No drafts yet. Create one with the Draft row above.", cls: "zk-pqa-desc" });
+		}
 		for (const draft of drafts) {
 			const row = section.createDiv({ cls: "zk-pqa-draft-row" });
 			row.style.cssText = "display:flex; align-items:center; gap:8px; width:100%;";
@@ -503,131 +550,299 @@ export class ResearchManager {
 			return { successCount: 0, errorCount: 0 };
 		}
 
-		const headers: Record<string, string> = {
-			"Accept": "application/vnd.github+json",
-			"X-GitHub-Api-Version": "2022-11-28",
-			"Authorization": `Bearer ${token}`,
-			"Content-Type": "application/json",
+		const [owner, repoName] = String(repo).split("/");
+		const client = new GitHubClient(token);
+		const baseDebug = {
+			url: GITHUB_GRAPHQL_URL,
+			method: "POST",
+			headers: {
+				Accept: "application/vnd.github+json",
+				"Content-Type": "application/json",
+				Authorization: "Bearer ***",
+			},
+			params: { repo, defaultBranch, path: targetFolder, targetFolder },
 		};
 
-		let successCount = 0;
-		let errorCount = 0;
-		let lastRequestDebug: LastPushRequestDebug | undefined;
+		// Hash exactly the bytes that would be uploaded, so unchanged prompts can be skipped.
+		const local = await Promise.all(
+			files.map(async (file) => {
+				const bytes = new Uint8Array(await this.app.vault.readBinary(file));
+				return { name: file.name, bytes, sha: await gitBlobSha(bytes) };
+			}),
+		);
 
-		for (const file of files) {
-			const path = `${targetFolder}/${file.name}`;
-			const pathEncoded = path
-				.split("/")
-				.map((seg) => encodeURIComponent(seg))
-				.join("/");
-			let base64Content = "";
+		let lastRequestDebug: LastPushRequestDebug | undefined;
+		// The second attempt only runs when the branch moved between our query and the commit.
+		for (let attempt = 0; attempt < 2; attempt++) {
+			let remote: { headOid: string; oids: Map<string, string> } | null;
+			try {
+				remote = await this.readPromptsOnBranch(client, owner, repoName, defaultBranch, targetFolder);
+			} catch (err) {
+				const message = describeGitHubError(err, `Reading ${repo}`, true, "repo");
+				new Notice(`Push failed: ${message}`);
+				return { successCount: 0, errorCount: local.length, lastRequestDebug };
+			}
+			if (!remote) {
+				new Notice(`Push failed: branch "${defaultBranch}" was not found in ${repo}. Create it on GitHub or change the branch in the dashboard.`);
+				return { successCount: 0, errorCount: local.length, lastRequestDebug };
+			}
+
+			const changed = local.filter((f) => remote!.oids.get(f.name) !== f.sha);
+			if (changed.length === 0) {
+				new Notice("Nothing to push: the prompts on GitHub are already up to date.");
+				return { successCount: 0, errorCount: 0, lastRequestDebug };
+			}
+
+			const headline = `Update ${changed.length} prompt${changed.length === 1 ? "" : "s"} from Obsidian`;
+			const additions = changed.map((f) => ({
+				path: `${targetFolder}/${f.name}`,
+				contents: bytesToBase64(f.bytes),
+			}));
+			lastRequestDebug = {
+				...baseDebug,
+				bodySummary: {
+					message: headline,
+					branch: defaultBranch,
+					contentLength: additions.reduce((n, a) => n + a.contents.length, 0),
+					sha: remote.headOid,
+				},
+			};
 
 			try {
-				const content = await this.app.vault.read(file);
-				base64Content = btoa(unescape(encodeURIComponent(content)));
-			} catch (readErr) {
-				errorCount++;
-				const readMsg = readErr instanceof Error ? readErr.message : String(readErr);
-				this.logger.logError(`Failed to read ${file.name}:`, readErr);
-				lastRequestDebug = {
-					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message: `Create ${file.name} from Obsidian`,
-						branch: defaultBranch,
-						contentLength: 0,
+				await client.graphql(CREATE_COMMIT_MUTATION, {
+					input: {
+						branch: { repositoryNameWithOwner: repo, branchName: defaultBranch },
+						message: { headline },
+						fileChanges: { additions },
+						expectedHeadOid: remote.headOid,
 					},
-					params: { repo, defaultBranch, path, targetFolder },
-					errorMessage: `Read failed: ${readMsg}`,
-				};
-				if (errorCount === 1) {
-					new Notice(`Push failed (read): ${readMsg.slice(0, 80)}`);
+				});
+				this.logger.info(`Pushed ${changed.length} prompts to ${repo} in one commit`);
+				new Notice(`Pushed ${changed.length} prompt${changed.length === 1 ? "" : "s"} to GitHub in one commit.`);
+				return { successCount: changed.length, errorCount: 0, lastRequestDebug };
+			} catch (err) {
+				const message = Logger.getErrorMessage(err);
+				// GitHub: 'Expected branch to point to "<oid>" but it did not.' (expectedHeadOid is stale)
+				const headMoved = /expected branch to point to/i.test(message);
+				if (headMoved && attempt === 0) {
+					this.logger.info("Branch moved during push; querying again and retrying once");
+					continue;
 				}
+				const status = (err as { status?: number } | null)?.status;
+				const described = describeGitHubError(err, `Committing to ${repo}@${defaultBranch}`, true, "repo");
+				lastRequestDebug = { ...lastRequestDebug, responseStatus: status, errorMessage: described.slice(0, 400) };
+				this.logger.logError("Push to GitHub failed:", err);
+				new Notice(`Push failed: ${described}`);
+				return { successCount: 0, errorCount: changed.length, lastRequestDebug };
+			}
+		}
+		// Unreachable: the loop always returns.
+		return { successCount: 0, errorCount: local.length, lastRequestDebug };
+	}
+
+	/**
+	 * Head commit of the branch and the git blob ids of the files directly in `folder`,
+	 * read from the same commit. Returns null when the branch does not exist.
+	 */
+	private async readPromptsOnBranch(
+		client: GitHubClient,
+		owner: string,
+		name: string,
+		branch: string,
+		folder: string,
+	): Promise<{ headOid: string; oids: Map<string, string> } | null> {
+		const data = await client.graphql<any>(READ_FOLDER_QUERY, {
+			owner,
+			name,
+			ref: `refs/heads/${branch}`,
+			path: folder,
+		});
+		const target = data?.repository?.ref?.target;
+		if (!target?.oid) return null;
+		const entries: Array<{ name: string; oid: string; type: string }> = target.file?.object?.entries ?? [];
+		return {
+			headOid: target.oid,
+			oids: new Map(entries.filter((e) => e.type === "blob").map((e) => [e.name, e.oid])),
+		};
+	}
+
+	/** Sets which pull rules (by id) this project uses; written to the Dashboard's github_pull. */
+	async setPullRules(projectFile: TFile, ids: string[]): Promise<void> {
+		await this.app.fileManager.processFrontMatter(projectFile, (fm) => {
+			fm.github_pull = [...ids];
+		});
+	}
+
+	/**
+	 * Downloads the files selected by the project's pull rules from the Dashboard's repo.
+	 * The repo wins: changed files overwrite the local copy; local files are never deleted.
+	 * Throws for a missing repo or PAT; problems with single folders or files are reported
+	 * in the summary and do not stop the other rules.
+	 */
+	async pullFromGitHub(projectFile: TFile, tokenKey?: string): Promise<PullSummary> {
+		const fm = this.app.metadataCache.getFileCache(projectFile)?.frontmatter ?? {};
+		const repo = String(fm.repo ?? "").trim();
+		if (!repo.includes("/")) {
+			throw new Error("Missing repo field (owner/name) in the research dashboard.");
+		}
+		const branch = String(fm.defaultBranch || "main");
+		const key = tokenKey ?? (fm.github_token_key as string | undefined) ?? "";
+		let token = "";
+		if (key) {
+			token = await this.readPat(key);
+		} else if (fm.public_repo !== true) {
+			throw new Error("Pulling from this repo needs a PAT. Pick one in Quick Actions, or tick Public if the repo is public.");
+		}
+
+		const [owner, repoName] = repo.split("/");
+		const client = new GitHubClient(token);
+		const projectFolder = this.getProjectFolder(projectFile);
+		const rulesById = new Map((this.settings.githubPullRules ?? []).map((r) => [r.id, r] as [string, GithubPullRule]));
+		const ids: string[] = Array.isArray(fm.github_pull) ? fm.github_pull.map((id: unknown) => String(id)) : [];
+		const summary: PullSummary = { added: 0, updated: 0, skipped: 0, failed: 0, unknownRules: [], warnings: [] };
+
+		for (const id of ids) {
+			const rule = rulesById.get(id);
+			if (!rule) {
+				summary.unknownRules.push(id);
 				continue;
 			}
-
+			// Rules can be hand-edited in data.json; a broken one must not stop the others.
+			const problem = validatePullRule(rule);
+			if (problem) {
+				summary.failed++;
+				summary.warnings.push(`Skipped rule ${rule.id}: ${problem}`);
+				continue;
+			}
+			let entries: GitHubContentEntry[];
 			try {
-				// Check if file exists on GitHub (GET returns sha when file exists; required for update)
-				let sha: string | undefined;
-				try {
-					const existingResp = await requestUrl({
-						url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}?ref=${encodeURIComponent(defaultBranch)}`,
-						method: "GET",
-						headers,
-					});
-					sha = existingResp.json?.sha;
-				} catch {
-					// File doesn't exist, that's fine — we'll create
+				const listing = await client.listDirectory(owner, repoName, rule.sourceDir, branch);
+				if (!Array.isArray(listing)) {
+					throw new Error(`${rule.sourceDir} is a file, not a folder`);
 				}
-
-				const message = sha
-					? `Update ${file.name} from Obsidian`
-					: `Create ${file.name} from Obsidian`;
-				const body = {
-					message,
-					content: base64Content,
-					branch: defaultBranch,
-					...(sha ? { sha } : {}),
-				};
-				const url = `https://api.github.com/repos/${repo}/contents/${pathEncoded}`;
-
-				// Create or update file
-				await requestUrl({
-					url,
-					method: "PUT",
-					headers,
-					body: JSON.stringify(body),
-				});
-
-				successCount++;
-				this.logger.info(`Pushed prompt ${file.name} to GitHub`);
-				lastRequestDebug = {
-					url,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message,
-						branch: defaultBranch,
-						contentLength: base64Content.length,
-						...(sha ? { sha } : {}),
-					},
-					params: { repo, defaultBranch, path, targetFolder },
-				};
-			} catch (error) {
-				errorCount++;
-				this.logger.logError(`Failed to push ${file.name}:`, error);
-				const status = (error as { status?: number })?.status;
-				const msg = error instanceof Error ? error.message : String(error);
-				lastRequestDebug = {
-					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message: `Update ${file.name} from Obsidian`,
-						branch: defaultBranch,
-						contentLength: base64Content.length,
-					},
-					params: { repo, defaultBranch, path, targetFolder },
-					responseStatus: status,
-					errorMessage: msg.slice(0, 400),
-				};
-				if (status === 403 || String(msg).includes("403")) {
-					new Notice(
-						"Push failed (403 Forbidden). Check: PAT has 'repo' or 'public_repo' scope, you have push access to the repo, and repo is owner/repo.",
-					);
-				} else if (errorCount === 1) {
-					new Notice(`Push failed: ${msg.slice(0, 80)}${msg.length > 80 ? "…" : ""}`);
-				}
+				entries = listing;
+			} catch (err) {
+				summary.failed++;
+				summary.warnings.push(describeGitHubError(err, `Listing ${rule.sourceDir} in ${repo}`, !!token, "path"));
+				continue;
+			}
+			if (entries.length >= 1000) {
+				summary.warnings.push(`${rule.sourceDir} has 1000 or more entries; GitHub lists at most 1000, so some files may be missing.`);
+			}
+			for (const entry of selectPullFiles(entries, rule)) {
+				await this.pullOneFile(client, owner, repoName, branch, projectFolder, rule, entry, !!token, summary);
 			}
 		}
 
-		if (errorCount > 0) {
-			new Notice(`Pushed ${successCount} files, ${errorCount} failed.`);
-		} else {
-			new Notice(`Successfully pushed ${successCount} files to GitHub.`);
+		const unknown = summary.unknownRules.length > 0 ? ` Unknown rule ids: ${summary.unknownRules.join(", ")}.` : "";
+		new Notice(
+			`Pulled from GitHub: ${summary.added} added, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.failed} failed.${unknown}`,
+		);
+		if (summary.warnings.length > 0) {
+			new Notice(summary.warnings.join("\n"), 15000);
 		}
-		return { successCount, errorCount, lastRequestDebug };
+		return summary;
+	}
+
+	private async pullOneFile(
+		client: GitHubClient,
+		owner: string,
+		repoName: string,
+		branch: string,
+		projectFolder: string,
+		rule: GithubPullRule,
+		entry: GitHubContentEntry,
+		authed: boolean,
+		summary: PullSummary,
+	): Promise<void> {
+		try {
+			await this.pullOneFileUnsafe(client, owner, repoName, branch, projectFolder, rule, entry, authed, summary);
+		} catch (err) {
+			// A vault write or folder problem affects only this file.
+			summary.failed++;
+			summary.warnings.push(`Could not save "${entry.name}" from ${rule.sourceDir}: ${Logger.getErrorMessage(err)}`);
+		}
+	}
+
+	private async pullOneFileUnsafe(
+		client: GitHubClient,
+		owner: string,
+		repoName: string,
+		branch: string,
+		projectFolder: string,
+		rule: GithubPullRule,
+		entry: GitHubContentEntry,
+		authed: boolean,
+		summary: PullSummary,
+	): Promise<void> {
+		const path = resolvePullTarget(projectFolder, rule.target, entry.name);
+		if (!path) {
+			summary.failed++;
+			summary.warnings.push(`Skipped "${entry.name}": the file name or the download folder "${rule.target}" cannot be used in this vault.`);
+			return;
+		}
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing && !(existing instanceof TFile)) {
+			summary.failed++;
+			summary.warnings.push(`Skipped "${path}": a folder with that name already exists.`);
+			return;
+		}
+		if (existing instanceof TFile) {
+			const local = await this.app.vault.readBinary(existing);
+			if ((await gitBlobSha(local)) === entry.sha) {
+				summary.skipped++;
+				return;
+			}
+		}
+		const repoPath = entry.path || `${rule.sourceDir}/${entry.name}`;
+		let data: ArrayBuffer;
+		try {
+			data = await client.downloadRaw(owner, repoName, repoPath, branch);
+		} catch (err) {
+			summary.failed++;
+			summary.warnings.push(describeGitHubError(err, `Downloading ${repoPath}`, authed, "path"));
+			return;
+		}
+		if (existing instanceof TFile) {
+			await this.app.vault.modifyBinary(existing, data);
+			summary.updated++;
+		} else {
+			await this.ensureFolderPath(path.slice(0, path.lastIndexOf("/")));
+			await this.app.vault.createBinary(path, data);
+			summary.added++;
+		}
+	}
+
+	/** Creates each missing folder of `folderPath`, one segment at a time. */
+	private async ensureFolderPath(folderPath: string): Promise<void> {
+		let current = "";
+		for (const segment of folderPath.split("/").filter((s) => s.length > 0)) {
+			current = current ? `${current}/${segment}` : segment;
+			const existing = this.app.vault.getAbstractFileByPath(current);
+			if (!existing) {
+				await this.app.vault.createFolder(current);
+			} else if (existing instanceof TFile) {
+				throw new Error(`"${current}" is a file, so it cannot hold the pulled files`);
+			}
+		}
+	}
+
+	/** Secret stored under `key`; throws when SecretStorage or the secret is missing. */
+	private async readPat(key: string): Promise<string> {
+		const storage = (this.app as any).secretStorage;
+		if (!storage || typeof storage.getSecret !== "function") {
+			throw new Error("SecretStorage is not available in this Obsidian version.");
+		}
+		let token = "";
+		try {
+			token = (await storage.getSecret(key)) || "";
+		} catch {
+			token = "";
+		}
+		if (!token) {
+			throw new Error(`No PAT found for key "${key}". Set it in Settings, or mark the repo as Public.`);
+		}
+		return token;
 	}
 
 	private getProjectFolder(projectFile: TFile): string {
@@ -649,7 +864,7 @@ export class ResearchManager {
 
 	/**
 	 * Full prefix for child notes: project code + creation date (e.g. "TP20260213").
-	 * Uses Dashboard frontmatter `created` (YYYY-MM-DD); if missing, uses Dashboard file ctime.
+	 * Uses Dashboard frontmatter `create` (YYYY-MM-DD, written by markdown-note-orm); if missing, uses Dashboard file ctime.
 	 */
 	private getProjectPrefix(projectFile: TFile): string {
 		const code = this.getProjectCode(projectFile);
@@ -716,7 +931,7 @@ export class ResearchManager {
 				conferences: [],
 				granularity: "day",
 				project_code: "",
-				created: new Date().toISOString().slice(0, 10),
+				github_pull: [],
 			},
 			[
 				{

@@ -1,69 +1,77 @@
 @startuml sequence-code-refresh
 !theme plain
-title Sequence: Code Project Refresh (GitHub releases + unreleased commits)
+title Sequence: Code Project Refresh (releases + Unreleased Commits note)
 
 actor User
 participant "Code Dashboard\nQuick Actions" as Block
 participant "window.ZettelkastenOperator" as API
-participant "MyPlugin" as Plugin
 participant "CodeProjectManager" as CM
 participant "GitHubClient" as GH
 participant "GitHub API" as GitHub
+participant "ConfirmModal" as Confirm
 participant "Vault" as Vault
 
-User -> Block : Click "Refresh" (with PAT selected)
-Block -> API : refreshCodeProject(projectPath, tokenKey?)
+User -> Block : Click "Refresh" (PAT selected, or Public ticked)
+Block -> API : refreshCodeProject(projectPath, tokenKey)
 activate API
-API -> Plugin : (closure)
-Plugin -> Plugin : getAbstractFileByPath(projectPath) -> projectFile
-Plugin -> CM : new CodeProjectManager(app, settings)\n.refreshProject(projectFile, tokenKey?)
+API -> CM : new CodeProjectManager(app, settings)\n.refreshProject(projectFile, tokenKey,\n{ confirmLegacyCleanup: askLegacyCommitCleanup })
 activate CM
 
-CM -> CM : metadataCache.getFileCache(projectFile).frontmatter\nrepo, defaultBranch, github_token_key, public_repo
-CM -> CM : Resolve token: SecretStorage.getSecret(resolvedKey) or "" for public
-alt tokenKey provided and != frontmatter
-  CM -> Vault : processFrontMatter(projectFile, fm => fm.github_token_key = tokenKey)
+CM -> CM : frontmatter: repo, defaultBranch, github_token_key
+alt repo missing
+  CM --> API : throw "Missing repo field (owner/name)"
 end
-CM -> CM : [owner, repoName] = repo.split("/")
-CM -> GH : new GitHubClient(token)\nlistReleases(owner, repoName)
-activate GH
+alt key given
+  CM -> CM : secretStorage.getSecret(key)
+  alt no secret
+    CM --> API : throw 'No PAT found for key "..."' (no request sent)
+  end
+end
+
+CM -> GH : listReleases(owner, repo)
 GH -> GitHub : GET /repos/{owner}/{repo}/releases
-GitHub --> GH : releases[]
+GitHub --> GH : releases[] (or HTTP error)
 GH --> CM : releases
-deactivate GH
+note right of CM : HTTP error -> throw describeGitHubError(...)\n(401 PAT rejected, 403 access/limit, 404 repo)
 
-CM -> CM : ensureFolder(projectFolder/releases), ensureFolder(projectFolder/commits)
-loop for each release
-  CM -> CM : upsertRelease(projectFolder, projectFile, rel)
-  alt release file exists
-    CM -> Vault : processFrontMatter(existing, fm => version, url, date, project)
+loop each release
+  alt releases/{tag}.md exists
+    CM -> Vault : processFrontMatter(version, url, date, project)
   else
-    CM -> CM : createNote(filePath, tag, "permanent", "project-release", {...})
-    CM -> Vault : create releases/{tag}.md
+    CM -> Vault : createNote(...) then properties.set(url, ...)\nso ORM defaults do not drop the URL
   end
 end
 
-CM -> GH : compareCommits(owner, repoName, latestRelease.tag_name, defaultBranch)
-activate GH
-GH -> GitHub : GET /repos/.../compare/{base}...{head}
-GitHub --> GH : compare result (commits[])
-GH --> CM : { commits }
-deactivate GH
+opt latest release exists
+  CM -> GH : compareCommits(owner, repo, latestTag, defaultBranch)
+  GH -> GitHub : GET /repos/.../compare/{tag}...{branch}
+  GitHub --> GH : { total_commits, commits[] } (or HTTP error)
+  GH --> CM : compare result
+end
 
-loop for each commit
-  CM -> CM : upsertCommit(projectFolder, projectFile, commit)
-  alt commit file exists
-    CM -> Vault : processFrontMatter(existing, fm => sha, message, url, date, released)
-  else
-    CM -> CM : createNote(filePath, sha, "permanent", "project-commit", {...})
-    CM -> Vault : create commits/{sha}.md
+CM -> CM : buildUnreleasedCommitsNote(base, commits, total, truncated, error?)
+CM -> Vault : create / modify "Unreleased Commits.md" (whole note)
+note right of CM : Empty list when there is no release\nor the compare failed
+
+alt compare failed
+  CM --> API : throw "Synced N releases, but comparing ... failed (404): ..."
+end
+
+opt commits/*.md exist and dashboard legacy_commits != keep
+  CM -> Confirm : confirmLegacyCleanup(count)
+  Confirm -> User : "Remove old commit notes?"
+  alt Move to trash
+    CM -> Vault : fileManager.trashFile(file)\n(fallback vault.trash(file, true))
+  else Keep them
+    CM -> Vault : processFrontMatter(dashboard, legacy_commits = "keep")
   end
 end
 
-CM --> API : (void)
+CM -> User : Notice("Synced N releases, M unreleased commits.")
+CM --> API : { releases, unreleasedCommits, legacyCommitNotes }
 deactivate CM
-API --> Block : (done)
+API --> Block : summary
 deactivate API
-Block -> User : Notice or UI update
+note over Block : On a thrown error the script shows\nNotice("Refresh failed: <message>")
 
 @enduml

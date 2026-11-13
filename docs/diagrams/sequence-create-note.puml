@@ -4,56 +4,52 @@ title Sequence: Create New Note (Dashboard → Vault)
 
 actor User
 participant "Ribbon / Command" as Cmd
-participant "MyPlugin" as Plugin
 participant "NoteFactory" as Factory
 participant "Dashboard" as Dashboard
 participant "TemplateGridModal" as Template
 participant "FileNameModal" as Filename
+participant "ConfirmModal" as Confirm
 participant "markdown-note-orm\nLibFactory" as Lib
 participant "Vault" as Vault
 
 User -> Cmd : Click ribbon or "Create New Zettel Note"
-Cmd -> Plugin : (callback)
-Plugin -> Factory : openCreationModal()
+Cmd -> Factory : openCreationModal()
 
-Factory -> Dashboard : new Dashboard(app, settings, factory, onComplete)\n.open()
+Factory -> Dashboard : new Dashboard(app, settings, factory, onComplete).open()
 activate Dashboard
-Dashboard -> User : Show "Zettelkasten Control" (Quick Actions, Create New Note, Active Context)
+Dashboard -> User : "Zettelkasten Control"\n(Quick Actions, Create New Note, Active Context, Upgrade)
 
-User -> Dashboard : Click note type (e.g. Permanent)
-Dashboard -> Template : new TemplateGridModal(noteType, options, onChoose)\n.open()
-activate Template
-Template -> User : Show template cards
+User -> Dashboard : Click note type (e.g. Permanent)\nor an Upgrade type
+Dashboard -> Template : new TemplateGridModal(noteType, options, onChoose).open()
 User -> Template : Click template
 Template -> Dashboard : onChoose(selectedOption)
-deactivate Template
 
-Dashboard -> Filename : new FileNameModal(folder, onSubmit)\n.open()
-activate Filename
-Filename -> User : "New Note in: 004-Permanent"
+Dashboard -> Filename : new FileNameModal(folder, onSubmit).open()
 User -> Filename : Enter title
 Filename -> Dashboard : onSubmit(title)
-deactivate Filename
 
-Dashboard -> Factory : onComplete(optionToPass, title)
-note right: optionToPass includes template + prefix; title may be prefixed
+Dashboard -> Factory : onComplete(option, title)
+note right: Upgrade adds sources: [[current note]];\nCreate New Note uses sources: []
+Factory -> Factory : createNoteFromOption(option, title)
+Factory -> Factory : resolvePrefix(option.extraInfo.prefix) if set\nfullPath = normalizePath(folder/finalTitle.md)
+Factory -> Vault : adapter.exists(fullPath)
+alt file exists (also case-only match)
+  Factory -> Confirm : confirmOverwrite(fullPath)
+  Confirm -> User : "Overwrite note?"
+  alt Cancel or Esc
+    Factory -> User : Notice("Cancelled: ... already exists.")
+    Factory --> Dashboard : null (nothing written, nothing opened)
+  end
+end
 
-Factory -> Factory : resolvePrefix(option.extraInfo.prefix) if set
-Factory -> Lib : createByType(app, fullPath, type, title, specificConfig)
-activate Lib
-Lib -> Vault : create / modify file at fullPath
-Vault --> Lib : file
+Factory -> Lib : createByType(app, fullPath, type, title, templateConfig)
 Lib --> Factory : ZettelNoteModel
-deactivate Lib
-
-Factory -> Factory : note.properties.batchUpdate(noteExtraParams) if any
-Factory -> Factory : note.save()
-Factory -> Vault : write frontmatter + body
+Factory -> Factory : properties.batchUpdate(extra properties)
+Factory -> Vault : note.save() (create or modify)
 Factory -> User : Notice("Created: ...")
-opt openAfterCreation
+opt openAfterCreation or autoOpenNewNote
   Factory -> Vault : workspace.openLinkText(fullPath, ...)
 end
-Factory -> Dashboard : (callback done)
 Dashboard -> Dashboard : close()
 deactivate Dashboard
 

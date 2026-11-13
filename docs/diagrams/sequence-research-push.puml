@@ -1,0 +1,57 @@
+@startuml sequence-research-push
+!theme plain
+title Sequence: Research Push (prompts → one GitHub commit)
+
+actor User
+participant "Drafts table\n(Push to GitHub)" as Table
+participant "window.ZettelkastenOperator" as API
+participant "ResearchManager" as RM
+participant "GitHubClient" as GH
+participant "GitHub GraphQL" as GitHub
+participant "Vault" as Vault
+
+User -> Table : Click "Push to GitHub"
+Table -> API : pushToGitHub(projectPath)
+activate API
+API -> RM : new ResearchManager(app, settings)\n.pushToGitHub(projectFile, tokenKey?)
+activate RM
+RM -> RM : frontmatter: repo, defaultBranch (main),\ngithub_target_folder (prompts), github_token_key
+alt no repo, no PAT key, no secret, or no prompts/*.md
+  RM -> User : Notice(reason)
+  RM --> API : { successCount: 0, errorCount: 0 } (no request)
+end
+RM -> Vault : readBinary(prompts/*.md)
+RM -> RM : gitBlobSha(bytes) per prompt
+
+loop at most 2 attempts
+  RM -> GH : graphql(READ_FOLDER_QUERY,\n{ owner, name, ref: "refs/heads/<branch>", path: folder })
+  GH -> GitHub : POST /graphql
+  GitHub --> GH : head oid + folder entries { name, oid, type }
+  GH --> RM : data
+  alt branch not found
+    RM -> User : Notice('branch "<branch>" was not found in <repo>')
+    RM --> API : { successCount: 0, errorCount: n }
+  end
+  RM -> RM : changed = prompts whose blob id differs or is missing remotely
+  alt nothing changed
+    RM -> User : Notice("Nothing to push ...")
+    RM --> API : { successCount: 0, errorCount: 0 }
+  end
+  RM -> GH : graphql(CREATE_COMMIT_MUTATION, { input: {\n  branch, message: { headline },\n  fileChanges: { additions: [{ path, contents: base64 }] },\n  expectedHeadOid } })
+  GH -> GitHub : POST /graphql (createCommitOnBranch)
+  alt committed
+    GitHub --> RM : commit oid
+    RM -> User : Notice("Pushed N prompts to GitHub in one commit.")
+    RM --> API : { successCount: N, errorCount: 0, lastRequestDebug }
+  else "Expected branch to point to ..." on the first attempt
+    RM -> RM : query again and retry once
+  else other error, or second stale head
+    RM -> User : Notice("Push failed: " + describeGitHubError(...))
+    RM --> API : { successCount: 0, errorCount: N, lastRequestDebug }
+  end
+end
+deactivate RM
+API -> API : plugin.lastPushRequestDebug = result.lastRequestDebug (token masked)
+deactivate API
+
+@enduml

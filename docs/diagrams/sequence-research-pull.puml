@@ -1,0 +1,71 @@
+@startuml sequence-research-pull
+!theme plain
+title Sequence: Research Pull (pull rules → files in the project)
+
+actor User
+participant "Settings\nGitHub pull rules" as Settings
+participant "Research Quick Actions\n(Pull group)" as Block
+participant "window.ZettelkastenOperator" as API
+participant "ResearchManager" as RM
+participant "GitHubClient" as GH
+participant "GitHub contents API" as GitHub
+participant "Vault" as Vault
+
+== Define rules once ==
+User -> Settings : Add pull rule\n(repo folder, file name pattern, target folder)
+Settings -> Settings : id = generateRuleId(existing ids)\nvalidatePullRule(rule) -> red hint
+Settings -> Settings : saveSettings() (githubPullRules)
+
+== Pick rules per project ==
+Block -> API : getPullRules()
+Block -> User : dropdown of rules not in github_pull
+User -> Block : choose rule, click Add (or Remove)
+Block -> API : setResearchPullRules(projectPath, ids)
+API -> RM : setPullRules(projectFile, ids)
+RM -> Vault : processFrontMatter(dashboard, github_pull = ids)
+
+== Pull ==
+User -> Block : Click "Pull from GitHub"
+Block -> API : pullFromGitHub(projectPath, Public ? "" : selected key)
+activate API
+API -> RM : pullFromGitHub(projectFile, tokenKey)
+activate RM
+RM -> RM : repo (required), branch (main);\nPAT secret required unless public_repo
+loop each id in github_pull
+  alt id has no rule
+    RM -> RM : unknownRules += id
+  else rule invalid (validatePullRule)
+    RM -> RM : failed++, warning
+  else
+    RM -> GH : listDirectory(owner, repo, sourceDir, branch)
+    GH -> GitHub : GET /repos/{o}/{r}/contents/{dir}?ref={branch}
+    GitHub --> GH : entries[] (depth 1)
+    alt listing failed
+      RM -> RM : failed++, warning (describeGitHubError)
+    else
+      RM -> RM : selectPullFiles: type file, download_url set, name matches regex\n(>= 1000 entries -> warning)
+      loop each selected file (errors isolated per file)
+        RM -> RM : path = resolvePullTarget(projectFolder, target, name)\n(null -> failed + warning)
+        alt local file exists and gitBlobSha(local) == entry.sha
+          RM -> RM : skipped++
+        else
+          RM -> GH : downloadRaw(owner, repo, entry.path, branch)
+          GH -> GitHub : GET contents/{path}\nAccept: application/vnd.github.raw+json
+          GitHub --> GH : bytes
+          alt local file exists
+            RM -> Vault : modifyBinary(file, bytes) (updated++)
+          else
+            RM -> Vault : createFolder for each missing segment\ncreateBinary(path, bytes) (added++)
+          end
+        end
+      end
+    end
+  end
+end
+RM -> User : Notice("Pulled from GitHub: a added, u updated, s skipped, f failed.")\n+ Notice(warnings) if any
+RM --> API : { added, updated, skipped, failed, unknownRules, warnings }
+deactivate RM
+deactivate API
+note over Vault : Local files are never deleted;\nchanged files are overwritten (the repo wins)
+
+@enduml

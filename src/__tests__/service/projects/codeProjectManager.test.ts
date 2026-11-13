@@ -53,9 +53,6 @@ describe("CodeProjectManager", () => {
 				app.vault.getAbstractFileByPath("Projects/MyPlugin/releases")
 			).toBeTruthy();
 			expect(
-				app.vault.getAbstractFileByPath("Projects/MyPlugin/commits")
-			).toBeTruthy();
-			expect(
 				app.vault.getAbstractFileByPath("Projects/MyPlugin/requirements")
 			).toBeTruthy();
 		});
@@ -333,34 +330,6 @@ describe("CodeProjectManager", () => {
 			);
 		});
 
-		it("should create commit notes for unreleased commits", async () => {
-			const mockReleases = [createMockRelease({ tag_name: "v1.0.0" })];
-			const mockCompare = {
-				commits: [
-					createMockCommit({ sha: "abc1234567890", message: "New feature" }),
-				],
-			};
-
-			(requestUrl as jest.Mock)
-				.mockResolvedValueOnce({
-					status: 200,
-					headers: {},
-					json: mockReleases,
-				})
-				.mockResolvedValueOnce({
-					status: 200,
-					headers: {},
-					json: mockCompare,
-				});
-
-			await manager.refreshProject(projectFile);
-
-			const commitFile = app.vault.getAbstractFileByPath(
-				"Projects/RefreshTest/commits/abc1234.md"
-			);
-			expect(commitFile).toBeTruthy();
-		});
-
 		it("should work with public repo (no token)", async () => {
 			setFrontmatterCache(app.metadataCache, projectFile.path, {
 				repo: "owner/public-repo",
@@ -406,9 +375,6 @@ describe("CodeProjectManager", () => {
 
 			expect(
 				app.vault.getAbstractFileByPath("Projects/NewImport/releases")
-			).toBeTruthy();
-			expect(
-				app.vault.getAbstractFileByPath("Projects/NewImport/commits")
 			).toBeTruthy();
 			expect(
 				app.vault.getAbstractFileByPath("Projects/NewImport/requirements")

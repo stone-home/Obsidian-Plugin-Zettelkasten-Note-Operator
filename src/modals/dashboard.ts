@@ -213,6 +213,18 @@ export class Dashboard extends Modal {
 			const currentType =
 				activeNote.properties.get('type') || ('fleeting' as keyof NoteTypeMap);
 
+			// Notes such as type: run / objective have no upgrade path; say so instead of failing.
+			if (!Object.prototype.hasOwnProperty.call(DEFAULT_NOTE_CATEGORIES, currentType)) {
+				const section = container.createDiv('dashboard-section new-note-section');
+				const header = section.createDiv('section-header');
+				header.createEl('h3', { text: 'Upgrade' });
+				section.createEl('p', {
+					text: `This note type (${String(currentType)}) is not in the upgrade range.`,
+					cls: 'section-subtitle',
+				});
+				return;
+			}
+
 			const upgradePathList = DEFAULT_NOTE_CATEGORIES[currentType].upgradePath;
 
 			// Only render if there are upgrade paths
