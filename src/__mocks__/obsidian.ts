@@ -393,6 +393,16 @@ export class Vault extends Events {
 		return null;
 	}
 
+	getFileByPath(path: string): TFile | null {
+		const found = this.getAbstractFileByPath(path);
+		return found instanceof TFile ? found : null;
+	}
+
+	getFolderByPath(path: string): TFolder | null {
+		const found = this.getAbstractFileByPath(path);
+		return found instanceof TFolder ? found : null;
+	}
+
 	getAllLoadedFiles(): TAbstractFile[] {
 		const result: TAbstractFile[] = [];
 		for (const [, entry] of this.files) {
@@ -683,9 +693,23 @@ export class Modal {
 }
 
 // ==================== Notice ====================
+const noticeLog: string[] = [];
+
 export class Notice {
-	constructor(message: string, timeout?: number) {}
+	constructor(message: string | DocumentFragment, timeout?: number) {
+		noticeLog.push(String(message));
+	}
 	hide(): void {}
+}
+
+/** Messages of every Notice created since the last _clearNotices() (test helper, not an Obsidian API). */
+export function _getNotices(): string[] {
+	return [...noticeLog];
+}
+
+/** Forgets recorded Notice messages (test helper). */
+export function _clearNotices(): void {
+	noticeLog.length = 0;
 }
 
 // ==================== Setting ====================

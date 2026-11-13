@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, Notice, requestUrl } from "obsidian";
+import { App, TFile, TFolder, Notice } from "obsidian";
 import {
 	ObsidianNoteFactory as LibFactory,
 	NoteType,
@@ -8,6 +8,37 @@ import {
 import { ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
 import { stripMdExtension } from "../../utils/path";
+import { GitHubClient } from "../github/githubClient";
+import { describeGitHubError } from "../github/errors";
+import { bytesToBase64, gitBlobSha } from "../github/gitHash";
+
+const GITHUB_GRAPHQL_URL = "https://api.github.com/graphql";
+
+/** Head commit of a branch and the entries of one folder in that same commit. */
+const READ_FOLDER_QUERY = `query ($owner: String!, $name: String!, $ref: String!, $path: String!) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $ref) {
+      target {
+        ... on Commit {
+          oid
+          file(path: $path) {
+            object {
+              ... on Tree {
+                entries { name oid type }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+const CREATE_COMMIT_MUTATION = `mutation ($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) {
+    commit { oid }
+  }
+}`;
 
 /** Debug info for the last Push to GitHub request (headers/body/params), for display in Quick Actions. */
 export type LastPushRequestDebug = {
@@ -503,131 +534,120 @@ export class ResearchManager {
 			return { successCount: 0, errorCount: 0 };
 		}
 
-		const headers: Record<string, string> = {
-			"Accept": "application/vnd.github+json",
-			"X-GitHub-Api-Version": "2022-11-28",
-			"Authorization": `Bearer ${token}`,
-			"Content-Type": "application/json",
+		const [owner, repoName] = String(repo).split("/");
+		const client = new GitHubClient(token);
+		const baseDebug = {
+			url: GITHUB_GRAPHQL_URL,
+			method: "POST",
+			headers: {
+				Accept: "application/vnd.github+json",
+				"Content-Type": "application/json",
+				Authorization: "Bearer ***",
+			},
+			params: { repo, defaultBranch, path: targetFolder, targetFolder },
 		};
 
-		let successCount = 0;
-		let errorCount = 0;
+		// Hash exactly the bytes that would be uploaded, so unchanged prompts can be skipped.
+		const local = await Promise.all(
+			files.map(async (file) => {
+				const bytes = new Uint8Array(await this.app.vault.readBinary(file));
+				return { name: file.name, bytes, sha: await gitBlobSha(bytes) };
+			}),
+		);
+
 		let lastRequestDebug: LastPushRequestDebug | undefined;
-
-		for (const file of files) {
-			const path = `${targetFolder}/${file.name}`;
-			const pathEncoded = path
-				.split("/")
-				.map((seg) => encodeURIComponent(seg))
-				.join("/");
-			let base64Content = "";
-
+		// The second attempt only runs when the branch moved between our query and the commit.
+		for (let attempt = 0; attempt < 2; attempt++) {
+			let remote: { headOid: string; oids: Map<string, string> } | null;
 			try {
-				const content = await this.app.vault.read(file);
-				base64Content = btoa(unescape(encodeURIComponent(content)));
-			} catch (readErr) {
-				errorCount++;
-				const readMsg = readErr instanceof Error ? readErr.message : String(readErr);
-				this.logger.logError(`Failed to read ${file.name}:`, readErr);
-				lastRequestDebug = {
-					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message: `Create ${file.name} from Obsidian`,
-						branch: defaultBranch,
-						contentLength: 0,
-					},
-					params: { repo, defaultBranch, path, targetFolder },
-					errorMessage: `Read failed: ${readMsg}`,
-				};
-				if (errorCount === 1) {
-					new Notice(`Push failed (read): ${readMsg.slice(0, 80)}`);
-				}
-				continue;
+				remote = await this.readPromptsOnBranch(client, owner, repoName, defaultBranch, targetFolder);
+			} catch (err) {
+				const message = describeGitHubError(err, `Reading ${repo}`, true, "repo");
+				new Notice(`Push failed: ${message}`);
+				return { successCount: 0, errorCount: local.length, lastRequestDebug };
+			}
+			if (!remote) {
+				new Notice(`Push failed: branch "${defaultBranch}" was not found in ${repo}. Create it on GitHub or change the branch in the dashboard.`);
+				return { successCount: 0, errorCount: local.length, lastRequestDebug };
 			}
 
-			try {
-				// Check if file exists on GitHub (GET returns sha when file exists; required for update)
-				let sha: string | undefined;
-				try {
-					const existingResp = await requestUrl({
-						url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}?ref=${encodeURIComponent(defaultBranch)}`,
-						method: "GET",
-						headers,
-					});
-					sha = existingResp.json?.sha;
-				} catch {
-					// File doesn't exist, that's fine — we'll create
-				}
+			const changed = local.filter((f) => remote!.oids.get(f.name) !== f.sha);
+			if (changed.length === 0) {
+				new Notice("Nothing to push: the prompts on GitHub are already up to date.");
+				return { successCount: 0, errorCount: 0, lastRequestDebug };
+			}
 
-				const message = sha
-					? `Update ${file.name} from Obsidian`
-					: `Create ${file.name} from Obsidian`;
-				const body = {
-					message,
-					content: base64Content,
+			const headline = `Update ${changed.length} prompt${changed.length === 1 ? "" : "s"} from Obsidian`;
+			const additions = changed.map((f) => ({
+				path: `${targetFolder}/${f.name}`,
+				contents: bytesToBase64(f.bytes),
+			}));
+			lastRequestDebug = {
+				...baseDebug,
+				bodySummary: {
+					message: headline,
 					branch: defaultBranch,
-					...(sha ? { sha } : {}),
-				};
-				const url = `https://api.github.com/repos/${repo}/contents/${pathEncoded}`;
+					contentLength: additions.reduce((n, a) => n + a.contents.length, 0),
+					sha: remote.headOid,
+				},
+			};
 
-				// Create or update file
-				await requestUrl({
-					url,
-					method: "PUT",
-					headers,
-					body: JSON.stringify(body),
+			try {
+				await client.graphql(CREATE_COMMIT_MUTATION, {
+					input: {
+						branch: { repositoryNameWithOwner: repo, branchName: defaultBranch },
+						message: { headline },
+						fileChanges: { additions },
+						expectedHeadOid: remote.headOid,
+					},
 				});
-
-				successCount++;
-				this.logger.info(`Pushed prompt ${file.name} to GitHub`);
-				lastRequestDebug = {
-					url,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message,
-						branch: defaultBranch,
-						contentLength: base64Content.length,
-						...(sha ? { sha } : {}),
-					},
-					params: { repo, defaultBranch, path, targetFolder },
-				};
-			} catch (error) {
-				errorCount++;
-				this.logger.logError(`Failed to push ${file.name}:`, error);
-				const status = (error as { status?: number })?.status;
-				const msg = error instanceof Error ? error.message : String(error);
-				lastRequestDebug = {
-					url: `https://api.github.com/repos/${repo}/contents/${pathEncoded}`,
-					method: "PUT",
-					headers: { ...headers, Authorization: "Bearer ***" },
-					bodySummary: {
-						message: `Update ${file.name} from Obsidian`,
-						branch: defaultBranch,
-						contentLength: base64Content.length,
-					},
-					params: { repo, defaultBranch, path, targetFolder },
-					responseStatus: status,
-					errorMessage: msg.slice(0, 400),
-				};
-				if (status === 403 || String(msg).includes("403")) {
-					new Notice(
-						"Push failed (403 Forbidden). Check: PAT has 'repo' or 'public_repo' scope, you have push access to the repo, and repo is owner/repo.",
-					);
-				} else if (errorCount === 1) {
-					new Notice(`Push failed: ${msg.slice(0, 80)}${msg.length > 80 ? "…" : ""}`);
+				this.logger.info(`Pushed ${changed.length} prompts to ${repo} in one commit`);
+				new Notice(`Pushed ${changed.length} prompt${changed.length === 1 ? "" : "s"} to GitHub in one commit.`);
+				return { successCount: changed.length, errorCount: 0, lastRequestDebug };
+			} catch (err) {
+				const message = Logger.getErrorMessage(err);
+				// GitHub: 'Expected branch to point to "<oid>" but it did not.' (expectedHeadOid is stale)
+				const headMoved = /expected/i.test(message) && /(oid|point to)/i.test(message);
+				if (headMoved && attempt === 0) {
+					this.logger.info("Branch moved during push; querying again and retrying once");
+					continue;
 				}
+				const status = (err as { status?: number } | null)?.status;
+				const described = describeGitHubError(err, `Committing to ${repo}@${defaultBranch}`, true, "repo");
+				lastRequestDebug = { ...lastRequestDebug, responseStatus: status, errorMessage: described.slice(0, 400) };
+				this.logger.logError("Push to GitHub failed:", err);
+				new Notice(`Push failed: ${described}`);
+				return { successCount: 0, errorCount: changed.length, lastRequestDebug };
 			}
 		}
+		// Unreachable: the loop always returns.
+		return { successCount: 0, errorCount: local.length, lastRequestDebug };
+	}
 
-		if (errorCount > 0) {
-			new Notice(`Pushed ${successCount} files, ${errorCount} failed.`);
-		} else {
-			new Notice(`Successfully pushed ${successCount} files to GitHub.`);
-		}
-		return { successCount, errorCount, lastRequestDebug };
+	/**
+	 * Head commit of the branch and the git blob ids of the files directly in `folder`,
+	 * read from the same commit. Returns null when the branch does not exist.
+	 */
+	private async readPromptsOnBranch(
+		client: GitHubClient,
+		owner: string,
+		name: string,
+		branch: string,
+		folder: string,
+	): Promise<{ headOid: string; oids: Map<string, string> } | null> {
+		const data = await client.graphql<any>(READ_FOLDER_QUERY, {
+			owner,
+			name,
+			ref: `refs/heads/${branch}`,
+			path: folder,
+		});
+		const target = data?.repository?.ref?.target;
+		if (!target?.oid) return null;
+		const entries: Array<{ name: string; oid: string; type: string }> = target.file?.object?.entries ?? [];
+		return {
+			headOid: target.oid,
+			oids: new Map(entries.filter((e) => e.type === "blob").map((e) => [e.name, e.oid])),
+		};
 	}
 
 	private getProjectFolder(projectFile: TFile): string {
