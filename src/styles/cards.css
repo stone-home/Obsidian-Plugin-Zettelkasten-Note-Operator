@@ -705,48 +705,66 @@
 	font-size: 0.82em;
 }
 
-/* GitHub pull rules: one compact row per rule */
-.zk-pull-rule-row {
+/* GitHub pull rules: one labelled input per line, no borders between fields */
+.zk-pull-rule {
+	padding: 12px 0 4px;
+}
+
+.zk-pull-rule + .zk-pull-rule {
+	margin-top: 8px;
+}
+
+.zk-pull-rule-title {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-weight: var(--font-semibold);
+	margin-bottom: 6px;
+}
+
+.zk-pull-rule-title span {
+	margin-right: auto;
+	font-family: var(--font-monospace);
+}
+
+.zk-pull-rule-field {
 	display: grid;
-	grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(90px, 1fr) auto auto;
-	gap: 6px;
+	grid-template-columns: 160px minmax(0, 1fr);
+	column-gap: 12px;
+	row-gap: 2px;
 	align-items: center;
 	padding: 4px 0;
 }
 
-.zk-pull-rule-row input {
+.zk-pull-rule-field input {
 	width: 100%;
-	min-width: 0;
 }
 
-.zk-pull-rule-head {
+.zk-pull-rule-hint {
+	grid-column: 2;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	padding-bottom: 0;
-}
-
-.zk-pull-rule-id {
-	font-family: var(--font-monospace);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	cursor: pointer;
 }
 
 .zk-pull-rule-problem {
+	margin-left: 172px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-error);
-	padding-bottom: 4px;
+	padding: 2px 0;
 }
 
 .zk-pull-rule-problem.is-hidden {
 	display: none;
 }
 
-@media (max-width: 700px) {
-	.zk-pull-rule-row {
-		grid-template-columns: 1fr 1fr;
+@media (max-width: 600px) {
+	.zk-pull-rule-field {
+		grid-template-columns: minmax(0, 1fr);
 	}
-	.zk-pull-rule-head {
-		display: none;
+	.zk-pull-rule-hint {
+		grid-column: 1;
+	}
+	.zk-pull-rule-problem {
+		margin-left: 0;
 	}
 }

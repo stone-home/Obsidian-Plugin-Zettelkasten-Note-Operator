@@ -496,38 +496,13 @@ export class SampleSettingTab extends PluginSettingTab {
 		if (rules.length === 0) {
 			card.createEl('p', { text: 'No rules yet.', cls: 'setting-item-description' });
 		}
-		if (rules.length > 0) {
-			// Column titles once, instead of a labelled row per field.
-			const head = card.createDiv({ cls: 'zk-pull-rule-row zk-pull-rule-head' });
-			['Label', 'Repo folder (top level only)', 'File name pattern (regex)', 'Target folder in project', 'Id', ''].forEach((title) =>
-				head.createSpan({ text: title })
-			);
-		}
 		rules.forEach((rule, idx) => {
-			const row = card.createDiv({ cls: 'zk-pull-rule-row' });
-			const problem = card.createDiv({ cls: 'zk-pull-rule-problem' });
-			const showProblem = () => {
-				const message = validatePullRule(rule);
-				problem.setText(message ?? '');
-				problem.toggleClass('is-hidden', !message);
-			};
-			const field = (placeholder: string, value: string, title: string, apply: (v: string) => void) => {
-				const input = row.createEl('input', { type: 'text', placeholder, attr: { 'aria-label': title, title } });
-				input.value = value;
-				input.addEventListener('input', async () => {
-					apply(input.value);
-					showProblem();
-					await this.plugin.saveSettings();
-				});
-			};
-			field('e.g. Run notes', rule.label ?? '', 'Label', (v) => { rule.label = v.trim() || undefined; });
-			field('e.g. pkm', rule.sourceDir, 'Repo folder', (v) => { rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, ''); });
-			field('e.g. \\.md$', rule.filePattern, 'File name pattern', (v) => { rule.filePattern = v; });
-			field('e.g. runs', rule.target, 'Target folder', (v) => { rule.target = v.trim(); });
-
-			const idCell = row.createDiv({ cls: 'zk-pull-rule-id', attr: { title: 'Id stored in a project\'s github_pull list. Click to copy.' } });
-			idCell.setText(rule.id);
-			idCell.addEventListener('click', async () => {
+			const ruleEl = card.createDiv({ cls: 'zk-pull-rule' });
+			const head = ruleEl.createDiv({ cls: 'zk-pull-rule-title' });
+			head.createSpan({ text: `Rule ${rule.id}` });
+			const copy = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Copy id' } });
+			setIcon(copy, 'copy');
+			copy.addEventListener('click', async () => {
 				try {
 					await navigator.clipboard.writeText(rule.id);
 					new Notice(`Copied ${rule.id}`);
@@ -535,13 +510,41 @@ export class SampleSettingTab extends PluginSettingTab {
 					new Notice(rule.id);
 				}
 			});
-			const remove = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Remove rule' } });
+			const remove = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Remove rule' } });
 			setIcon(remove, 'trash');
 			remove.addEventListener('click', async () => {
 				this.plugin.settings.githubPullRules = rules.filter((_, i) => i !== idx);
 				await this.plugin.saveSettings();
 				this.display();
 			});
+
+			const problem = ruleEl.createDiv({ cls: 'zk-pull-rule-problem' });
+			const showProblem = () => {
+				const message = validatePullRule(rule);
+				problem.setText(message ?? '');
+				problem.toggleClass('is-hidden', !message);
+			};
+			// One labelled input per line; an optional hint sits under the input.
+			const field = (label: string, placeholder: string, value: string, apply: (v: string) => void, hint?: string) => {
+				const line = ruleEl.createDiv({ cls: 'zk-pull-rule-field' });
+				line.createEl('label', { text: label });
+				const input = line.createEl('input', { type: 'text', placeholder });
+				input.value = value;
+				input.addEventListener('input', async () => {
+					apply(input.value);
+					showProblem();
+					await this.plugin.saveSettings();
+				});
+				if (hint) line.createDiv({ text: hint, cls: 'zk-pull-rule-hint' });
+			};
+			field('Label', 'e.g. Run notes', rule.label ?? '', (v) => { rule.label = v.trim() || undefined; });
+			field('Repo folder', 'e.g. pkm', rule.sourceDir, (v) => { rule.sourceDir = v.trim().replace(/^\/+|\/+$/g, ''); },
+				'Folder in the repo. Only files directly inside it are pulled, not subfolders.');
+			field('File name pattern', 'e.g. \\.md$', rule.filePattern, (v) => { rule.filePattern = v; },
+				'Regular expression tested against each file name.');
+			field('Target folder', 'e.g. runs', rule.target, (v) => { rule.target = v.trim(); },
+				'Relative path only, starting from the research project folder: "runs" puts files in <project>/runs. No leading "/" and no "..".');
+			ruleEl.appendChild(problem);
 			showProblem();
 		});
 
