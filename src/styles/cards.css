@@ -3,7 +3,7 @@
 /* --- Project Quick Actions (fancy single row) --- */
 .zk-pqa {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	flex-direction: column;
 	align-items: stretch;
 	gap: 16px;
@@ -94,16 +94,19 @@
 
 /* Group title inside Quick Actions (GitHub, Pull). */
 .zk-pqa-title {
+	margin-top: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--background-modifier-border);
 	font-size: 0.9rem;
 	font-weight: 600;
 	color: var(--text-normal);
 }
 
-/* GitHub settings: labelled fields, two per line when there is room. */
+/* GitHub settings: labelled fields, two per line, left-aligned at a readable width. */
 .zk-pqa-fields {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-	gap: 8px 20px;
+	grid-template-columns: repeat(2, minmax(0, 440px));
+	gap: 8px 32px;
 }
 
 .zk-pqa-field {
@@ -114,7 +117,8 @@
 }
 
 .zk-pqa-field .zk-pqa-label {
-	flex: 0 0 7em;
+	flex: 0 0 8.5em;
+	white-space: nowrap;
 }
 
 .zk-pqa-field .zk-pqa-input,
