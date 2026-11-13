@@ -619,7 +619,7 @@ export class ResearchManager {
 			} catch (err) {
 				const message = Logger.getErrorMessage(err);
 				// GitHub: 'Expected branch to point to "<oid>" but it did not.' (expectedHeadOid is stale)
-				const headMoved = /expected/i.test(message) && /(oid|point to)/i.test(message);
+				const headMoved = /expected branch to point to/i.test(message);
 				if (headMoved && attempt === 0) {
 					this.logger.info("Branch moved during push; querying again and retrying once");
 					continue;
