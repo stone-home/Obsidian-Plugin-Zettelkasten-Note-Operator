@@ -550,7 +550,8 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		new Setting(card).addButton((btn) =>
 			btn.setButtonText('Add pull rule').onClick(async () => {
-				const list = this.plugin.settings.githubPullRules ?? [];
+				// Copy: without saved rules, settings.githubPullRules is the shared DEFAULT_SETTINGS array.
+				const list = [...(this.plugin.settings.githubPullRules ?? [])];
 				list.push({
 					id: generateRuleId(list.map((r) => r.id)),
 					sourceDir: '',
