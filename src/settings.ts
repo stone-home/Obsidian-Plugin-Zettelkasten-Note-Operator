@@ -678,7 +678,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				const isExpanded = this.expandedScriptIds.has(script.id);
 
 				const previewBtn = new ButtonComponent(obj.actions)
-					.setButtonText(isExpanded ? 'Hide preview' : 'Preview')
+					.setIcon(isExpanded ? 'chevron-up' : 'chevron-down').setTooltip(isExpanded ? 'Hide preview' : 'Preview').setClass('clickable-icon')
 					.onClick(() => {
 						if (this.expandedScriptIds.has(script.id)) {
 							this.expandedScriptIds.delete(script.id);
@@ -689,7 +689,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					});
 				previewBtn.buttonEl.setAttr('aria-expanded', String(isExpanded));
 
-				new ButtonComponent(obj.actions).setButtonText('Edit').onClick(async () => {
+				new ButtonComponent(obj.actions).setIcon('pencil').setTooltip('Edit').setClass('clickable-icon').onClick(async () => {
 					let content = this.plugin.dataview!.getScriptContent(script.id);
 					if (content === undefined) {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
@@ -717,7 +717,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 				const defaultContent = getDefaultScriptContent(script.id);
 				if (defaultContent !== null) {
-					new ButtonComponent(obj.actions).setButtonText('Reset').onClick(async () => {
+					new ButtonComponent(obj.actions).setIcon('undo').setTooltip('Reset to default').setClass('clickable-icon').onClick(async () => {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
 						if (file) {
 							await this.app.vault.modify(file, defaultContent);
@@ -727,7 +727,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					});
 				}
 
-				new ButtonComponent(obj.actions).setButtonText('Remove').onClick(async () => {
+				new ButtonComponent(obj.actions).setIcon('trash-2').setTooltip('Remove').setClass('clickable-icon').onClick(async () => {
 					if (confirm(`Remove script "${script.name}"?`)) {
 						const file = this.app.vault.getAbstractFileByPath(script.filePath) as TFile;
 						if (file) {
