@@ -78,6 +78,29 @@ export type LastPushRequestDebug = {
 	errorMessage?: string;
 };
 
+/** Obsidian's SecretStorage, which the bundled obsidian typings do not declare yet. */
+interface SecretReader {
+	getSecret(key: string): unknown;
+}
+
+function isSecretReader(value: unknown): value is SecretReader {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"getSecret" in value &&
+		typeof value.getSecret === "function"
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+/** `source[key]` when `source` is an object, otherwise undefined. Reads GitHub JSON. */
+function field(source: unknown, key: string): unknown {
+	return isRecord(source) ? source[key] : undefined;
+}
+
 export class ResearchManager {
 	private app: App;
 	private settings: ZettelkastenSettings;
@@ -102,7 +125,7 @@ export class ResearchManager {
 		title: string,
 		baseType: NoteType,
 		subtype: string,
-		extraProps: Record<string, any> = {},
+		extraProps: Record<string, unknown> = {},
 		sections: NoteTemplateSection[] = []
 	): Promise<TFile> {
 		const config: NoteTemplateConfig = {
@@ -182,7 +205,7 @@ export class ResearchManager {
 			link.setAttribute("data-href", draft.path);
 			link.textContent = draft.basename;
 			link.style.flex = "1";
-			(link as any).onclick = (e: MouseEvent) => {
+			link.onclick = (e: MouseEvent) => {
 				e.preventDefault();
 				this.app.workspace.getLeaf().openFile(draft);
 			};
@@ -310,7 +333,7 @@ export class ResearchManager {
 		);
 	}
 
-	async createObjective(projectFile: TFile, title: string): Promise<TFile> {
+	async createObjective(projectFile: TFile | TFolder, title: string): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const folder = `${projectFolder}/objectives`;
 		await this.ensureFolder(folder);
@@ -349,7 +372,10 @@ export class ResearchManager {
 		);
 	}
 
-	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
+	async createRequirement(
+		projectFile: TFile | TFolder,
+		title: string
+	): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const folder = `${projectFolder}/requirements`;
 		await this.ensureFolder(folder);
@@ -377,7 +403,7 @@ export class ResearchManager {
 	 * @param templateConfig Optional template configuration to apply to the draft
 	 */
 	async createDraft(
-		projectFile: TFile,
+		projectFile: TFile | TFolder,
 		title: string,
 		templateConfig?: NoteTemplateConfig
 	): Promise<TFile> {
@@ -415,8 +441,8 @@ export class ResearchManager {
 	}
 
 	async createStep(
-		projectFile: TFile,
-		objectiveFile: TFile,
+		projectFile: TFile | TFolder,
+		objectiveFile: TFile | TFolder,
 		title: string
 	): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
@@ -437,7 +463,10 @@ export class ResearchManager {
 		});
 	}
 
-	async createExperiment(projectFile: TFile, title: string): Promise<TFile> {
+	async createExperiment(
+		projectFile: TFile | TFolder,
+		title: string
+	): Promise<TFile> {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const folder = `${projectFolder}/experiments`;
 		await this.ensureFolder(folder);
@@ -489,16 +518,19 @@ export class ResearchManager {
 		if (!match) return;
 		const fmBlock = match[1];
 		const rest = content.slice(match[0].length);
-		const keysToUpdate = new Set(Object.keys(updates) as (keyof typeof updates)[]);
+		const values = new Map<string, string | boolean | undefined>(
+			Object.entries(updates)
+		);
+		const keysToUpdate = new Set(values.keys());
 		const lines = fmBlock.split(/\r?\n/);
 		const updated = new Set<string>();
 		const newLines: string[] = [];
 		for (const line of lines) {
 			const keyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
-			if (keyMatch && keysToUpdate.has(keyMatch[1] as keyof typeof updates)) {
-				const key = keyMatch[1] as keyof typeof updates;
+			if (keyMatch && keysToUpdate.has(keyMatch[1])) {
+				const key = keyMatch[1];
 				updated.add(key);
-				const val = updates[key];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
 						typeof val === "boolean"
@@ -514,7 +546,7 @@ export class ResearchManager {
 		}
 		for (const key of keysToUpdate) {
 			if (!updated.has(key)) {
-				const val = updates[key as keyof typeof updates];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
 						typeof val === "boolean"
@@ -533,7 +565,7 @@ export class ResearchManager {
 	 * Uses GitHub Contents API to upload/update files. All pushes use PAT when configured.
 	 */
 	async pushToGitHub(
-		projectFile: TFile,
+		projectFile: TFile | TFolder,
 		tokenKey?: string
 	): Promise<{
 		successCount: number;
@@ -543,12 +575,21 @@ export class ResearchManager {
 		const projectFolder = this.getProjectFolder(projectFile);
 		const promptsFolder = `${projectFolder}/prompts`;
 
-		// Read dashboard frontmatter to get repo info
-		const cache = this.app.metadataCache.getFileCache(projectFile);
+		// Read dashboard frontmatter to get repo info; a project folder has none.
+		const cache =
+			projectFile instanceof TFile
+				? this.app.metadataCache.getFileCache(projectFile)
+				: null;
 		const fm = cache?.frontmatter || {};
 		const repo = fm.repo;
 		const defaultBranch = fm.defaultBranch || "main";
-		const targetFolderRaw = (fm.github_target_folder as string) ?? "prompts";
+		const targetFolderValue: unknown = fm.github_target_folder;
+		const targetFolderRaw =
+			typeof targetFolderValue === "string"
+				? targetFolderValue
+				: typeof targetFolderValue === "number"
+					? String(targetFolderValue)
+					: "prompts";
 		const targetFolder =
 			targetFolderRaw.replace(/^\/+|\/+$/g, "").trim() || "prompts";
 
@@ -569,8 +610,9 @@ export class ResearchManager {
 			return { successCount: 0, errorCount: 0 };
 		}
 
-		const storage = (this.app as any).secretStorage;
-		if (!storage || typeof storage.getSecret !== "function") {
+		const storage =
+			"secretStorage" in this.app ? this.app.secretStorage : undefined;
+		if (!isSecretReader(storage)) {
 			new Notice(
 				"SecretStorage not available. Configure PAT in Settings → Community plugins → Zettelkasten Operator."
 			);
@@ -579,7 +621,8 @@ export class ResearchManager {
 		}
 		let token: string | null = null;
 		try {
-			token = await storage.getSecret(resolvedTokenKey);
+			const secret = await storage.getSecret(resolvedTokenKey);
+			token = typeof secret === "string" ? secret : null;
 		} catch {
 			this.logger.warn(
 				"Failed to get token from SecretStorage for key: " + resolvedTokenKey
@@ -662,7 +705,8 @@ export class ResearchManager {
 				return { successCount: 0, errorCount: local.length, lastRequestDebug };
 			}
 
-			const changed = local.filter((f) => remote!.oids.get(f.name) !== f.sha);
+			const remoteOids = remote.oids;
+			const changed = local.filter((f) => remoteOids.get(f.name) !== f.sha);
 			if (changed.length === 0) {
 				new Notice(
 					"Nothing to push: the prompts on GitHub are already up to date."
@@ -718,7 +762,8 @@ export class ResearchManager {
 					);
 					continue;
 				}
-				const status = (err as { status?: number } | null)?.status;
+				const rawStatus = field(err, "status");
+				const status = typeof rawStatus === "number" ? rawStatus : undefined;
 				const described = describeGitHubError(
 					err,
 					`Committing to ${repo}@${defaultBranch}`,
@@ -754,22 +799,35 @@ export class ResearchManager {
 		branch: string,
 		folder: string
 	): Promise<{ headOid: string; oids: Map<string, string> } | null> {
-		const data = await client.graphql<any>(READ_FOLDER_QUERY, {
+		const data = await client.graphql<unknown>(READ_FOLDER_QUERY, {
 			owner,
 			name,
 			ref: `refs/heads/${branch}`,
 			path: folder,
 		});
-		const target = data?.repository?.ref?.target;
-		if (!target?.oid) return null;
-		const entries: Array<{ name: string; oid: string; type: string }> =
-			target.file?.object?.entries ?? [];
-		return {
-			headOid: target.oid,
-			oids: new Map(
-				entries.filter((e) => e.type === "blob").map((e) => [e.name, e.oid])
-			),
-		};
+		const target = field(field(field(data, "repository"), "ref"), "target");
+		const headOid = field(target, "oid");
+		if (!headOid) return null;
+		if (typeof headOid !== "string") {
+			throw new TypeError("GitHub returned a commit id that is not a string");
+		}
+		const entries = field(field(field(target, "file"), "object"), "entries") ?? [];
+		if (!Array.isArray(entries)) {
+			throw new TypeError(`GitHub returned no entry list for ${folder}`);
+		}
+		const oids = new Map<string, string>();
+		for (const entry of entries) {
+			const entryName = field(entry, "name");
+			const oid = field(entry, "oid");
+			if (
+				field(entry, "type") === "blob" &&
+				typeof entryName === "string" &&
+				typeof oid === "string"
+			) {
+				oids.set(entryName, oid);
+			}
+		}
+		return { headOid, oids };
 	}
 
 	/** Sets which pull rules (by id) this project uses; written to the Dashboard's github_pull. */
@@ -808,9 +866,10 @@ export class ResearchManager {
 		const client = new GitHubClient(token);
 		const projectFolder = this.getProjectFolder(projectFile);
 		const rulesById = new Map(
-			(this.settings.githubPullRules ?? []).map(
-				(r) => [r.id, r] as [string, GithubPullRule]
-			)
+			(this.settings.githubPullRules ?? []).map((r): [string, GithubPullRule] => [
+				r.id,
+				r,
+			])
 		);
 		const ids: string[] = Array.isArray(fm.github_pull)
 			? fm.github_pull.map((id: unknown) => String(id))
@@ -999,13 +1058,15 @@ export class ResearchManager {
 
 	/** Secret stored under `key`; throws when SecretStorage or the secret is missing. */
 	private async readPat(key: string): Promise<string> {
-		const storage = (this.app as any).secretStorage;
-		if (!storage || typeof storage.getSecret !== "function") {
+		const storage =
+			"secretStorage" in this.app ? this.app.secretStorage : undefined;
+		if (!isSecretReader(storage)) {
 			throw new Error("SecretStorage is not available in this Obsidian version.");
 		}
 		let token = "";
 		try {
-			token = (await storage.getSecret(key)) || "";
+			const secret = await storage.getSecret(key);
+			token = typeof secret === "string" ? secret : "";
 		} catch {
 			token = "";
 		}
@@ -1017,16 +1078,20 @@ export class ResearchManager {
 		return token;
 	}
 
-	private getProjectFolder(projectFile: TFile): string {
+	private getProjectFolder(projectFile: TFile | TFolder): string {
 		return projectFile.path.replace(/\/Dashboard\.md$/, "");
 	}
 
 	/**
 	 * Short code for the project (e.g. "MR26", "ZO") used as filename prefix for objectives/steps/drafts/experiments.
 	 * Reads Dashboard frontmatter `project_code`; if empty, derives from project folder name (e.g. "My-Research-2026" → "MR26").
+	 * A project folder has no frontmatter, so its code always comes from the folder name.
 	 */
-	private getProjectCode(projectFile: TFile): string {
-		const cache = this.app.metadataCache.getFileCache(projectFile);
+	private getProjectCode(projectFile: TFile | TFolder): string {
+		const cache =
+			projectFile instanceof TFile
+				? this.app.metadataCache.getFileCache(projectFile)
+				: null;
 		const fromFm = cache?.frontmatter?.project_code;
 		if (fromFm != null && String(fromFm).trim() !== "") {
 			return String(fromFm).trim();
@@ -1038,8 +1103,9 @@ export class ResearchManager {
 	 * Full prefix for child notes: project code + creation date (e.g. "TP20260213").
 	 * Uses Dashboard frontmatter `create` (YYYY-MM-DD, written by markdown-note-orm); if missing, uses Dashboard file ctime.
 	 */
-	private getProjectPrefix(projectFile: TFile): string {
+	private getProjectPrefix(projectFile: TFile | TFolder): string {
 		const code = this.getProjectCode(projectFile);
+		if (!(projectFile instanceof TFile)) return code;
 		const cache = this.app.metadataCache.getFileCache(projectFile);
 		const createdFm = cache?.frontmatter?.create;
 		let dateStr = "";

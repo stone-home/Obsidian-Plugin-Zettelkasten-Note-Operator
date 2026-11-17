@@ -158,7 +158,7 @@ export class ResearchProjectsModal extends Modal {
 					await this.manager.openFile(file);
 					await this.refresh();
 					this.close();
-				} catch (e) {
+				} catch {
 					new Notice("Failed to create project.");
 				}
 			}).open();
@@ -185,7 +185,8 @@ export class ResearchProjectsModal extends Modal {
 			).open();
 		};
 
-		if (!this.selectedProject) {
+		const project = this.selectedProject;
+		if (!project) {
 			section.createDiv({
 				text: "Select a project to enable project actions.",
 				cls: "zk-muted",
@@ -193,7 +194,7 @@ export class ResearchProjectsModal extends Modal {
 			return;
 		}
 
-		this.renderActionCards(section);
+		this.renderActionCards(section, project);
 	}
 
 	private renderProjectSelector(container: HTMLElement): void {
@@ -221,16 +222,17 @@ export class ResearchProjectsModal extends Modal {
 	}
 
 	private getDisplayName(file: TFile): string {
-		const cache = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
-		return cache.project_name || file.parent?.name || file.basename;
+		const name: unknown =
+			this.app.metadataCache.getFileCache(file)?.frontmatter?.project_name;
+		return name ? String(name) : file.parent?.name || file.basename;
 	}
 
-	private renderActionCards(container: HTMLElement): void {
+	private renderActionCards(container: HTMLElement, project: TFile): void {
 		const grid = container.createDiv("zk-card-grid");
 
 		const openBtn = grid.createEl("button", { text: "Dashboard", cls: "zk-card" });
 		openBtn.onclick = async () => {
-			await this.manager.openFile(this.selectedProject as TFile);
+			await this.manager.openFile(project);
 			this.close();
 		};
 
@@ -242,10 +244,7 @@ export class ResearchProjectsModal extends Modal {
 			new TextPromptModal(this.app, "Objective Title", async (value) => {
 				if (!value) return;
 				try {
-					const file = await this.manager.createObjective(
-						this.selectedProject as TFile,
-						value
-					);
+					const file = await this.manager.createObjective(project, value);
 					await this.manager.openFile(file);
 					await this.refresh();
 				} catch {
@@ -256,9 +255,7 @@ export class ResearchProjectsModal extends Modal {
 
 		const stepBtn = grid.createEl("button", { text: "Step", cls: "zk-card" });
 		stepBtn.onclick = () => {
-			const objectives = this.manager.listObjectives(
-				this.selectedProject as TFile
-			);
+			const objectives = this.manager.listObjectives(project);
 			if (objectives.length === 0) {
 				new Notice("No objectives found.");
 				return;
@@ -268,7 +265,7 @@ export class ResearchProjectsModal extends Modal {
 					if (!value) return;
 					try {
 						const file = await this.manager.createStep(
-							this.selectedProject as TFile,
+							project,
 							objectiveFile,
 							value
 						);
@@ -286,10 +283,7 @@ export class ResearchProjectsModal extends Modal {
 			new TextPromptModal(this.app, "Experiment Title", async (value) => {
 				if (!value) return;
 				try {
-					const file = await this.manager.createExperiment(
-						this.selectedProject as TFile,
-						value
-					);
+					const file = await this.manager.createExperiment(project, value);
 					await this.manager.openFile(file);
 					await this.refresh();
 				} catch {

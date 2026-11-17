@@ -59,10 +59,10 @@ export class PromptGenerator {
 		);
 
 		const cache = this.app.metadataCache.getFileCache(draft);
-		const fm = cache?.frontmatter || {};
-		const sectionTitle =
-			(fm.section_title as string) || (fm.title as string) || draft.basename;
-		const sectionGoal = (fm.section_goal as string) || "TODO: Define section goal";
+		const fm: Record<string, unknown> = cache?.frontmatter || {};
+		// String() renders the value as the prompt template did before.
+		const sectionTitle = String(fm.section_title || fm.title || draft.basename);
+		const sectionGoal = String(fm.section_goal || "TODO: Define section goal");
 
 		const prompt = this.buildPrompt(
 			sectionTitle,
@@ -110,8 +110,8 @@ export class PromptGenerator {
 		const lines = afterFm.split("\n");
 
 		const targetHeading = "AI prompt";
-		let aiLines: string[] = [];
-		let restLines: string[] = [];
+		const aiLines: string[] = [];
+		const restLines: string[] = [];
 		let inAiSection = false;
 		let aiSectionLevel = 0;
 
@@ -182,7 +182,7 @@ export class PromptGenerator {
 	 */
 	private findRule(file: TFile, rules: AIPromptRule[]): AIPromptRule | null {
 		const fileCache = this.app.metadataCache.getFileCache(file);
-		const fm = fileCache?.frontmatter;
+		const fm: Record<string, unknown> | undefined = fileCache?.frontmatter;
 		const path = file.path;
 
 		for (const rule of rules) {
@@ -193,10 +193,15 @@ export class PromptGenerator {
 				const prefix = value.endsWith("/") ? value : value + "/";
 				if (path === value || path.startsWith(prefix)) return rule;
 			} else if (rule.matchType === "tag") {
-				const tags = fm?.tags as string[] | undefined;
-				if (Array.isArray(tags) && tags.some((t: string) => t.includes(value)))
+				const tags = fm?.tags;
+				if (
+					Array.isArray(tags) &&
+					tags.some(
+						(t: unknown) => typeof t === "string" && t.includes(value)
+					)
+				)
 					return rule;
-				const tag = fm?.tag as string | undefined;
+				const tag = fm?.tag;
 				if (typeof tag === "string" && tag.includes(value)) return rule;
 			} else if (rule.matchType === "regex") {
 				try {
@@ -335,7 +340,8 @@ export class PromptGenerator {
 		const contextBlocks: ContextBlock[] = [];
 		const contextPaths = new Set<string>();
 		const citationList: CitationEntry[] = [];
-		const citationKeys = new Set<string>();
+		// Raw frontmatter values, so a non-string key deduplicates exactly as before.
+		const citationKeys = new Set<unknown>();
 		const visited = new Set<string>();
 		let nodeCount = 0;
 
@@ -359,12 +365,15 @@ export class PromptGenerator {
 
 			if (rule.action === "citation_only") {
 				const cache = this.app.metadataCache.getFileCache(file);
-				const fm = cache?.frontmatter;
-				const citationKey = (fm?.citationKey as string) ?? file.basename;
+				const fm: Record<string, unknown> | undefined = cache?.frontmatter;
+				const citationKey = fm?.citationKey ?? file.basename;
 				if (!citationKeys.has(citationKey)) {
 					citationKeys.add(citationKey);
-					const title = (fm?.title as string) ?? file.basename;
-					citationList.push({ citationKey, title });
+					const title = fm?.title ?? file.basename;
+					citationList.push({
+						citationKey: String(citationKey),
+						title: String(title),
+					});
 				}
 				return;
 			}

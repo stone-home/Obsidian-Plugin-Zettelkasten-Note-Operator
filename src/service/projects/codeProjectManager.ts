@@ -1,4 +1,4 @@
-import { App, Notice, TFile, stringifyYaml } from "obsidian";
+import { App, Notice, TFile, TFolder, stringifyYaml } from "obsidian";
 import {
 	ObsidianNoteFactory as LibFactory,
 	NoteType,
@@ -30,6 +30,35 @@ export interface UnreleasedCommit {
 }
 
 export const UNRELEASED_COMMITS_NOTE = "Unreleased Commits";
+
+/** Obsidian's SecretStorage, which the bundled obsidian typings do not declare yet. */
+interface SecretReader {
+	getSecret(key: string): unknown;
+}
+
+function isSecretReader(value: unknown): value is SecretReader {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"getSecret" in value &&
+		typeof value.getSecret === "function"
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+/** `source[key]` when `source` is an object, otherwise undefined. Reads GitHub JSON. */
+function field(source: unknown, key: string): unknown {
+	return isRecord(source) ? source[key] : undefined;
+}
+
+/** Like {@link field}, but only a string value counts. */
+function stringField(source: unknown, key: string): string | undefined {
+	const value = field(source, key);
+	return typeof value === "string" ? value : undefined;
+}
 
 /**
  * Builds the whole `Unreleased Commits` note: the commits as frontmatter (read by the
@@ -108,7 +137,7 @@ export class CodeProjectManager {
 		title: string,
 		baseType: NoteType,
 		subtype: string,
-		extraProps: Record<string, any> = {},
+		extraProps: Record<string, unknown> = {},
 		sections: NoteTemplateSection[] = []
 	): Promise<TFile> {
 		const config: NoteTemplateConfig = {
@@ -197,7 +226,10 @@ export class CodeProjectManager {
 		return await this.createDashboard(dashboardPath, safeName);
 	}
 
-	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
+	async createRequirement(
+		projectFile: TFile | TFolder,
+		title: string
+	): Promise<TFile> {
 		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
 		const folder = `${projectFolder}/requirements`;
 		await this.ensureFolder(folder);
@@ -237,16 +269,19 @@ export class CodeProjectManager {
 		if (!match) return;
 		const fmBlock = match[1];
 		const rest = content.slice(match[0].length);
-		const keysToUpdate = new Set(Object.keys(updates) as (keyof typeof updates)[]);
+		const values = new Map<string, string | boolean | undefined>(
+			Object.entries(updates)
+		);
+		const keysToUpdate = new Set(values.keys());
 		const lines = fmBlock.split(/\r?\n/);
 		const updated = new Set<string>();
 		const newLines: string[] = [];
 		for (const line of lines) {
 			const keyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
-			if (keyMatch && keysToUpdate.has(keyMatch[1] as keyof typeof updates)) {
-				const key = keyMatch[1] as keyof typeof updates;
+			if (keyMatch && keysToUpdate.has(keyMatch[1])) {
+				const key = keyMatch[1];
 				updated.add(key);
-				const val = updates[key];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
 						typeof val === "boolean"
@@ -262,7 +297,7 @@ export class CodeProjectManager {
 		}
 		for (const key of keysToUpdate) {
 			if (!updated.has(key)) {
-				const val = updates[key as keyof typeof updates];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
 						typeof val === "boolean"
@@ -352,14 +387,16 @@ export class CodeProjectManager {
 
 		let token = "";
 		if (resolvedKey) {
-			const storage = (this.app as any).secretStorage;
-			if (!storage || typeof storage.getSecret !== "function") {
+			const storage =
+				"secretStorage" in this.app ? this.app.secretStorage : undefined;
+			if (!isSecretReader(storage)) {
 				throw new Error(
 					"SecretStorage is not available in this Obsidian version."
 				);
 			}
 			try {
-				token = (await storage.getSecret(resolvedKey)) || "";
+				const secret = await storage.getSecret(resolvedKey);
+				token = typeof secret === "string" ? secret : "";
 			} catch {
 				token = "";
 			}
@@ -380,7 +417,7 @@ export class CodeProjectManager {
 
 		const [owner, repoName] = repo.split("/");
 		const client = new GitHubClient(token);
-		let releases: any[];
+		let releases: unknown[];
 		try {
 			releases = (await client.listReleases(owner, repoName)) || [];
 		} catch (err) {
@@ -392,7 +429,7 @@ export class CodeProjectManager {
 		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
 		await this.ensureFolder(`${projectFolder}/releases`);
 
-		const latestRelease = releases[0];
+		const latestTag = stringField(releases[0], "tag_name");
 		for (const rel of releases) {
 			await this.upsertRelease(projectFolder, projectFile, rel);
 		}
@@ -400,13 +437,13 @@ export class CodeProjectManager {
 		let commits: UnreleasedCommit[] = [];
 		let totalCommits = 0;
 		let compareError: string | undefined;
-		let compare: any;
-		if (latestRelease?.tag_name) {
+		let compare: unknown;
+		if (latestTag) {
 			try {
 				compare = await client.compareCommits(
 					owner,
 					repoName,
-					latestRelease.tag_name,
+					latestTag,
 					defaultBranch
 				);
 			} catch (err) {
@@ -414,20 +451,26 @@ export class CodeProjectManager {
 					`Synced ${releases.length} releases, but ` +
 					describeGitHubError(
 						err,
-						`comparing ${latestRelease.tag_name}...${defaultBranch}`,
+						`comparing ${latestTag}...${defaultBranch}`,
 						!!token,
 						"ref"
 					);
 			}
 		}
 		if (compare) {
-			commits = (compare.commits || []).map((c: any) => ({
-				sha: String(c.sha ?? "").substring(0, 7),
-				message: String(c.commit?.message ?? "").split("\n")[0],
-				date: c.commit?.author?.date || "",
-				url: c.html_url || "",
+			const listed = field(compare, "commits") || [];
+			if (!Array.isArray(listed)) {
+				throw new TypeError("GitHub compare response has no commit list");
+			}
+			commits = listed.map((c: unknown) => ({
+				sha: String(field(c, "sha") ?? "").substring(0, 7),
+				message: String(field(field(c, "commit"), "message") ?? "").split(
+					"\n"
+				)[0],
+				date: stringField(field(field(c, "commit"), "author"), "date") || "",
+				url: stringField(c, "html_url") || "",
 			}));
-			totalCommits = Number(compare.total_commits ?? commits.length);
+			totalCommits = Number(field(compare, "total_commits") ?? commits.length);
 		}
 
 		// Rewritten as a whole each time (also when the comparison failed, so stale commits
@@ -436,7 +479,7 @@ export class CodeProjectManager {
 			projectFolder,
 			buildUnreleasedCommitsNote({
 				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
-				base: latestRelease?.tag_name ?? null,
+				base: latestTag ?? null,
 				refreshed: new Date().toISOString(),
 				totalCommits,
 				truncated: totalCommits > commits.length,
@@ -506,9 +549,9 @@ export class CodeProjectManager {
 			});
 			return legacy.length;
 		}
-		const fileManager = this.app.fileManager as {
-			trashFile?: (file: TFile) => Promise<void>;
-		};
+		// Optional here: older Obsidian versions do not have trashFile.
+		const fileManager: { trashFile?: (file: TFile) => Promise<void> } =
+			this.app.fileManager;
 		for (const file of legacy) {
 			// trashFile follows the user's "Deleted files" setting; older Obsidian lacks it.
 			if (typeof fileManager.trashFile === "function")
@@ -521,15 +564,16 @@ export class CodeProjectManager {
 	private async upsertRelease(
 		projectFolder: string,
 		projectFile: TFile,
-		release: any
+		release: unknown
 	): Promise<void> {
-		const tag = release.tag_name;
+		const tag = stringField(release, "tag_name");
 		if (!tag) return;
 		const filePath = `${projectFolder}/releases/${tag}.md`;
 		const existing = this.app.vault.getAbstractFileByPath(filePath);
 
-		const releaseUrl = release.html_url ?? release.url ?? "";
-		const releaseDate = release.published_at ?? "";
+		const releaseUrl =
+			stringField(release, "html_url") ?? stringField(release, "url") ?? "";
+		const releaseDate = stringField(release, "published_at") ?? "";
 
 		if (existing instanceof TFile) {
 			// Update existing file, preserve id/create via processFrontMatter
@@ -556,7 +600,7 @@ export class CodeProjectManager {
 					{
 						title: "",
 						level: 0,
-						content: [release.body || ""],
+						content: [stringField(release, "body") || ""],
 					},
 				]
 			);

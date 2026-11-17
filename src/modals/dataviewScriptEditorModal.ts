@@ -97,8 +97,8 @@ export class DataviewScriptEditorModal extends Modal {
 	private onSave: DataviewScriptEditorSaveCallback;
 	private codeEditorView: EditorView | null = null;
 	private currentContent: string;
-	private idInput!: HTMLInputElement;
-	private nameInput!: HTMLInputElement;
+	private idInput: HTMLInputElement | null = null;
+	private nameInput: HTMLInputElement | null = null;
 
 	constructor(
 		app: App,
@@ -131,24 +131,26 @@ export class DataviewScriptEditorModal extends Modal {
 				text: "Script ID",
 				attr: { for: "zk-script-id" },
 			});
-			this.idInput = idRow.createEl("input", {
+			const idInput = idRow.createEl("input", {
 				type: "text",
 				cls: "zk-script-editor-input",
-			}) as HTMLInputElement;
-			this.idInput.id = "zk-script-id";
-			this.idInput.placeholder = "e.g. my-custom-script";
+			});
+			idInput.id = "zk-script-id";
+			idInput.placeholder = "e.g. my-custom-script";
+			this.idInput = idInput;
 
 			const nameRow = contentEl.createDiv({ cls: "zk-script-editor-row" });
 			nameRow.createEl("label", {
 				text: "Script Name",
 				attr: { for: "zk-script-name" },
 			});
-			this.nameInput = nameRow.createEl("input", {
+			const nameInput = nameRow.createEl("input", {
 				type: "text",
 				cls: "zk-script-editor-input",
-			}) as HTMLInputElement;
-			this.nameInput.id = "zk-script-name";
-			this.nameInput.placeholder = "Display name";
+			});
+			nameInput.id = "zk-script-name";
+			nameInput.placeholder = "Display name";
+			this.nameInput = nameInput;
 		} else if (this.script) {
 			contentEl.createEl("h3", {
 				text: `${this.script.name} (${this.script.id})`,
@@ -185,8 +187,9 @@ export class DataviewScriptEditorModal extends Modal {
 			? this.codeEditorView.state.doc.toString()
 			: this.currentContent;
 		if (this.script === null) {
-			const id = this.idInput!.value.trim();
-			const name = this.nameInput!.value.trim();
+			// Both inputs exist whenever script is null: onOpen creates them for a new script.
+			const id = this.idInput?.value.trim();
+			const name = this.nameInput?.value.trim();
 			if (!id || !name) {
 				return;
 			}

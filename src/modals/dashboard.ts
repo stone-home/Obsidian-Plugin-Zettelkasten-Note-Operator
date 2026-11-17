@@ -1,7 +1,7 @@
 import { App, Modal, Notice, setIcon, TFolder, FuzzySuggestModal } from "obsidian";
-import { NoteTypeMap, INoteFrontmatter } from "markdown-note-orm";
+import { NoteTypeMap, INoteFrontmatter, isValidNoteType } from "markdown-note-orm";
 import type { NoteFactory } from "../service/factory";
-import { INoteOption, INoteOptionExtraParams, ZettelkastenSettings } from "../types";
+import { INoteOption, ZettelkastenSettings } from "../types";
 import { DEFAULT_NOTE_CATEGORIES } from "../constants";
 import { Logger } from "../logger";
 import { stripMdExtension } from "../utils/path";
@@ -186,7 +186,7 @@ export class Dashboard extends Modal {
 													properties: {
 														...selectedOption.extraInfo
 															?.properties,
-														sources: [] as string[],
+														sources: [],
 													},
 												},
 											};
@@ -211,7 +211,7 @@ export class Dashboard extends Modal {
 		header.createEl("span", { text: "Select type", cls: "section-subtitle" });
 
 		// Get all keys from DEFAULT_NOTE_CATEGORIES
-		const allTypes = Object.keys(DEFAULT_NOTE_CATEGORIES) as (keyof NoteTypeMap)[];
+		const allTypes = Object.keys(DEFAULT_NOTE_CATEGORIES).filter(isValidNoteType);
 
 		// Reuse the logic
 		this.renderCategoryGrid(section, allTypes);
@@ -220,8 +220,7 @@ export class Dashboard extends Modal {
 	private async renderUpgradeSection(container: HTMLElement): Promise<void> {
 		const activeNote = await this.factory.loadActiveNote();
 		if (activeNote) {
-			const currentType =
-				activeNote.properties.get("type") || ("fleeting" as keyof NoteTypeMap);
+			const currentType = activeNote.properties.get("type") || "fleeting";
 
 			// Notes such as type: run / objective have no upgrade path; say so instead of failing.
 			if (
@@ -288,10 +287,8 @@ export class Dashboard extends Modal {
 			}
 
 			// 1. Get current type (handle lowercase as requested)
-			const rawType = activeNote.properties.get("type") as string;
-			const currentType = (
-				rawType ? rawType.toLowerCase() : "fleeting"
-			) as keyof NoteTypeMap;
+			const rawType = activeNote.properties.get("type");
+			const currentType = rawType ? rawType.toLowerCase() : "fleeting";
 
 			// 2. Determine allowed Root Path based on Settings
 			let allowedRoot = "";
@@ -344,12 +341,14 @@ export class Dashboard extends Modal {
 				`${activeNote.properties.get("type") || "Unknown"}`
 			);
 
-			const tags = (activeNote.properties.get("tags") as string[]) || [];
-			this.renderInfoRow(
-				infoCard,
-				"Tags:",
-				tags.length > 0 ? tags.join(", ") : "None"
-			);
+			const tags: unknown = activeNote.properties.get("tags");
+			const tagText =
+				Array.isArray(tags) && tags.length > 0
+					? tags.join(", ")
+					: typeof tags === "string" && tags
+						? tags
+						: "None";
+			this.renderInfoRow(infoCard, "Tags:", tagText);
 		} else {
 			const emptyState = infoCard.createDiv("zk-active-empty");
 			setIcon(emptyState, "file-minus");

@@ -13,6 +13,15 @@ export function askLegacyCommitCleanup(app: App, count: number): Promise<boolean
 	});
 }
 
+/** A frontmatter value when it is text; other YAML values give undefined. */
+function frontmatterString(
+	fm: Record<string, unknown>,
+	key: string
+): string | undefined {
+	const value = fm[key];
+	return typeof value === "string" ? value : undefined;
+}
+
 class TextPromptModal extends Modal {
 	private titleText: string;
 	private onSubmit: (value: string) => Promise<void>;
@@ -95,7 +104,7 @@ export class CodeProjectsModal extends Modal {
 	private selectedTokenKey?: string;
 	private tokenKeys: string[] = [];
 	/** After Refresh, hold parsed frontmatter so Repo/URL show immediately before cache updates */
-	private freshFrontmatter: Record<string, any> | null = null;
+	private freshFrontmatter: Record<string, string> | null = null;
 
 	constructor(app: App, settings: ZettelkastenSettings) {
 		super(app);
@@ -111,11 +120,20 @@ export class CodeProjectsModal extends Modal {
 	}
 
 	private async loadTokenKeys(): Promise<void> {
-		const zk = (window as any).ZettelkastenOperator;
-		if (zk && typeof zk.getGithubTokenKeys === "function") {
+		const zk: unknown =
+			"ZettelkastenOperator" in window ? window.ZettelkastenOperator : undefined;
+		const getKeys =
+			typeof zk === "object" && zk !== null && "getGithubTokenKeys" in zk
+				? zk.getGithubTokenKeys
+				: undefined;
+		if (typeof getKeys === "function") {
 			try {
-				const keys = await zk.getGithubTokenKeys();
-				this.tokenKeys = ["(public)"].concat(keys);
+				const keys: unknown = await getKeys.call(zk);
+				this.tokenKeys = ["(public)"].concat(
+					Array.isArray(keys)
+						? keys.filter((key): key is string => typeof key === "string")
+						: []
+				);
 			} catch {
 				this.tokenKeys = ["(public)"];
 			}
@@ -191,7 +209,8 @@ export class CodeProjectsModal extends Modal {
 			).open();
 		};
 
-		if (!this.selectedProject) {
+		const project = this.selectedProject;
+		if (!project) {
 			section.createDiv({
 				text: "Select a project to enable project actions.",
 				cls: "zk-muted",
@@ -199,9 +218,9 @@ export class CodeProjectsModal extends Modal {
 			return;
 		}
 
-		this.renderProjectInfo(section);
+		this.renderProjectInfo(section, project);
 		this.renderActionCards(section);
-		this.renderTokenRow(section);
+		this.renderTokenRow(section, project);
 	}
 
 	private renderProjectSelector(container: HTMLElement): void {
@@ -230,25 +249,26 @@ export class CodeProjectsModal extends Modal {
 	}
 
 	private getDisplayName(file: TFile): string {
-		const cache = this.getFrontmatter(file);
-		return cache.project_name || file.parent?.name || file.basename;
+		const name = this.getFrontmatter(file).project_name;
+		return name ? String(name) : file.parent?.name || file.basename;
 	}
 
-	private renderProjectInfo(container: HTMLElement): void {
+	private renderProjectInfo(container: HTMLElement, project: TFile): void {
 		const info = container.createDiv("zk-project-info");
-		const cache =
-			this.freshFrontmatter ?? this.getFrontmatter(this.selectedProject as TFile);
+		const cache = this.freshFrontmatter ?? this.getFrontmatter(project);
 		if (this.freshFrontmatter) this.freshFrontmatter = null;
 		info.createDiv({ text: `Repo: ${cache.repo || "owner/name"}` });
 		info.createDiv({ text: `Branch: ${cache.defaultBranch || "trunk"}` });
 	}
 
 	private renderActionCards(container: HTMLElement): void {
+		const project = this.selectedProject;
+		if (!project) return;
 		const grid = container.createDiv("zk-card-grid");
 
 		const openBtn = grid.createEl("button", { text: "Dashboard", cls: "zk-card" });
 		openBtn.onclick = async () => {
-			await this.manager.openFile(this.selectedProject as TFile);
+			await this.manager.openFile(project);
 			this.close();
 		};
 
@@ -256,17 +276,13 @@ export class CodeProjectsModal extends Modal {
 		refreshBtn.onclick = async () => {
 			const tokenKey =
 				this.selectedTokenKey ||
-				this.getFrontmatter(this.selectedProject as TFile).github_token_key;
+				frontmatterString(this.getFrontmatter(project), "github_token_key");
 			try {
 				// Shows its own summary Notice on success.
-				await this.manager.refreshProject(
-					this.selectedProject as TFile,
-					tokenKey,
-					{
-						confirmLegacyCleanup: (count) =>
-							askLegacyCommitCleanup(this.app, count),
-					}
-				);
+				await this.manager.refreshProject(project, tokenKey, {
+					confirmLegacyCleanup: (count) =>
+						askLegacyCommitCleanup(this.app, count),
+				});
 			} catch (err) {
 				new Notice(
 					"Refresh failed: " +
@@ -274,22 +290,23 @@ export class CodeProjectsModal extends Modal {
 				);
 				return;
 			}
-			this.freshFrontmatter = await this.readFrontmatterFromVault(
-				this.selectedProject as TFile
-			);
+			// The user may have picked another project while the refresh ran; show that one's values.
+			const current = this.selectedProject;
+			if (current) {
+				this.freshFrontmatter = await this.readFrontmatterFromVault(current);
+			}
 			await this.refresh();
 		};
 	}
 
-	private renderTokenRow(container: HTMLElement): void {
+	private renderTokenRow(container: HTMLElement, project: TFile): void {
 		const row = container.createDiv("zk-token-row");
 		row.createDiv({ text: "Token", cls: "zk-select-label" });
 
 		const selectEl = row.createEl("select", { cls: "zk-select" });
-		const fm = this.getFrontmatter(this.selectedProject as TFile);
 		const currentKey =
 			this.selectedTokenKey ||
-			fm.github_token_key ||
+			frontmatterString(this.getFrontmatter(project), "github_token_key") ||
 			(this.tokenKeys.length > 1 ? this.tokenKeys[1] : this.tokenKeys[0]);
 		this.selectedTokenKey = currentKey;
 		this.tokenKeys.forEach((key) => {
@@ -304,12 +321,14 @@ export class CodeProjectsModal extends Modal {
 		});
 	}
 
-	private async readFrontmatterFromVault(file: TFile): Promise<Record<string, any>> {
+	private async readFrontmatterFromVault(
+		file: TFile
+	): Promise<Record<string, string>> {
 		try {
 			const content = await this.app.vault.read(file);
 			const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 			if (match) {
-				const fm: Record<string, any> = {};
+				const fm: Record<string, string> = {};
 				for (const line of match[1].split(/\r?\n/)) {
 					const kv = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
 					if (kv) fm[kv[1]] = kv[2].trim();
@@ -322,7 +341,7 @@ export class CodeProjectsModal extends Modal {
 		return {};
 	}
 
-	private getFrontmatter(file: TFile): Record<string, any> {
+	private getFrontmatter(file: TFile): Record<string, unknown> {
 		return this.app.metadataCache.getFileCache(file)?.frontmatter || {};
 	}
 

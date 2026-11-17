@@ -17,9 +17,6 @@ export class FileNameModal extends Modal {
 	private referencePath: string; // Target folder path
 	private onSubmit: (title: string) => Promise<void> | void;
 
-	// [FIX]: Added '!' to tell TypeScript this will be initialized in onOpen()
-	private suggestionContainer!: HTMLDivElement;
-
 	/**
 	 * @param app - Obsidian App
 	 * @param referencePath - Target folder path to check for duplicates (e.g. "Fleeting/Ideas")
@@ -50,7 +47,7 @@ export class FileNameModal extends Modal {
 		input.inputEl.focus();
 
 		// 2. Suggestion container (initially hidden)
-		this.suggestionContainer = contentEl.createDiv({
+		const suggestionContainer = contentEl.createDiv({
 			cls: "filename-suggestions",
 			attr: {
 				style: "max-height: 150px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--background-modifier-border); display: none;",
@@ -60,7 +57,7 @@ export class FileNameModal extends Modal {
 		// 3. Listen for input events
 		input.onChange((val) => {
 			filename = val;
-			this.updateSuggestions(val);
+			this.updateSuggestions(suggestionContainer, val);
 		});
 
 		input.inputEl.addEventListener("keydown", (e) => {
@@ -88,12 +85,12 @@ export class FileNameModal extends Modal {
 	/**
 	 * Core logic: Search for matching files in the target path within the Vault
 	 */
-	private updateSuggestions(query: string) {
+	private updateSuggestions(suggestionContainer: HTMLDivElement, query: string) {
 		// Clear old suggestions
-		this.suggestionContainer.empty();
+		suggestionContainer.empty();
 
 		if (!query.trim()) {
-			this.suggestionContainer.style.display = "none";
+			suggestionContainer.style.display = "none";
 			return;
 		}
 
@@ -102,7 +99,7 @@ export class FileNameModal extends Modal {
 
 		// If folder doesn't exist, don't show suggestions
 		if (!folder || !(folder instanceof TFolder)) {
-			this.suggestionContainer.style.display = "none";
+			suggestionContainer.style.display = "none";
 			return;
 		}
 
@@ -117,8 +114,8 @@ export class FileNameModal extends Modal {
 		});
 
 		if (matches.length > 0) {
-			this.suggestionContainer.style.display = "block";
-			this.suggestionContainer.createDiv({
+			suggestionContainer.style.display = "block";
+			suggestionContainer.createDiv({
 				text: `Existing notes in "${this.referencePath}":`,
 				attr: {
 					style: "font-size: 0.8em; color: var(--text-muted); padding: 5px;",
@@ -126,13 +123,13 @@ export class FileNameModal extends Modal {
 			});
 
 			matches.forEach((file) => {
-				this.suggestionContainer.createDiv({
+				suggestionContainer.createDiv({
 					text: file.name,
 					attr: { style: "padding: 4px 8px; color: var(--text-accent);" },
 				});
 			});
 		} else {
-			this.suggestionContainer.style.display = "none";
+			suggestionContainer.style.display = "none";
 		}
 	}
 

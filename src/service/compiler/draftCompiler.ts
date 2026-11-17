@@ -1,4 +1,4 @@
-import { App, TFile, Notice } from "obsidian";
+import { App, TFile, TFolder, Notice } from "obsidian";
 import { ZettelkastenSettings } from "../../types";
 import { Logger } from "../../logger";
 
@@ -9,6 +9,21 @@ export interface CompileConfig {
 	repoRoot: string;
 	materialsDir: string;
 	manifestPath: string;
+}
+
+/**
+ * Returns `value` as an object whose properties can be set. Anything else is rejected,
+ * as setting a property on null or on a primitive throws in strict mode.
+ */
+function requireObject(value: unknown, what: string): Record<string, unknown> {
+	if (!isRecord(value)) {
+		throw new TypeError(`${what} must be a JSON object`);
+	}
+	return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
 }
 
 /**
@@ -44,12 +59,6 @@ export class DraftCompiler {
 			new Notice(`Dashboard not found at ${dashboardPath}`);
 			return null;
 		}
-
-		const cache = this.app.metadataCache.getFileCache(dashboardFile);
-		const fm = cache?.frontmatter || {};
-
-		// Use repo as repoRoot if set, otherwise default to project materials folder
-		const repoRoot = fm.repo ? fm.repo : projectFolder;
 
 		return {
 			repoRoot: projectFolder,
@@ -124,23 +133,26 @@ export class DraftCompiler {
 		const manifestPath = `${cfg.repoRoot}/${cfg.manifestPath}`;
 		const manifestFile = this.app.vault.getAbstractFileByPath(manifestPath);
 
-		let manifest: Record<string, any> = { sections: {} };
+		let parsed: unknown = { sections: {} };
 		if (manifestFile instanceof TFile) {
 			try {
 				const content = await this.app.vault.read(manifestFile);
-				manifest = JSON.parse(content);
-			} catch (e) {
+				parsed = JSON.parse(content);
+			} catch {
 				this.logger.warn("Could not parse manifest, using default");
 			}
 		}
 
+		const manifest = requireObject(parsed, "paper manifest");
 		if (!manifest.sections) {
 			manifest.sections = {};
 		}
-		if (!manifest.sections[sectionId]) {
-			manifest.sections[sectionId] = {};
+		const sections = requireObject(manifest.sections, "manifest sections");
+		if (!sections[sectionId]) {
+			sections[sectionId] = {};
 		}
-		manifest.sections[sectionId].input_source = newPath;
+		const section = requireObject(sections[sectionId], `section ${sectionId}`);
+		section.input_source = newPath;
 
 		const newContent = JSON.stringify(manifest, null, 2);
 
@@ -167,7 +179,6 @@ export class DraftCompiler {
 		// Handle strong transclusions ![[NoteName]]
 		const strongRegex = /!\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 		let result = line;
-		let match;
 
 		// Process strong links (transclusions)
 		const strongMatches = [...line.matchAll(strongRegex)];
@@ -251,12 +262,12 @@ export class DraftCompiler {
 	): Promise<number> {
 		const materialsFolder = `${cfg.repoRoot}/${cfg.materialsDir}`;
 		const folder = this.app.vault.getAbstractFileByPath(materialsFolder);
-		if (!folder || !("children" in folder)) return 1;
+		if (!(folder instanceof TFolder)) return 1;
 
 		const prefix = `${sectionBase}_v${date}_`;
 		let maxVersion = 0;
 
-		for (const child of (folder as any).children) {
+		for (const child of folder.children) {
 			if (child instanceof TFile && child.name.startsWith(prefix)) {
 				const versionStr = child.basename.slice(prefix.length);
 				const version = parseInt(versionStr, 10);

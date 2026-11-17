@@ -1,5 +1,10 @@
 import { App, Component, EventRef, TFile, TFolder } from "obsidian";
-import { IDataviewScript, IDataviewParameter } from "./types";
+import {
+	DataviewBlockContext,
+	IDataviewHeaderParameter,
+	IDataviewParameter,
+	IDataviewScript,
+} from "./types";
 import { DataviewScriptBuilder } from "./builder";
 import { Logger } from "../logger";
 
@@ -25,6 +30,44 @@ export function hashContent(content: string): string {
 		hash = Math.imul(hash, 0x01000193) >>> 0;
 	}
 	return hash.toString(16).padStart(8, "0");
+}
+
+/** Marks a required `@param`: its description ends with `(required)`, any case. */
+const REQUIRED_MARKER = /\s*\(required\)$/i;
+
+/** What `parseScriptMetadata` reads from the first `/** ... *\/` block of a script file. */
+interface ScriptHeader {
+	/** Trimmed text of each tag except `@param` and `@parameters`; a repeated tag keeps its last line. */
+	fields: Partial<Record<string, string>>;
+	/** The parsed `@param` lines; undefined when the header has none. `@parameters` text is ignored. */
+	parameters?: IDataviewHeaderParameter[];
+}
+
+/** The part of the Dataview plugin API that this manager calls. */
+interface DataviewApi {
+	executeJs(
+		code: string,
+		container: HTMLElement,
+		component: Component,
+		sourcePath: string | undefined
+	): unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function isDataviewApi(value: unknown): value is DataviewApi {
+	return isRecord(value) && typeof value.executeJs === "function";
+}
+
+/** Reads the Dataview API from `app.plugins`, which Obsidian does not declare in its typings. */
+function getDataviewApi(app: App): DataviewApi | undefined {
+	const registry = "plugins" in app ? app.plugins : undefined;
+	if (!isRecord(registry) || !isRecord(registry.plugins)) return undefined;
+	const dataview = registry.plugins.dataview;
+	if (!isRecord(dataview)) return undefined;
+	return isDataviewApi(dataview.api) ? dataview.api : undefined;
 }
 
 export class DataviewJSManager extends Component {
@@ -319,7 +362,7 @@ export class DataviewJSManager extends Component {
 					"}",
 					"const toDate = (val) => val && typeof val.toFormat === 'function' ? val.toFormat('yyyy-MM-dd HH:mm') : (val ? String(val).slice(0, 16) : '-');",
 					"const tableData = drafts.map(d => {",
-					"  const stem = (d.file.basename !== undefined) ? d.file.basename : d.file.name.replace(/\.md$/i, '');",
+					"  const stem = (d.file.basename !== undefined) ? d.file.basename : d.file.name.replace(/\\.md$/i, '');",
 					"  const relatedPrompts = promptMap.get(stem) || [];",
 					"  const copies = relatedPrompts.length;",
 					"  let lastDate = '-', lastLink = '-';",
@@ -932,14 +975,12 @@ export class DataviewJSManager extends Component {
 	}
 
 	async loadAllScripts(): Promise<void> {
-		const scriptsFolder = this.app.vault.getAbstractFileByPath(
-			this.scriptsFolder
-		) as TFolder;
-		if (!scriptsFolder) return;
+		const scriptsFolder = this.app.vault.getAbstractFileByPath(this.scriptsFolder);
+		if (!(scriptsFolder instanceof TFolder)) return;
 
 		const scriptFiles = scriptsFolder.children.filter(
-			(file) => file instanceof TFile && file.extension === "js"
-		) as TFile[];
+			(file): file is TFile => file instanceof TFile && file.extension === "js"
+		);
 
 		for (const file of scriptFiles) {
 			await this.loadScript(file);
@@ -948,30 +989,34 @@ export class DataviewJSManager extends Component {
 
 	private async loadScript(file: TFile): Promise<void> {
 		const content = await this.app.vault.read(file);
-		const metadata = this.parseScriptMetadata(content) || {};
+		const metadata = this.parseScriptMetadata(content);
+		const fields = metadata?.fields ?? {};
 
 		const script: IDataviewScript = {
-			id: metadata.id || file.basename,
-			name: metadata.name || file.basename,
-			description: metadata.description,
+			id: fields.id || file.basename,
+			name: fields.name || file.basename,
+			description: fields.description,
 			filePath: file.path,
-			category: metadata.category,
-			parameters: metadata.parameters,
-			tags: metadata.tags,
+			category: fields.category,
+			parameters: metadata?.parameters,
+			tags: fields.tags
+				?.split(",")
+				.map((tag) => tag.trim())
+				.filter((tag) => tag !== ""),
 		};
 
 		this.scripts.set(script.id, script);
 		this.scriptCache.set(script.id, content);
 	}
 
-	private parseScriptMetadata(content: string): any {
+	private parseScriptMetadata(content: string): ScriptHeader | null {
 		const metadataRegex = /\/\*\*\s*\n([\s\S]*?)\*\//;
 		const match = content.match(metadataRegex);
 
 		if (!match) return null;
 
 		const metadataText = match[1];
-		const metadata: any = {};
+		const metadata: ScriptHeader = { fields: {} };
 		const tagRegex = /@(\w+)\s+(.+)/g;
 		let tagMatch: RegExpExecArray | null;
 
@@ -980,17 +1025,22 @@ export class DataviewJSManager extends Component {
 
 			if (tag === "param") {
 				if (!metadata.parameters) metadata.parameters = [];
-				const paramMatch = value.match(/\{(\w+)\}\s+(\w+)\s+-\s+(.+)/);
+				const paramMatch = value.match(/\{(\w+)\}\s+(\w+)(?:\s+-\s+(.*))?/);
 				if (paramMatch) {
+					const text = (paramMatch[3] ?? "").trim();
+					const required = REQUIRED_MARKER.test(text);
 					metadata.parameters.push({
 						name: paramMatch[2],
 						type: paramMatch[1],
-						required: value.includes("required"),
-						description: paramMatch[3],
+						required,
+						description: required
+							? text.replace(REQUIRED_MARKER, "")
+							: text,
 					});
 				}
-			} else {
-				metadata[tag] = value.trim();
+			} else if (tag !== "parameters") {
+				// `@parameters` is free text, not a parameter list, so it is ignored.
+				metadata.fields[tag] = value.trim();
 			}
 		}
 
@@ -1019,7 +1069,13 @@ export class DataviewJSManager extends Component {
 
 		if (options.parameters) {
 			options.parameters.forEach((param) => {
-				header += ` * @param {${param.type}} ${param.name} - ${param.description || ""}\n`;
+				const description = [
+					param.description,
+					param.required ? "(required)" : "",
+				]
+					.filter(Boolean)
+					.join(" ");
+				header += ` * @param {${param.type}} ${param.name} - ${description}\n`;
 			});
 		}
 
@@ -1043,9 +1099,10 @@ export class DataviewJSManager extends Component {
 			overwrite?: boolean;
 		} = {}
 	): Promise<IDataviewScript> {
+		const { overwrite, ...scriptOptions } = options;
 		const filePath = `${this.scriptsFolder}/${id}.js`;
 		if (this.fileExists(filePath)) {
-			if (!options.overwrite) {
+			if (!overwrite) {
 				this.logger.info(
 					`Script with ID '${id}' already exists at path: ${filePath}`
 				);
@@ -1060,15 +1117,17 @@ export class DataviewJSManager extends Component {
 			}
 		}
 
-		const header = this.buildScriptHeader(id, name, options);
+		const header = this.buildScriptHeader(id, name, scriptOptions);
 		const fullContent = header + scriptContent;
 		if (this.fileExists(filePath)) {
-			const existingFile = this.app.vault.getAbstractFileByPath(
-				filePath
-			) as TFile;
-			if (existingFile) {
+			const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+			if (existingFile instanceof TFile) {
 				await this.app.vault.modify(existingFile, fullContent);
 				await this.loadScript(existingFile);
+			} else if (existingFile) {
+				throw new Error(
+					`Cannot overwrite script '${id}': ${filePath} is a folder.`
+				);
 			}
 		} else {
 			await this.app.vault.create(filePath, fullContent);
@@ -1078,7 +1137,7 @@ export class DataviewJSManager extends Component {
 			id,
 			name,
 			filePath,
-			...options,
+			...scriptOptions,
 		};
 
 		this.scripts.set(id, script);
@@ -1105,8 +1164,8 @@ export class DataviewJSManager extends Component {
 	async executeScript(
 		scriptId: string,
 		container: HTMLElement,
-		parameters: Record<string, any> = {},
-		ctx?: any,
+		parameters: Record<string, unknown> = {},
+		ctx?: DataviewBlockContext,
 		component?: Component
 	): Promise<void> {
 		const script = this.getScript(scriptId);
@@ -1116,7 +1175,7 @@ export class DataviewJSManager extends Component {
 			return;
 		}
 
-		const dataviewApi = (this.app as any).plugins.plugins.dataview?.api;
+		const dataviewApi = getDataviewApi(this.app);
 		if (!dataviewApi) {
 			container.setText("Error: Dataview plugin not found or not enabled");
 			this.logger.error("Dataview plugin not found or not enabled");
@@ -1126,10 +1185,8 @@ export class DataviewJSManager extends Component {
 		try {
 			let scriptContent = this.scriptCache.get(scriptId);
 			if (!scriptContent) {
-				const file = this.app.vault.getAbstractFileByPath(
-					script.filePath
-				) as TFile;
-				if (file) {
+				const file = this.app.vault.getAbstractFileByPath(script.filePath);
+				if (file instanceof TFile) {
 					scriptContent = await this.app.vault.read(file);
 					this.scriptCache.set(scriptId, scriptContent);
 				} else {
@@ -1159,8 +1216,8 @@ export class DataviewJSManager extends Component {
 	}
 
 	private async reloadScript(filePath: string): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(filePath) as TFile;
-		if (file) {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
 			await this.loadScript(file);
 		}
 	}

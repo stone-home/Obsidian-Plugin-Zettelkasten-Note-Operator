@@ -21,12 +21,13 @@ import { confirmAction } from "../modals/confirmModal";
 export function resolvePrefix(prefix: string, dateFormat: string): string {
 	const now = new Date();
 	switch (prefix) {
-		case "$date":
+		case "$date": {
 			// Use dateFormat (YYYY-MM-DD → yyyy-MM-dd for date-fns); default to yyyy-MM-dd
 			const fmt =
 				dateFormat?.replace(/YYYY/g, "yyyy").replace(/DD/g, "dd").trim() ||
 				"yyyy-MM-dd";
 			return format(now, fmt);
+		}
 		case "$datetime":
 			return format(now, "yyyyMMdd-HHmm");
 		case "$year":
@@ -38,6 +39,20 @@ export function resolvePrefix(prefix: string, dateFormat: string): string {
 		default:
 			return prefix;
 	}
+}
+
+/** Frontmatter manager that can merge a whole set of properties at once. */
+interface BatchUpdatable {
+	batchUpdate(properties: INoteFrontmatter): void;
+}
+
+function hasBatchUpdate(value: unknown): value is BatchUpdatable {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"batchUpdate" in value &&
+		typeof value.batchUpdate === "function"
+	);
 }
 
 export class NoteFactory extends Component {
@@ -151,11 +166,11 @@ export class NoteFactory extends Component {
 		);
 		if (noteExtraParams) {
 			// Check if batchUpdate exists (it might be on .properties or the note itself depending on lib version)
-			if (
-				note.properties &&
-				typeof (note.properties as any).batchUpdate === "function"
-			) {
-				(note.properties as any).batchUpdate(noteExtraParams);
+			// Typed as unknown so the guard's signature applies: the lib types batchUpdate
+			// with the note type's own frontmatter, which INoteFrontmatter does not satisfy.
+			const properties: unknown = note.properties;
+			if (hasBatchUpdate(properties)) {
+				properties.batchUpdate(noteExtraParams);
 			} else {
 				// Fallback: Manual assignment
 				Object.assign(note.properties, noteExtraParams);

@@ -2,7 +2,10 @@ import { Logger } from "../../logger";
 
 /** HTTP status of a failed requestUrl call: on the error object, or only in its message. */
 export function githubErrorStatus(err: unknown): number | undefined {
-	const status = (err as { status?: unknown } | null)?.status;
+	const status =
+		typeof err === "object" && err !== null && "status" in err
+			? err.status
+			: undefined;
 	if (typeof status === "number") return status;
 	const match = /status (\d{3})/i.exec(Logger.getErrorMessage(err));
 	return match ? Number(match[1]) : undefined;

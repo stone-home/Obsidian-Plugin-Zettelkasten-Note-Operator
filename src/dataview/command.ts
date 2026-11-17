@@ -1,7 +1,7 @@
 import MyPlugin from "../main";
 import { App, Component, MarkdownRenderChild, Notice } from "obsidian";
 import { DataviewJSManager } from "./manager";
-import type { IDataviewScript } from "./types";
+import type { DataviewBlockContext, IDataviewScript } from "./types";
 
 /** Delay before re-running Dataview JS after the user stops typing (Live Preview). Reduces cursor jumps from rapid re-renders. */
 const CODE_BLOCK_DEBOUNCE_MS = 350;
@@ -10,7 +10,7 @@ const CODE_BLOCK_DEBOUNCE_MS = 350;
 type PendingDvjsPayload = {
 	source: string;
 	el: HTMLElement;
-	ctx: any;
+	ctx: DataviewBlockContext;
 	component?: Component;
 };
 
@@ -121,7 +121,11 @@ export class DataviewCommand {
 	/**
 	 * Stable key for one fenced block in a file. Prefer section line (Obsidian); fallback for tests / missing API.
 	 */
-	private debounceKeyForBlock(el: HTMLElement, ctx: any, source: string): string {
+	private debounceKeyForBlock(
+		el: HTMLElement,
+		ctx: DataviewBlockContext,
+		source: string
+	): string {
 		const path = typeof ctx?.sourcePath === "string" ? ctx.sourcePath : "";
 		if (typeof ctx?.getSectionInfo === "function") {
 			try {
@@ -141,7 +145,11 @@ export class DataviewCommand {
 		return `${path}\0${firstMeaningfulLine}`;
 	}
 
-	private scheduleProcessDvjsBlock(source: string, el: HTMLElement, ctx: any): void {
+	private scheduleProcessDvjsBlock(
+		source: string,
+		el: HTMLElement,
+		ctx: DataviewBlockContext
+	): void {
 		const lines = source
 			.trim()
 			.split("\n")
@@ -222,7 +230,7 @@ export class DataviewCommand {
 			return;
 		}
 
-		const params: Record<string, any> = {};
+		const params: Record<string, unknown> = {};
 		lines.slice(1).forEach((line) => {
 			// Split at the first "=" or ":" only; the value keeps any later separators as typed.
 			const sep = line.search(/[=:]/);

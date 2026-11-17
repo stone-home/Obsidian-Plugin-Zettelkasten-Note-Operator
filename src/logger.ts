@@ -23,9 +23,12 @@ export class Logger {
 		}
 		if (error && typeof error === "object") {
 			// Try to get message property from object
-			const errorObj = error as any;
-			if (errorObj.message && typeof errorObj.message === "string") {
-				return errorObj.message;
+			if (
+				"message" in error &&
+				typeof error.message === "string" &&
+				error.message
+			) {
+				return error.message;
 			}
 			// Try to stringify the object
 			try {
@@ -69,24 +72,24 @@ export class Logger {
 	}
 
 	// 警告日志 - 总是显示
-	public static warn(message: string, ...args: any[]): void {
+	public static warn(message: string, ...args: unknown[]): void {
 		console.warn(`[Zettelkasten] WARN: ${message}`, ...args);
 	}
 
 	// 信息日志 - 总是显示
-	public static info(message: string, ...args: any[]): void {
+	public static info(message: string, ...args: unknown[]): void {
 		console.log(`[Zettelkasten] INFO: ${message}`, ...args);
 	}
 
 	// HTTP 日志 - 调试模式下显示
-	public static http(message: string, ...args: any[]): void {
+	public static http(message: string, ...args: unknown[]): void {
 		if (Logger.isDebugMode) {
 			console.log(`[Zettelkasten] HTTP: ${message}`, ...args);
 		}
 	}
 
 	// 调试日志 - 调试模式下显示
-	public static debug(message: string, ...args: any[]): void {
+	public static debug(message: string, ...args: unknown[]): void {
 		if (Logger.isDebugMode) {
 			console.log(`[Zettelkasten] DEBUG: ${message}`, ...args);
 		}
@@ -129,7 +132,6 @@ export class ContextLogger {
 	}
 
 	private formatMessage(level: string, message: string): string {
-		const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
 		return `[Zettelkasten:${this.context}] ${level}: ${message}`;
 	}
 
@@ -145,21 +147,21 @@ export class ContextLogger {
 		}
 	}
 
-	public warn(message: string, ...args: any[]): void {
+	public warn(message: string, ...args: unknown[]): void {
 		console.warn(this.formatMessage("WARN", message), ...args);
 	}
 
-	public info(message: string, ...args: any[]): void {
+	public info(message: string, ...args: unknown[]): void {
 		console.log(this.formatMessage("INFO", message), ...args);
 	}
 
-	public http(message: string, ...args: any[]): void {
+	public http(message: string, ...args: unknown[]): void {
 		if (Logger.isDebugMode) {
 			console.log(this.formatMessage("HTTP", message), ...args);
 		}
 	}
 
-	public debug(message: string, ...args: any[]): void {
+	public debug(message: string, ...args: unknown[]): void {
 		if (Logger.isDebugMode) {
 			console.log(this.formatMessage("DEBUG", message), ...args);
 		}

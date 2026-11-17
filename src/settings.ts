@@ -13,8 +13,13 @@ import {
 	TFile,
 } from "obsidian";
 import MyPlugin from "./main";
-import { ZettelkastenSettings, IGanttStatusColorMap, AIPromptRule } from "./types";
-import { NoteType } from "markdown-note-orm";
+import {
+	ZettelkastenSettings,
+	IGanttStatusColorMap,
+	AIPromptRuleAction,
+	AIPromptRuleMatchType,
+} from "./types";
+import { NoteType, isValidNoteType } from "markdown-note-orm";
 import { DataviewCommand } from "./dataview/command";
 import { getDefaultScriptContent } from "./dataview/manager";
 import {
@@ -27,6 +32,28 @@ import { generateRuleId, validatePullRule } from "./service/github/repoPull";
 import { DataviewScriptEditorModal } from "./modals/dataviewScriptEditorModal";
 import type { IDataviewScript } from "./dataview/types";
 
+/** Default value of a property added through PropertyCreationModal, by chosen data type. */
+type PropertyDefaultValue = string | boolean | number | string[];
+
+function isWrapperStyle(
+	value: string
+): value is NonNullable<ZettelkastenSettings["aiPromptWrapperStyle"]> {
+	return value === "xml" || value === "markdown";
+}
+
+function isRuleMatchType(value: string): value is AIPromptRuleMatchType {
+	return value === "folder" || value === "tag" || value === "regex";
+}
+
+function isRuleAction(value: string): value is AIPromptRuleAction {
+	return (
+		value === "import_full" ||
+		value === "import_summary" ||
+		value === "citation_only" ||
+		value === "ignore"
+	);
+}
+
 /**
  * [Class]: PropertyCreationModal
  * [Purpose]: Handles user input for creating a new Frontmatter property.
@@ -35,9 +62,12 @@ import type { IDataviewScript } from "./dataview/types";
 class PropertyCreationModal extends Modal {
 	private name: string = "";
 	private type: string = "string";
-	private onSubmit: (name: string, defaultValue: any) => void;
+	private onSubmit: (name: string, defaultValue: PropertyDefaultValue) => void;
 
-	constructor(app: App, onSubmit: (name: string, defaultValue: any) => void) {
+	constructor(
+		app: App,
+		onSubmit: (name: string, defaultValue: PropertyDefaultValue) => void
+	) {
 		super(app);
 		this.onSubmit = onSubmit;
 	}
@@ -104,7 +134,7 @@ class PropertyCreationModal extends Modal {
 	// [LOGIC]: Processes the input and determines the default value based on type
 	private submit() {
 		if (!this.name.trim()) return;
-		let defaultValue: any = "";
+		let defaultValue: PropertyDefaultValue = "";
 		switch (this.type) {
 			case "boolean":
 				defaultValue = false;
@@ -487,9 +517,8 @@ export class SampleSettingTab extends PluginSettingTab {
 					.addOption("markdown", "Markdown ###")
 					.setValue(this.plugin.settings.aiPromptWrapperStyle ?? "xml")
 					.onChange(async (v) => {
-						this.plugin.settings.aiPromptWrapperStyle = v as
-							| "xml"
-							| "markdown";
+						if (!isWrapperStyle(v)) return;
+						this.plugin.settings.aiPromptWrapperStyle = v;
 						await this.plugin.saveSettings();
 					});
 			});
@@ -541,7 +570,8 @@ export class SampleSettingTab extends PluginSettingTab {
 				.addOption("regex", "Regex")
 				.setValue(rule.matchType)
 				.onChange(async (v) => {
-					rule.matchType = v as AIPromptRule["matchType"];
+					if (!isRuleMatchType(v)) return;
+					rule.matchType = v;
 					await this.plugin.saveSettings();
 				});
 			matchType.selectEl.id = matchField.id;
@@ -563,7 +593,8 @@ export class SampleSettingTab extends PluginSettingTab {
 				.addOption("ignore", "Ignore")
 				.setValue(rule.action)
 				.onChange(async (v) => {
-					rule.action = v as AIPromptRule["action"];
+					if (!isRuleAction(v)) return;
+					rule.action = v;
 					await this.plugin.saveSettings();
 					this.display();
 				});
@@ -774,6 +805,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					this.plugin.settings.dataviewEnabled = v;
 					await this.plugin.saveSettings();
 					await refreshDataview();
+					this.display();
 				});
 			});
 		new Setting(card)
@@ -839,8 +871,9 @@ export class SampleSettingTab extends PluginSettingTab {
 				"Edit a script, reset a built-in script to its default, or remove it."
 			);
 
+			const dataview = this.plugin.dataview;
 			const scriptsList = card.createDiv({ cls: "zk-scripts-list" });
-			const scripts = this.plugin.dataview.getScripts();
+			const scripts = dataview.getScripts();
 			if (scripts.length === 0) {
 				scriptsList.createEl("p", {
 					text: "No scripts yet. Create one to use it in a code block.",
@@ -850,6 +883,10 @@ export class SampleSettingTab extends PluginSettingTab {
 			scripts.forEach((script: IDataviewScript) => {
 				const obj = this.createObject(scriptsList, script.name, script.id);
 				const isExpanded = this.expandedScriptIds.has(script.id);
+				const getScriptFile = (): TFile | null => {
+					const file = this.app.vault.getAbstractFileByPath(script.filePath);
+					return file instanceof TFile ? file : null;
+				};
 
 				const previewBtn = new ButtonComponent(obj.actions)
 					.setIcon(isExpanded ? "chevron-up" : "chevron-down")
@@ -872,9 +909,7 @@ export class SampleSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						let content = this.plugin.dataview!.getScriptContent(script.id);
 						if (content === undefined) {
-							const file = this.app.vault.getAbstractFileByPath(
-								script.filePath
-							) as TFile;
+							const file = getScriptFile();
 							if (file) {
 								content = await this.app.vault.read(file);
 							} else {
@@ -887,9 +922,7 @@ export class SampleSettingTab extends PluginSettingTab {
 							script,
 							content ?? "",
 							async (newContent) => {
-								const file = this.app.vault.getAbstractFileByPath(
-									script.filePath
-								) as TFile;
+								const file = getScriptFile();
 								if (file) {
 									await this.app.vault.modify(file, newContent);
 									await this.plugin.dataview!.refresh();
@@ -906,9 +939,7 @@ export class SampleSettingTab extends PluginSettingTab {
 						.setTooltip("Reset to default")
 						.setClass("clickable-icon")
 						.onClick(async () => {
-							const file = this.app.vault.getAbstractFileByPath(
-								script.filePath
-							) as TFile;
+							const file = getScriptFile();
 							if (file) {
 								await this.app.vault.modify(file, defaultContent);
 								await this.plugin.dataview!.refresh();
@@ -925,7 +956,7 @@ export class SampleSettingTab extends PluginSettingTab {
 						if (confirm(`Remove script "${script.name}"?`)) {
 							const file = this.app.vault.getAbstractFileByPath(
 								script.filePath
-							) as TFile;
+							);
 							if (file) {
 								await this.app.vault.delete(file);
 								await this.plugin.dataview!.refresh();
@@ -936,7 +967,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 				if (isExpanded) {
 					const snippet = obj.body.createDiv({ cls: "zk-script-snippet" });
-					const cached = this.plugin.dataview!.getScriptContent(script.id);
+					const cached = dataview.getScriptContent(script.id);
 					snippet.textContent = cached ?? "(load script to preview)";
 				}
 			});
@@ -1045,6 +1076,12 @@ export class SampleSettingTab extends PluginSettingTab {
 		}
 	}
 
+	/** The folder setting (`fleetingPath`, `atomPath`, ...) that new notes of `type` go to. */
+	private defaultFolderFor(type: NoteType): string {
+		const settingKey: `${NoteType}Path` = `${type}Path`;
+		return this.plugin.settings[settingKey];
+	}
+
 	private renderTypeBox(containerEl: HTMLElement, type: NoteType) {
 		// [LOGIC]: Filter settings to find templates of this type
 		const items = this.plugin.settings.createNoteOptions
@@ -1072,9 +1109,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				e.stopPropagation(); // [CRITICAL]: Stop click from bubbling up to toggle the accordion
 
 				// Create new template data
-				const settingKey =
-					`${type.toLowerCase()}Path` as keyof ZettelkastenSettings;
-				const defaultPath = this.plugin.settings[settingKey] as string;
+				const defaultPath = this.defaultFolderFor(type);
 				this.plugin.settings.createNoteOptions.push({
 					enabled: true,
 					type: type,
@@ -1167,7 +1202,8 @@ export class SampleSettingTab extends PluginSettingTab {
 		if (!option.templateConfig)
 			option.templateConfig = { properties: {}, sections: [] };
 		const config = option.templateConfig;
-		config.properties = config.properties || {};
+		const properties = config.properties || {};
+		config.properties = properties;
 
 		// [UI]: Header with Back Button
 		const navHeader = containerEl.createDiv({ cls: "zettel-detail-header" });
@@ -1214,10 +1250,9 @@ export class SampleSettingTab extends PluginSettingTab {
 				})
 				.setValue(option.type)
 				.onChange(async (v) => {
-					const settingKey =
-						`${v.toLowerCase()}Path` as keyof ZettelkastenSettings;
-					option.type = v as NoteType;
-					option.specificFolder = this.plugin.settings[settingKey] as string;
+					if (!isValidNoteType(v)) return;
+					option.type = v;
+					option.specificFolder = this.defaultFolderFor(v);
 					await this.plugin.saveSettings();
 					this.display();
 				})
@@ -1248,7 +1283,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			"Fields added to the frontmatter of notes made from this template."
 		);
 		const propList = propsCard.createDiv({ cls: "zettel-prop-list" });
-		const propKeys = Object.keys(config.properties);
+		const propKeys = Object.keys(properties);
 		if (propKeys.length === 0) {
 			propList.createEl("p", {
 				text: "No properties yet. Add one to prefill the frontmatter.",
@@ -1258,7 +1293,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		// Loop through existing properties
 		propKeys.forEach((key) => {
-			const val = config.properties![key];
+			const val = properties[key];
 			const valType = Array.isArray(val) ? "list" : typeof val;
 			const row = propList.createDiv({ cls: "zk-line-row" });
 
@@ -1274,9 +1309,9 @@ export class SampleSettingTab extends PluginSettingTab {
 
 			if (valType === "boolean") {
 				new ToggleComponent(inputContainer)
-					.setValue(val as boolean)
+					.setValue(val === true)
 					.onChange(async (v) => {
-						config.properties![key] = v;
+						properties[key] = v;
 						await this.plugin.saveSettings();
 					});
 			} else if (valType === "number") {
@@ -1284,7 +1319,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				numInput.inputEl.type = "number";
 				numInput.inputEl.setAttr("aria-label", key);
 				numInput.setValue(String(val)).onChange(async (v) => {
-					config.properties![key] = Number(v);
+					properties[key] = Number(v);
 					await this.plugin.saveSettings();
 				});
 			} else if (valType === "list") {
@@ -1294,7 +1329,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				listInput
 					.setValue(Array.isArray(val) ? val.join(", ") : "")
 					.onChange(async (v) => {
-						config.properties![key] = v
+						properties[key] = v
 							.split(",")
 							.map((s) => s.trim())
 							.filter((s) => s.length > 0);
@@ -1304,14 +1339,14 @@ export class SampleSettingTab extends PluginSettingTab {
 				const txtInput = new TextComponent(inputContainer)
 					.setValue(String(val))
 					.onChange(async (v) => {
-						config.properties![key] = v;
+						properties[key] = v;
 						await this.plugin.saveSettings();
 					});
 				txtInput.inputEl.setAttr("aria-label", key);
 			}
 
 			new ButtonComponent(row).setButtonText("Remove").onClick(async () => {
-				delete config.properties![key];
+				delete properties[key];
 				await this.plugin.saveSettings();
 				this.display();
 			});
@@ -1321,8 +1356,8 @@ export class SampleSettingTab extends PluginSettingTab {
 		new ButtonComponent(propActions).setButtonText("Add property").onClick(() => {
 			// Open the custom modal
 			new PropertyCreationModal(this.app, async (name, defaultValue) => {
-				if (name && !config.properties!.hasOwnProperty(name)) {
-					config.properties![name] = defaultValue;
+				if (name && !properties.hasOwnProperty(name)) {
+					properties[name] = defaultValue;
 					await this.plugin.saveSettings();
 					this.display();
 				}
@@ -1344,7 +1379,7 @@ export class SampleSettingTab extends PluginSettingTab {
 			});
 		}
 
-		config.sections?.forEach((sec, i) => {
+		config.sections?.forEach((sec, i, sections) => {
 			const secBox = sectionsList.createDiv({ cls: "zk-object" });
 			const topRow = secBox.createDiv({ cls: "zk-object-head" });
 
@@ -1373,7 +1408,7 @@ export class SampleSettingTab extends PluginSettingTab {
 				});
 			levelDropdown.selectEl.setAttr("aria-label", "Heading level");
 			new ButtonComponent(topRow).setButtonText("Remove").onClick(async () => {
-				config.sections!.splice(i, 1);
+				sections.splice(i, 1);
 				await this.plugin.saveSettings();
 				this.display();
 			});
@@ -1395,7 +1430,8 @@ export class SampleSettingTab extends PluginSettingTab {
 		new ButtonComponent(sectionActions)
 			.setButtonText("Add section")
 			.onClick(async () => {
-				config.sections!.push({ title: "New Section", level: 2, content: [] });
+				config.sections ??= [];
+				config.sections.push({ title: "New Section", level: 2, content: [] });
 				await this.plugin.saveSettings();
 				this.display();
 			});
