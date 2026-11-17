@@ -2,8 +2,13 @@
  * Tests for NoteFactory and resolvePrefix
  */
 
-import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import { App, TFile } from "../../__mocks__/obsidian";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+	asObsidianApp,
+} from "../../__mocks__/testHelpers";
 import { NoteFactory, resolvePrefix } from "../../service/factory";
 
 describe("NoteFactory", () => {
@@ -12,7 +17,7 @@ describe("NoteFactory", () => {
 
 	beforeEach(() => {
 		app = createMockApp();
-		factory = new NoteFactory(app);
+		factory = new NoteFactory(asObsidianApp(app));
 	});
 
 	afterEach(() => {
@@ -29,7 +34,7 @@ describe("NoteFactory", () => {
 	describe("createZettel", () => {
 		beforeEach(async () => {
 			await factory.initialize(createMockSettings());
-			await (app.vault as any).createFolder("notes");
+			await app.vault.createFolder("notes");
 		});
 
 		it("should create a note with correct path and frontmatter", async () => {
@@ -46,31 +51,23 @@ describe("NoteFactory", () => {
 		});
 
 		it("should apply noteExtraParams via batchUpdate when available", async () => {
-			await factory.createZettel(
-				"permanent",
-				"batch-note",
-				"notes",
-				undefined,
-				{ key: "value" }
-			);
+			await factory.createZettel("permanent", "batch-note", "notes", undefined, {
+				key: "value",
+			});
 			const created = app.vault.getAbstractFileByPath("notes/batch-note.md");
 			expect(created).toBeTruthy();
 		});
 
 		it("should apply noteExtraParams via Object.assign when no batchUpdate", async () => {
-			await factory.createZettel(
-				"atom",
-				"assign-note",
-				"notes",
-				undefined,
-				{ custom: "prop" }
-			);
+			await factory.createZettel("atom", "assign-note", "notes", undefined, {
+				custom: "prop",
+			});
 			const file = app.vault.getAbstractFileByPath("notes/assign-note.md");
 			expect(file).toBeTruthy();
 		});
 
 		it("should call loadNote for existing path", async () => {
-			await (app.vault as any).create(
+			await app.vault.create(
 				"notes/existing.md",
 				"---\ntype: fleeting\ntitle: existing\n---\n\nbody"
 			);
@@ -83,8 +80,8 @@ describe("NoteFactory", () => {
 	describe("loadNote", () => {
 		beforeEach(async () => {
 			await factory.initialize(createMockSettings());
-			await (app.vault as any).createFolder("notes");
-			await (app.vault as any).create(
+			await app.vault.createFolder("notes");
+			await app.vault.create(
 				"notes/loaded.md",
 				"---\ntype: permanent\ntitle: loaded\n---\n\ncontent"
 			);
@@ -100,33 +97,27 @@ describe("NoteFactory", () => {
 	describe("loadActiveNote", () => {
 		beforeEach(async () => {
 			await factory.initialize(createMockSettings());
-			await (app.vault as any).createFolder("notes");
-			await (app.vault as any).create(
+			await app.vault.createFolder("notes");
+			await app.vault.create(
 				"notes/active.md",
 				"---\ntype: fleeting\ntitle: active\n---\n\n"
 			);
 		});
 
 		it("should return undefined when no active file", async () => {
-			(app.workspace as any).getActiveFile = jest.fn().mockReturnValue(null);
+			app.workspace._setActiveFile(null);
 			const note = await factory.loadActiveNote();
 			expect(note).toBeUndefined();
 		});
 
 		it("should return undefined when active file is not md", async () => {
-			(app.workspace as any).getActiveFile = jest.fn().mockReturnValue({
-				path: "notes/file.txt",
-				extension: "txt",
-			});
+			app.workspace._setActiveFile(new TFile("notes/file.txt"));
 			const note = await factory.loadActiveNote();
 			expect(note).toBeUndefined();
 		});
 
 		it("should load note when active file is md", async () => {
-			(app.workspace as any).getActiveFile = jest.fn().mockReturnValue({
-				path: "notes/active.md",
-				extension: "md",
-			});
+			app.workspace._setActiveFile(new TFile("notes/active.md"));
 			const note = await factory.loadActiveNote();
 			expect(note).toBeDefined();
 		});

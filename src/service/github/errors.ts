@@ -2,7 +2,10 @@ import { Logger } from "../../logger";
 
 /** HTTP status of a failed requestUrl call: on the error object, or only in its message. */
 export function githubErrorStatus(err: unknown): number | undefined {
-	const status = (err as { status?: unknown } | null)?.status;
+	const status =
+		typeof err === "object" && err !== null && "status" in err
+			? err.status
+			: undefined;
 	if (typeof status === "number") return status;
 	const match = /status (\d{3})/i.exec(Logger.getErrorMessage(err));
 	return match ? Number(match[1]) : undefined;
@@ -18,7 +21,7 @@ export function describeGitHubError(
 	err: unknown,
 	action: string,
 	authed: boolean,
-	notFound: "repo" | "ref" | "path",
+	notFound: "repo" | "ref" | "path"
 ): string {
 	const status = githubErrorStatus(err);
 	let hint: string;
@@ -29,7 +32,8 @@ export function describeGitHubError(
 			? "The PAT may lack access to this repo, or the API rate limit was hit."
 			: "The limit for requests without a PAT (60 per hour) may be used up. Pick a PAT and try again.";
 	} else if (status === 404 && notFound === "path") {
-		hint = "The folder or file was not found on that branch. Check the pull rule's folder and defaultBranch in the dashboard.";
+		hint =
+			"The folder or file was not found on that branch. Check the pull rule's folder and defaultBranch in the dashboard.";
 	} else if (status === 404 && notFound === "ref") {
 		hint =
 			"The tag or the branch was not found. Check defaultBranch in the dashboard, and whether the latest release is a draft whose tag does not exist yet.";
@@ -40,5 +44,7 @@ export function describeGitHubError(
 	} else {
 		hint = Logger.getErrorMessage(err);
 	}
-	return status ? `${action} failed (${status}): ${hint}` : `${action} failed: ${hint}`;
+	return status
+		? `${action} failed (${status}): ${hint}`
+		: `${action} failed: ${hint}`;
 }

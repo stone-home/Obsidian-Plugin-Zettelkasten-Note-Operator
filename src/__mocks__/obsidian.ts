@@ -25,7 +25,8 @@ export class TFile extends TAbstractFile {
 	constructor(path: string, content: string = "") {
 		super(path);
 		const parts = this.name.split(".");
-		this.extension = parts.length > 1 ? parts.pop()! : "";
+		const extension = parts.length > 1 ? parts.pop() : undefined;
+		this.extension = extension ?? "";
 		this.basename = parts.join(".");
 		this.stat = {
 			mtime: Date.now(),
@@ -49,18 +50,23 @@ export interface EventRef {
 }
 
 // ==================== Events ====================
-export class Events {
-	private listeners: Map<string, Array<(...args: any[]) => any>> = new Map();
+/** Listener signature of Obsidian's Events.on/off. */
+export type EventCallback = (...data: unknown[]) => unknown;
 
-	on(name: string, callback: (...args: any[]) => any): EventRef {
-		if (!this.listeners.has(name)) {
-			this.listeners.set(name, []);
+export class Events {
+	private listeners: Map<string, EventCallback[]> = new Map();
+
+	on(name: string, callback: EventCallback): EventRef {
+		let callbacks = this.listeners.get(name);
+		if (!callbacks) {
+			callbacks = [];
+			this.listeners.set(name, callbacks);
 		}
-		this.listeners.get(name)!.push(callback);
-		return { id: `${name}-${this.listeners.get(name)!.length}` };
+		callbacks.push(callback);
+		return { id: `${name}-${callbacks.length}` };
 	}
 
-	off(name: string, callback: (...args: any[]) => any): void {
+	off(name: string, callback: EventCallback): void {
 		const callbacks = this.listeners.get(name);
 		if (callbacks) {
 			const index = callbacks.indexOf(callback);
@@ -74,7 +80,7 @@ export class Events {
 		// No-op for mock
 	}
 
-	trigger(name: string, ...args: any[]): void {
+	trigger(name: string, ...args: unknown[]): void {
 		const callbacks = this.listeners.get(name);
 		if (callbacks) {
 			callbacks.forEach((cb) => cb(...args));
@@ -104,14 +110,14 @@ export class Component {
 		}
 	}
 
-	register(cb: () => any): void {}
+	register(cb: () => unknown): void {}
 	registerEvent(eventRef: EventRef): void {
 		this.eventRefs.push(eventRef);
 	}
 	registerDomEvent(
 		el: HTMLElement | Document | Window,
 		type: string,
-		callback: (evt: Event) => any
+		callback: (evt: Event) => unknown
 	): void {}
 	registerInterval(id: number): number {
 		return id;
@@ -128,17 +134,18 @@ export function normalizePath(path: string): string {
 		.replace(/([\\/])+/g, "/")
 		.replace(/(^\/+|\/+$)/g, "");
 	if (p === "") p = "/";
-	return p.replace(/ | /g, " ").normalize("NFC");
+	return p.replace(/\u00A0|\u202F/g, " ").normalize("NFC");
 }
 
 // ==================== YAML (stringifyYaml / parseYaml) ====================
-const YAML_PLAIN_SAFE = /^[A-Za-z_][A-Za-z0-9_ .\/\-]*$/;
+const YAML_PLAIN_SAFE = /^[A-Za-z_][A-Za-z0-9_ ./-]*$/;
 const YAML_RESERVED = /^(true|false|null|yes|no|on|off|~)$/i;
 
-function yamlScalar(value: any): string {
+function yamlScalar(value: unknown): string {
 	if (value === null || value === undefined) return "null";
 	if (typeof value === "boolean") return value ? "true" : "false";
-	if (typeof value === "number") return Number.isFinite(value) ? String(value) : JSON.stringify(String(value));
+	if (typeof value === "number")
+		return Number.isFinite(value) ? String(value) : JSON.stringify(String(value));
 	if (value instanceof Date) return JSON.stringify(value.toISOString());
 	if (Array.isArray(value)) return JSON.stringify(value);
 	if (typeof value === "object") return JSON.stringify(value);
@@ -148,7 +155,7 @@ function yamlScalar(value: any): string {
 }
 
 function yamlKey(key: string): string {
-	return /^[A-Za-z_][A-Za-z0-9_\-]*$/.test(key) ? key : JSON.stringify(key);
+	return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 /**
@@ -156,13 +163,18 @@ function yamlKey(key: string): string {
  * arrays of flat objects, and one level of nested maps. Output ends with "\n"
  * (like Obsidian's stringifyYaml) unless the object is empty.
  */
-export function stringifyYaml(obj: any): string {
+export function stringifyYaml(obj: unknown): string {
 	if (obj === null || obj === undefined) return "";
 	if (typeof obj !== "object") return yamlScalar(obj) + "\n";
 	const lines: string[] = [];
-	const emitArrayItems = (arr: any[], indent: string) => {
+	const emitArrayItems = (arr: unknown[], indent: string) => {
 		for (const item of arr) {
-			if (item !== null && typeof item === "object" && !Array.isArray(item) && !(item instanceof Date)) {
+			if (
+				item !== null &&
+				typeof item === "object" &&
+				!Array.isArray(item) &&
+				!(item instanceof Date)
+			) {
 				const entries = Object.entries(item).filter(([, v]) => v !== undefined);
 				if (entries.length === 0) {
 					lines.push(`${indent}- {}`);
@@ -189,13 +201,20 @@ export function stringifyYaml(obj: any): string {
 					lines.push(`${yamlKey(key)}:`);
 					emitArrayItems(value, "  ");
 				}
-			} else if (value !== null && typeof value === "object" && !(value instanceof Date)) {
-				const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+			} else if (
+				value !== null &&
+				typeof value === "object" &&
+				!(value instanceof Date)
+			) {
+				const entries = Object.entries(value).filter(
+					([, v]) => v !== undefined
+				);
 				if (entries.length === 0) {
 					lines.push(`${yamlKey(key)}: {}`);
 				} else {
 					lines.push(`${yamlKey(key)}:`);
-					for (const [k, v] of entries) lines.push(`  ${yamlKey(k)}: ${yamlScalar(v)}`);
+					for (const [k, v] of entries)
+						lines.push(`  ${yamlKey(k)}: ${yamlScalar(v)}`);
 				}
 			} else {
 				lines.push(`${yamlKey(key)}: ${yamlScalar(value)}`);
@@ -205,7 +224,7 @@ export function stringifyYaml(obj: any): string {
 	return lines.length ? lines.join("\n") + "\n" : "";
 }
 
-function parseYamlScalar(raw: string): any {
+function parseYamlScalar(raw: string): unknown {
 	const s = raw.trim();
 	if (s === "") return "";
 	if (s === "null" || s === "~") return null;
@@ -224,7 +243,10 @@ function parseYamlScalar(raw: string): any {
 	if (s.startsWith("'") && s.endsWith("'") && s.length >= 2) {
 		return s.slice(1, -1).replace(/''/g, "'");
 	}
-	if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("{") && s.endsWith("}"))) {
+	if (
+		(s.startsWith("[") && s.endsWith("]")) ||
+		(s.startsWith("{") && s.endsWith("}"))
+	) {
 		try {
 			return JSON.parse(s);
 		} catch {
@@ -252,8 +274,8 @@ function splitYamlKeyValue(line: string): [string, string] | null {
  * Parser for the YAML subset produced by stringifyYaml above and by the ORM mock.
  * Unparseable lines are ignored.
  */
-export function parseYaml(text: string): any {
-	const result: Record<string, any> = {};
+export function parseYaml(text: string): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
 	const lines = String(text ?? "").split(/\r?\n/);
 	let i = 0;
 	while (i < lines.length) {
@@ -275,7 +297,10 @@ export function parseYaml(text: string): any {
 		}
 		// Block value: list or nested map (indented lines), or empty.
 		const block: string[] = [];
-		while (i < lines.length && (/^\s+\S/.test(lines[i]) || lines[i].trim() === "")) {
+		while (
+			i < lines.length &&
+			(/^\s+\S/.test(lines[i]) || lines[i].trim() === "")
+		) {
 			if (lines[i].trim() !== "") block.push(lines[i]);
 			i++;
 		}
@@ -284,15 +309,19 @@ export function parseYaml(text: string): any {
 			continue;
 		}
 		if (/^\s*- /.test(block[0]) || /^\s*-$/.test(block[0])) {
-			const arr: any[] = [];
-			let current: Record<string, any> | null = null;
+			const arr: unknown[] = [];
+			let current: Record<string, unknown> | null = null;
 			for (const bl of block) {
 				const itemMatch = bl.match(/^(\s*)- ?(.*)$/);
 				if (itemMatch) {
 					const body = itemMatch[2];
 					const inner = splitYamlKeyValue(body);
 					const looksLikeMapItem =
-						inner !== null && !body.startsWith('"') && !body.startsWith("'") && !body.startsWith("[") && !/^https?:/.test(body);
+						inner !== null &&
+						!body.startsWith('"') &&
+						!body.startsWith("'") &&
+						!body.startsWith("[") &&
+						!/^https?:/.test(body);
 					if (looksLikeMapItem && inner) {
 						current = { [inner[0]]: parseYamlScalar(inner[1]) };
 						arr.push(current);
@@ -307,7 +336,7 @@ export function parseYaml(text: string): any {
 			}
 			result[key] = arr;
 		} else {
-			const map: Record<string, any> = {};
+			const map: Record<string, unknown> = {};
 			for (const bl of block) {
 				const inner = splitYamlKeyValue(bl.trim());
 				if (inner) map[inner[0]] = parseYamlScalar(inner[1]);
@@ -319,8 +348,14 @@ export function parseYaml(text: string): any {
 }
 
 /** Splits "---\n<yaml>\n---\n<body>" into parsed frontmatter and body (test helper, not an Obsidian API). */
-export function _splitFrontmatter(content: string): { frontmatter: Record<string, any>; body: string; hasFrontmatter: boolean } {
-	const match = String(content ?? "").match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
+export function _splitFrontmatter(content: string): {
+	frontmatter: Record<string, unknown>;
+	body: string;
+	hasFrontmatter: boolean;
+} {
+	const match = String(content ?? "").match(
+		/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/
+	);
 	if (!match) return { frontmatter: {}, body: content ?? "", hasFrontmatter: false };
 	return {
 		frontmatter: parseYaml(match[1] ?? ""),
@@ -346,7 +381,7 @@ export class DataAdapter {
 	 * (mimics macOS/Windows file systems); pass sensitive=true for an exact match.
 	 */
 	async exists(normalizedPath: string, sensitive?: boolean): Promise<boolean> {
-		return (this.vault as any)._existsPath(normalizedPath, sensitive === true);
+		return this.vault._existsPath(normalizedPath, sensitive === true);
 	}
 }
 
@@ -437,7 +472,10 @@ export class Vault extends Events {
 		if (bin) return bin;
 		const content = this.files.get(file.path)?.content ?? "";
 		const bytes = new TextEncoder().encode(content);
-		return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+		return bytes.buffer.slice(
+			bytes.byteOffset,
+			bytes.byteOffset + bytes.byteLength
+		);
 	}
 
 	async trash(file: TAbstractFile, system: boolean): Promise<void> {
@@ -485,6 +523,11 @@ export class Vault extends Events {
 		return false;
 	}
 
+	/** Paths of the folders created with createFolder (test helper). */
+	_folderPaths(): string[] {
+		return Array.from(this.folders);
+	}
+
 	_getContent(path: string): string | undefined {
 		return this.files.get(path)?.content;
 	}
@@ -527,17 +570,26 @@ export class WorkspaceLeaf {
 }
 
 // ==================== MetadataCache ====================
-export class MetadataCache extends Events {
-	private cache: Map<string, { frontmatter?: Record<string, any> }> =
-		new Map();
+/** The part of Obsidian's CachedMetadata the mock stores. */
+export interface MockCachedMetadata {
+	frontmatter?: Record<string, unknown>;
+}
 
-	getFileCache(file: TFile): { frontmatter?: Record<string, any> } | null {
+export class MetadataCache extends Events {
+	private cache: Map<string, MockCachedMetadata> = new Map();
+	/**
+	 * Optional link table for getFirstLinkpathDest, keyed by "<sourcePath>:<linkName>".
+	 * Declared only (never initialised), so it is absent until a test sets it.
+	 */
+	declare _linkDestMap?: Map<string, TFile>;
+
+	getFileCache(file: TFile): MockCachedMetadata | null {
 		return this.cache.get(file.path) || null;
 	}
 
 	getFirstLinkpathDest(linkName: string, sourcePath: string): TFile | null {
-		// Mock: return null (no linked file). Tests can override via _setLinkDest.
-		const linkMap = (this as any)._linkDestMap as Map<string, TFile> | undefined;
+		// Mock: return null (no linked file) unless a test set _linkDestMap.
+		const linkMap = this._linkDestMap;
 		if (linkMap) {
 			const key = `${sourcePath}:${linkName}`;
 			return linkMap.get(key) ?? null;
@@ -546,7 +598,7 @@ export class MetadataCache extends Events {
 	}
 
 	// Test helper
-	_setCache(path: string, data: { frontmatter?: Record<string, any> }): void {
+	_setCache(path: string, data: MockCachedMetadata): void {
 		this.cache.set(path, data);
 	}
 
@@ -560,14 +612,14 @@ export class FileManager {
 	private app: App | undefined;
 	/**
 	 * Instance property (not a prototype method) so a test can remove it with
-	 * `delete (app.fileManager as any).trashFile` to simulate older Obsidian.
+	 * `delete app.fileManager.trashFile` to simulate older Obsidian.
 	 */
 	trashFile?: (file: TAbstractFile) => Promise<void>;
 
 	constructor(app?: App) {
 		this.app = app;
 		this.trashFile = async (file: TAbstractFile): Promise<void> => {
-			if (this.app) (this.app.vault as any)._removePath(file.path);
+			if (this.app) this.app.vault._removePath(file.path);
 		};
 	}
 
@@ -578,33 +630,63 @@ export class FileManager {
 	 */
 	async processFrontMatter(
 		file: TFile,
-		fn: (frontmatter: Record<string, any>) => void
+		fn: (frontmatter: Record<string, unknown>) => void
 	): Promise<void> {
 		if (!this.app) {
-			const fm: Record<string, any> = {};
+			const fm: Record<string, unknown> = {};
 			fn(fm);
 			return;
 		}
-		const vault = this.app.vault as any;
+		const vault = this.app.vault;
 		const content: string | undefined = vault._getContent(file.path);
 		const { frontmatter: fileFm, body } = _splitFrontmatter(content ?? "");
 		const cacheEntry = this.app.metadataCache.getFileCache(file);
-		const fm: Record<string, any> = { ...fileFm, ...(cacheEntry?.frontmatter ?? {}) };
+		const fm: Record<string, unknown> = {
+			...fileFm,
+			...(cacheEntry?.frontmatter ?? {}),
+		};
 		fn(fm);
-		(this.app.metadataCache as any)._setCache(file.path, { ...(cacheEntry ?? {}), frontmatter: fm });
+		this.app.metadataCache._setCache(file.path, {
+			...(cacheEntry ?? {}),
+			frontmatter: fm,
+		});
 		if (content !== undefined) {
-			const stored = vault.getAbstractFileByPath(file.path) as TFile;
-			await vault.modify(stored, `---\n${stringifyYaml(fm)}---\n${body}`);
+			// content is defined only for a stored file, so this lookup finds that TFile.
+			const stored = vault.getAbstractFileByPath(file.path);
+			if (stored instanceof TFile) {
+				await vault.modify(stored, `---\n${stringifyYaml(fm)}---\n${body}`);
+			}
 		}
 	}
 }
 
 // ==================== App ====================
+/**
+ * Obsidian's secret store (app.secretStorage), which the obsidian typings in use do
+ * not declare. Results are `unknown` because production code must narrow them.
+ */
+export interface MockSecretStorage {
+	getSecret?: (id: string) => unknown;
+	listSecrets?: () => unknown;
+}
+
+/** Obsidian's undeclared plugin registry (app.plugins); production reads plugins.dataview.api. */
+export interface MockPluginRegistry {
+	plugins: Record<string, unknown>;
+}
+
 export class App {
 	vault: Vault;
 	workspace: Workspace;
 	metadataCache: MetadataCache;
 	fileManager: FileManager;
+	/**
+	 * Undeclared Obsidian members. They are `declare`d (never initialised) because
+	 * production code tests `"secretStorage" in app` and `"plugins" in app`, so they
+	 * must stay absent until a test assigns them.
+	 */
+	declare secretStorage?: MockSecretStorage;
+	declare plugins?: MockPluginRegistry;
 
 	constructor() {
 		this.vault = new Vault();
@@ -625,24 +707,20 @@ export class Plugin extends Component {
 		this.manifest = manifest;
 	}
 
-	async loadData(): Promise<any> {
+	async loadData(): Promise<unknown> {
 		return {};
 	}
 
-	async saveData(data: any): Promise<void> {}
+	async saveData(data: unknown): Promise<void> {}
 
-	addRibbonIcon(
-		icon: string,
-		title: string,
-		callback: () => any
-	): HTMLElement {
+	addRibbonIcon(icon: string, title: string, callback: () => unknown): HTMLElement {
 		return document.createElement("div");
 	}
 
 	addCommand(command: {
 		id: string;
 		name: string;
-		callback?: () => any;
+		callback?: () => unknown;
 		checkCallback?: (checking: boolean) => boolean | void;
 	}): void {}
 
@@ -740,23 +818,23 @@ export class Setting {
 	setTooltip(tooltip: string): this {
 		return this;
 	}
-	addText(cb: (text: TextComponent) => any): this {
+	addText(cb: (text: TextComponent) => unknown): this {
 		cb(new TextComponent(document.createElement("input")));
 		return this;
 	}
-	addTextArea(cb: (text: TextAreaComponent) => any): this {
+	addTextArea(cb: (text: TextAreaComponent) => unknown): this {
 		cb(new TextAreaComponent(document.createElement("textarea")));
 		return this;
 	}
-	addToggle(cb: (toggle: ToggleComponent) => any): this {
+	addToggle(cb: (toggle: ToggleComponent) => unknown): this {
 		cb(new ToggleComponent(document.createElement("div")));
 		return this;
 	}
-	addDropdown(cb: (dropdown: DropdownComponent) => any): this {
+	addDropdown(cb: (dropdown: DropdownComponent) => unknown): this {
 		cb(new DropdownComponent(document.createElement("select")));
 		return this;
 	}
-	addButton(cb: (button: ButtonComponent) => any): this {
+	addButton(cb: (button: ButtonComponent) => unknown): this {
 		cb(new ButtonComponent(document.createElement("button")));
 		return this;
 	}
@@ -781,7 +859,7 @@ export class TextComponent {
 	setPlaceholder(placeholder: string): this {
 		return this;
 	}
-	onChange(callback: (value: string) => any): this {
+	onChange(callback: (value: string) => unknown): this {
 		return this;
 	}
 }
@@ -804,7 +882,7 @@ export class TextAreaComponent {
 	setPlaceholder(placeholder: string): this {
 		return this;
 	}
-	onChange(callback: (value: string) => any): this {
+	onChange(callback: (value: string) => unknown): this {
 		return this;
 	}
 }
@@ -824,7 +902,7 @@ export class ToggleComponent {
 		this.value = value;
 		return this;
 	}
-	onChange(callback: (value: boolean) => any): this {
+	onChange(callback: (value: boolean) => unknown): this {
 		return this;
 	}
 }
@@ -850,7 +928,7 @@ export class DropdownComponent {
 	addOptions(options: Record<string, string>): this {
 		return this;
 	}
-	onChange(callback: (value: string) => any): this {
+	onChange(callback: (value: string) => unknown): this {
 		return this;
 	}
 }
@@ -880,7 +958,7 @@ export class ButtonComponent {
 	setWarning(): this {
 		return this;
 	}
-	onClick(callback: () => any): this {
+	onClick(callback: () => unknown): this {
 		return this;
 	}
 }
@@ -899,7 +977,7 @@ export class FuzzySuggestModal<T> extends Modal {
 // ==================== MarkdownPostProcessorContext ====================
 export interface MarkdownPostProcessorContext {
 	sourcePath: string;
-	frontmatter?: Record<string, any>;
+	frontmatter?: Record<string, unknown>;
 	addChild(child: MarkdownRenderChild): void;
 }
 
@@ -916,15 +994,17 @@ export class MarkdownRenderChild extends Component {
 export interface RequestUrlParam {
 	url: string;
 	method?: string;
+	contentType?: string;
 	headers?: Record<string, string>;
 	body?: string | ArrayBuffer;
+	throw?: boolean;
 }
 
 export interface RequestUrlResponse {
 	status: number;
 	headers: Record<string, string>;
 	text: string;
-	json: any;
+	json: unknown;
 	arrayBuffer: ArrayBuffer;
 }
 

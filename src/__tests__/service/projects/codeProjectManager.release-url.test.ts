@@ -6,11 +6,13 @@
  * mode reproduces that.
  */
 
-import { App, TFile } from "../../../__mocks__/obsidian";
+import type { TFile as ObsidianTFile } from "obsidian";
+import { App } from "../../../__mocks__/obsidian";
 import { setOrmMergeMode } from "../../../__mocks__/markdown-note-orm";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	createMockRelease,
 	mockGitHubApi,
@@ -22,19 +24,22 @@ import { CodeProjectManager } from "../../../service/projects/codeProjectManager
 describe("CodeProjectManager release notes keep the release URL (C8)", () => {
 	let app: App;
 	let manager: CodeProjectManager;
-	let projectFile: TFile;
+	let projectFile: ObsidianTFile;
 
 	beforeEach(async () => {
 		setOrmMergeMode("preserve-existing");
 		app = createMockApp();
-		manager = new CodeProjectManager(app as any, createMockSettings({ projectRootPath: "Projects" }));
-		projectFile = (await manager.createProject("RelProj")) as unknown as TFile;
+		manager = new CodeProjectManager(
+			asObsidianApp(app),
+			createMockSettings({ projectRootPath: "Projects" })
+		);
+		projectFile = await manager.createProject("RelProj");
 		setFrontmatterCache(app.metadataCache, projectFile.path, {
 			repo: "owner/repo",
 			defaultBranch: "main",
 			github_token_key: "gh_key",
 		});
-		(app as any).secretStorage = { getSecret: jest.fn().mockResolvedValue("tok") };
+		app.secretStorage = { getSecret: jest.fn().mockResolvedValue("tok") };
 	});
 
 	afterEach(() => {
@@ -49,12 +54,14 @@ describe("CodeProjectManager release notes keep the release URL (C8)", () => {
 		});
 		mockGitHubApi({
 			"/repos/owner/repo/releases": { json: [release] },
-			"/repos/owner/repo/compare/v1.0.0...main": { json: { total_commits: 0, commits: [] } },
+			"/repos/owner/repo/compare/v1.0.0...main": {
+				json: { total_commits: 0, commits: [] },
+			},
 		});
 
-		await manager.refreshProject(projectFile as any);
+		await manager.refreshProject(projectFile);
 
-		const content = (app.vault as any)._getContent("Projects/RelProj/releases/v1.0.0.md");
+		const content = app.vault._getContent("Projects/RelProj/releases/v1.0.0.md");
 		expect(content).toBeDefined();
 		const fm = parseNoteFrontmatter(content);
 		expect(fm.url).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");

@@ -22,12 +22,12 @@ export interface NoteTemplateSection {
 }
 
 export interface NoteTemplateConfig {
-	properties?: Record<string, any>;
+	properties?: Record<string, unknown>;
 	sections?: NoteTemplateSection[];
 }
 
 export interface INoteFrontmatter {
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 export interface NoteTypeMap {
@@ -51,39 +51,52 @@ export function getOrmMergeMode(): OrmMergeMode {
 	return ormMergeMode;
 }
 
-const hasOwn = (obj: object, key: string) => Object.prototype.hasOwnProperty.call(obj, key);
+const hasOwn = (obj: object, key: string) =>
+	Object.prototype.hasOwnProperty.call(obj, key);
 
 /** Applies `source` onto `target` according to the current merge mode. */
-function mergeProperties(target: Record<string, any>, source: Record<string, any>): void {
+function mergeProperties(
+	target: INoteFrontmatter,
+	source: Record<string, unknown>
+): void {
 	if (ormMergeMode === "override") {
 		Object.assign(target, source);
 		return;
 	}
 	for (const [key, value] of Object.entries(source)) {
+		const existing = target[key];
 		if (!hasOwn(target, key)) {
 			target[key] = value;
-		} else if (Array.isArray(target[key])) {
+		} else if (Array.isArray(existing)) {
 			const incoming = Array.isArray(value) ? value : [value];
-			target[key] = Array.from(new Set([...target[key], ...incoming]));
+			target[key] = Array.from(new Set([...existing, ...incoming]));
 		}
 		// existing scalar: keep it (real FrontmatterManager.batchUpdate)
 	}
 }
 
 /** Adds non-enumerable get/set/has/remove/batchUpdate so they never end up in serialized frontmatter. */
-function attachPropertyMethods<T extends Record<string, any>>(props: T): T {
-	const define = (name: string, value: (...args: any[]) => any) =>
-		Object.defineProperty(props, name, { value, enumerable: false, configurable: true, writable: true });
-	define("get", (key: string) => (props as any)[key]);
-	define("set", (key: string, value: any) => {
-		(props as any)[key] = value;
+function attachPropertyMethods<T extends INoteFrontmatter>(props: T): T {
+	const bag: INoteFrontmatter = props;
+	const define = (name: string, value: unknown) =>
+		Object.defineProperty(props, name, {
+			value,
+			enumerable: false,
+			configurable: true,
+			writable: true,
+		});
+	define("get", (key: string) => bag[key]);
+	define("set", (key: string, value: unknown) => {
+		bag[key] = value;
 	});
 	define("has", (key: string) => hasOwn(props, key));
 	define("remove", (key: string) => {
-		delete (props as any)[key];
+		delete bag[key];
 	});
 	// Supports the factory's batchUpdate branch in tests.
-	define("batchUpdate", (params: Record<string, any>) => mergeProperties(props, params));
+	define("batchUpdate", (params: Record<string, unknown>) =>
+		mergeProperties(props, params)
+	);
 	return props;
 }
 
@@ -131,7 +144,7 @@ export class ZettelNoteModel<T extends INoteFrontmatter = INoteFrontmatter> {
 
 	applyConfigTemplate(config: NoteTemplateConfig): void {
 		if (config.properties) {
-			const next = { ...this.properties } as T;
+			const next = { ...this.properties };
 			mergeProperties(next, config.properties);
 			this.properties = attachPropertyMethods(next);
 		}
@@ -167,8 +180,18 @@ const COMMON_DEFAULTS = (): INoteFrontmatter => ({
 
 const REAL_TYPE_DEFAULTS: Record<NoteType, () => INoteFrontmatter> = {
 	fleeting: () => ({ ...COMMON_DEFAULTS(), type: "fleeting", url: "" }),
-	literature: () => ({ ...COMMON_DEFAULTS(), type: "literature", url: "", cssclasses: [] }),
-	permanent: () => ({ ...COMMON_DEFAULTS(), type: "permanent", url: "", cssclasses: [] }),
+	literature: () => ({
+		...COMMON_DEFAULTS(),
+		type: "literature",
+		url: "",
+		cssclasses: [],
+	}),
+	permanent: () => ({
+		...COMMON_DEFAULTS(),
+		type: "permanent",
+		url: "",
+		cssclasses: [],
+	}),
 	atom: () => ({ ...COMMON_DEFAULTS(), type: "atom", url: "" }),
 };
 
@@ -192,7 +215,7 @@ export class ObsidianNoteFactory {
 						create: new Date().toISOString().slice(0, 10),
 					}
 				: { type, title };
-		const note = new ZettelNoteModel<NoteTypeMap[K]>(app, path, initial as NoteTypeMap[K]);
+		const note = new ZettelNoteModel<NoteTypeMap[K]>(app, path, initial);
 
 		if (config) {
 			note.applyConfigTemplate(config);
@@ -201,15 +224,13 @@ export class ObsidianNoteFactory {
 		return note;
 	}
 
-	static async loadAndPatch(
-		app: App,
-		path: string
-	): Promise<ZettelNoteModel> {
-		const file = app.vault.getAbstractFileByPath(path) as TFile;
+	static async loadAndPatch(app: App, path: string): Promise<ZettelNoteModel> {
+		const file = app.vault.getAbstractFileByPath(path);
 		if (!file) {
 			throw new Error(`File not found: ${path}`);
 		}
-		const content = await app.vault.read(file);
+		// The mock does not parse the content; it only reads the file like the library.
+		if (file instanceof TFile) await app.vault.read(file);
 		const note = new ZettelNoteModel(app, path);
 		// Parse frontmatter if needed
 		return note;

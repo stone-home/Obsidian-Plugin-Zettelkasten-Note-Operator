@@ -1,6 +1,6 @@
-import { App, Modal, setIcon } from 'obsidian';
-import { INoteOption } from '../types'; // [FIX] Import INoteOption
-import { NoteType } from 'markdown-note-orm';
+import { App, Modal, setIcon } from "obsidian";
+import { INoteOption } from "../types"; // [FIX] Import INoteOption
+import { NoteType } from "markdown-note-orm";
 
 /**
  * Grid-based modal for selecting a note template/option.
@@ -25,22 +25,22 @@ export class TemplateGridModal extends Modal {
 
 	onOpen() {
 		// [FIX] Add class to modalEl to control width via CSS
-		this.modalEl.addClass('zettelkasten-modal-container');
+		this.modalEl.addClass("zettelkasten-modal-container");
 
 		const { contentEl } = this;
-		contentEl.addClass('zettelkasten-template-content');
+		contentEl.addClass("zettelkasten-template-content");
 
 		// 1. Header
-		const headerDiv = contentEl.createDiv('template-modal-header');
+		const headerDiv = contentEl.createDiv("template-modal-header");
 		const typeLabel =
 			this.noteType.charAt(0).toUpperCase() + this.noteType.slice(1);
-		headerDiv.createEl('h2', { text: `Select ${typeLabel} Template` });
+		headerDiv.createEl("h2", { text: `Select ${typeLabel} Template` });
 
 		// 2. Grid Container
-		const grid = contentEl.createDiv('template-grid');
+		const grid = contentEl.createDiv("template-grid");
 
 		if (this.options.length === 0) {
-			const emptyState = grid.createDiv('empty-state');
+			const emptyState = grid.createDiv("empty-state");
 			emptyState.setText(
 				`No enabled templates found for "${typeLabel}". Please check your settings.`
 			);
@@ -49,25 +49,25 @@ export class TemplateGridModal extends Modal {
 
 		// 3. Render Cards
 		this.options.forEach((option) => {
-			const card = grid.createEl('div', {
-				cls: 'template-card',
+			const card = grid.createEl("div", {
+				cls: "template-card",
 			});
-			card.setAttribute('aria-label', `Select ${option.label}`);
+			card.setAttribute("aria-label", `Select ${option.label}`);
 
 			// Icon Wrapper (Emoji or Default Icon)
-			const iconWrapper = card.createDiv('template-icon-wrapper');
+			const iconWrapper = card.createDiv("template-icon-wrapper");
 			if (option.emoji) {
 				iconWrapper.setText(option.emoji);
 			} else {
-				setIcon(iconWrapper, 'file-text'); // Default icon
+				setIcon(iconWrapper, "file-text"); // Default icon
 			}
 
 			// Text
-			const textContainer = card.createDiv('template-text');
-			textContainer.createDiv({ text: option.label, cls: 'template-label' });
+			const textContainer = card.createDiv("template-text");
+			textContainer.createDiv({ text: option.label, cls: "template-label" });
 
 			// Interaction
-			card.addEventListener('click', () => {
+			card.addEventListener("click", () => {
 				this.onChoose(option);
 				this.close();
 			});
@@ -76,6 +76,6 @@ export class TemplateGridModal extends Modal {
 
 	onClose() {
 		this.contentEl.empty();
-		this.modalEl.removeClass('zettelkasten-modal-container');
+		this.modalEl.removeClass("zettelkasten-modal-container");
 	}
 }

@@ -162,3 +162,8 @@ yalc.lock
 main.js
 data.json
 styles.css
+/.claude/rules/skills-hub/
+/playground/
+
+# Local skills hub checkout (skill-manager)
+/.skills-hub/

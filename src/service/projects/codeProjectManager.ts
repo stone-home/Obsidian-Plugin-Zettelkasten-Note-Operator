@@ -1,4 +1,4 @@
-import { App, Notice, TFile, stringifyYaml } from "obsidian";
+import { App, Notice, TFile, TFolder, stringifyYaml } from "obsidian";
 import {
 	ObsidianNoteFactory as LibFactory,
 	NoteType,
@@ -31,6 +31,35 @@ export interface UnreleasedCommit {
 
 export const UNRELEASED_COMMITS_NOTE = "Unreleased Commits";
 
+/** Obsidian's SecretStorage, which the bundled obsidian typings do not declare yet. */
+interface SecretReader {
+	getSecret(key: string): unknown;
+}
+
+function isSecretReader(value: unknown): value is SecretReader {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"getSecret" in value &&
+		typeof value.getSecret === "function"
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+/** `source[key]` when `source` is an object, otherwise undefined. Reads GitHub JSON. */
+function field(source: unknown, key: string): unknown {
+	return isRecord(source) ? source[key] : undefined;
+}
+
+/** Like {@link field}, but only a string value counts. */
+function stringField(source: unknown, key: string): string | undefined {
+	const value = field(source, key);
+	return typeof value === "string" ? value : undefined;
+}
+
 /**
  * Builds the whole `Unreleased Commits` note: the commits as frontmatter (read by the
  * zk-project-commits script) plus a readable table. The note is rewritten on every refresh.
@@ -58,17 +87,21 @@ export function buildUnreleasedCommitsNote(input: {
 	};
 	const yaml = stringifyYaml(frontmatter);
 	const cell = (text: string) =>
-		text
-			.replace(/\r?\n/g, " ")
-			.replace(/\\/g, "\\\\")
-			.replace(/\|/g, "\\|");
+		text.replace(/\r?\n/g, " ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 	const lines = [`# ${UNRELEASED_COMMITS_NOTE}`, ""];
 	if (input.base === null) {
-		lines.push("No release yet, so there is nothing to compare. Rewritten on every Refresh.");
+		lines.push(
+			"No release yet, so there is nothing to compare. Rewritten on every Refresh."
+		);
 	} else {
-		lines.push(`Commits after ${input.base} on the default branch. Rewritten on every Refresh.`);
+		lines.push(
+			`Commits after ${input.base} on the default branch. Rewritten on every Refresh.`
+		);
 		if (input.truncated) {
-			lines.push("", `GitHub returned ${input.commits.length} of ${input.totalCommits} commits.`);
+			lines.push(
+				"",
+				`GitHub returned ${input.commits.length} of ${input.totalCommits} commits.`
+			);
 		}
 	}
 	lines.push("");
@@ -79,7 +112,9 @@ export function buildUnreleasedCommitsNote(input: {
 	} else {
 		lines.push("| sha | message | date | url |", "| --- | --- | --- | --- |");
 		for (const c of input.commits) {
-			lines.push(`| ${cell(c.sha.substring(0, 7))} | ${cell(c.message)} | ${cell(c.date)} | ${c.url ? `[open](${c.url})` : ""} |`);
+			lines.push(
+				`| ${cell(c.sha.substring(0, 7))} | ${cell(c.message)} | ${cell(c.date)} | ${c.url ? `[open](${c.url})` : ""} |`
+			);
 		}
 	}
 	return `---\n${yaml.endsWith("\n") ? yaml : yaml + "\n"}---\n${lines.join("\n")}\n`;
@@ -102,8 +137,8 @@ export class CodeProjectManager {
 		title: string,
 		baseType: NoteType,
 		subtype: string,
-		extraProps: Record<string, any> = {},
-		sections: NoteTemplateSection[] = [],
+		extraProps: Record<string, unknown> = {},
+		sections: NoteTemplateSection[] = []
 	): Promise<TFile> {
 		const config: NoteTemplateConfig = {
 			properties: {
@@ -118,7 +153,7 @@ export class CodeProjectManager {
 			filePath,
 			baseType,
 			title,
-			config,
+			config
 		);
 		// createByType seeds type defaults (e.g. url: "") and keeps them when applying the
 		// template, so values passed here would be dropped. Set them explicitly.
@@ -191,7 +226,10 @@ export class CodeProjectManager {
 		return await this.createDashboard(dashboardPath, safeName);
 	}
 
-	async createRequirement(projectFile: TFile, title: string): Promise<TFile> {
+	async createRequirement(
+		projectFile: TFile | TFolder,
+		title: string
+	): Promise<TFile> {
 		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
 		const folder = `${projectFolder}/requirements`;
 		await this.ensureFolder(folder);
@@ -211,7 +249,7 @@ export class CodeProjectManager {
 				status: "proposed",
 				priority: "medium",
 				release: "",
-			},
+			}
 		);
 	}
 
@@ -221,7 +259,7 @@ export class CodeProjectManager {
 	 */
 	async updateDashboardProperties(
 		filePath: string,
-		updates: { github_token_key?: string; public_repo?: boolean },
+		updates: { github_token_key?: string; public_repo?: boolean }
 	): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(filePath) as TFile;
 		if (!file) return;
@@ -231,19 +269,24 @@ export class CodeProjectManager {
 		if (!match) return;
 		const fmBlock = match[1];
 		const rest = content.slice(match[0].length);
-		const keysToUpdate = new Set(Object.keys(updates) as (keyof typeof updates)[]);
+		const values = new Map<string, string | boolean | undefined>(
+			Object.entries(updates)
+		);
+		const keysToUpdate = new Set(values.keys());
 		const lines = fmBlock.split(/\r?\n/);
 		const updated = new Set<string>();
 		const newLines: string[] = [];
 		for (const line of lines) {
 			const keyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$/);
-			if (keyMatch && keysToUpdate.has(keyMatch[1] as keyof typeof updates)) {
-				const key = keyMatch[1] as keyof typeof updates;
+			if (keyMatch && keysToUpdate.has(keyMatch[1])) {
+				const key = keyMatch[1];
 				updated.add(key);
-				const val = updates[key];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
-						typeof val === "boolean" ? `${key}: ${val}` : `${key}: ${String(val)}`,
+						typeof val === "boolean"
+							? `${key}: ${val}`
+							: `${key}: ${String(val)}`
 					);
 				} else {
 					newLines.push(line);
@@ -254,12 +297,12 @@ export class CodeProjectManager {
 		}
 		for (const key of keysToUpdate) {
 			if (!updated.has(key)) {
-				const val = updates[key as keyof typeof updates];
+				const val = values.get(key);
 				if (val !== undefined) {
 					newLines.push(
 						typeof val === "boolean"
 							? `${key}: ${val}`
-							: `${key}: ${String(val)}`,
+							: `${key}: ${String(val)}`
 					);
 				}
 			}
@@ -271,7 +314,10 @@ export class CodeProjectManager {
 	/**
 	 * Creates a code project dashboard using createNote() for unified entry.
 	 */
-	private async createDashboard(filePath: string, projectName: string): Promise<TFile> {
+	private async createDashboard(
+		filePath: string,
+		projectName: string
+	): Promise<TFile> {
 		const blockType = this.settings.dataviewCodeBlockType || "zettelkasten-query";
 		return await this.createNote(
 			filePath,
@@ -289,40 +335,24 @@ export class CodeProjectManager {
 				{
 					title: "Quick Actions",
 					level: 2,
-					content: [
-						"```" + blockType,
-						"zk-project-quick-actions",
-						"```",
-					],
+					content: ["```" + blockType, "zk-project-quick-actions", "```"],
 				},
 				{
 					title: "Requirements",
 					level: 2,
-					content: [
-						"```" + blockType,
-						"zk-project-requirements",
-						"```",
-					],
+					content: ["```" + blockType, "zk-project-requirements", "```"],
 				},
 				{
 					title: "Releases",
 					level: 2,
-					content: [
-						"```" + blockType,
-						"zk-project-releases",
-						"```",
-					],
+					content: ["```" + blockType, "zk-project-releases", "```"],
 				},
 				{
 					title: "Unreleased Commits",
 					level: 2,
-					content: [
-						"```" + blockType,
-						"zk-project-commits",
-						"```",
-					],
+					content: ["```" + blockType, "zk-project-commits", "```"],
 				},
-			],
+			]
 		);
 	}
 
@@ -334,9 +364,10 @@ export class CodeProjectManager {
 	async refreshProject(
 		projectFile: TFile,
 		tokenKey?: string,
-		options: RefreshOptions = {},
+		options: RefreshOptions = {}
 	): Promise<RefreshSummary> {
-		const cache = this.app.metadataCache.getFileCache(projectFile)?.frontmatter || {};
+		const cache =
+			this.app.metadataCache.getFileCache(projectFile)?.frontmatter || {};
 		const repo: string = cache.repo;
 		const defaultBranch: string = cache.defaultBranch || "trunk";
 		if (!repo || !repo.includes("/")) {
@@ -350,16 +381,22 @@ export class CodeProjectManager {
 		const isPublicRequest = tokenKey === "" || tokenKey === "(public)";
 		const resolvedKey = isPublicRequest
 			? ""
-			: (tokenKey !== undefined ? tokenKey : (cache.github_token_key || ""));
+			: tokenKey !== undefined
+				? tokenKey
+				: cache.github_token_key || "";
 
 		let token = "";
 		if (resolvedKey) {
-			const storage = (this.app as any).secretStorage;
-			if (!storage || typeof storage.getSecret !== "function") {
-				throw new Error("SecretStorage is not available in this Obsidian version.");
+			const storage =
+				"secretStorage" in this.app ? this.app.secretStorage : undefined;
+			if (!isSecretReader(storage)) {
+				throw new Error(
+					"SecretStorage is not available in this Obsidian version."
+				);
 			}
 			try {
-				token = (await storage.getSecret(resolvedKey)) || "";
+				const secret = await storage.getSecret(resolvedKey);
+				token = typeof secret === "string" ? secret : "";
 			} catch {
 				token = "";
 			}
@@ -367,7 +404,7 @@ export class CodeProjectManager {
 			// which turns a private repo into a confusing 404.
 			if (!token) {
 				throw new Error(
-					`No PAT found for key "${resolvedKey}". Set it in Settings, or mark the repo as Public.`,
+					`No PAT found for key "${resolvedKey}". Set it in Settings, or mark the repo as Public.`
 				);
 			}
 		}
@@ -380,17 +417,19 @@ export class CodeProjectManager {
 
 		const [owner, repoName] = repo.split("/");
 		const client = new GitHubClient(token);
-		let releases: any[];
+		let releases: unknown[];
 		try {
 			releases = (await client.listReleases(owner, repoName)) || [];
 		} catch (err) {
-			throw new Error(describeGitHubError(err, `Listing releases of ${repo}`, !!token, "repo"));
+			throw new Error(
+				describeGitHubError(err, `Listing releases of ${repo}`, !!token, "repo")
+			);
 		}
 
 		const projectFolder = projectFile.path.replace(/\/Dashboard\.md$/, "");
 		await this.ensureFolder(`${projectFolder}/releases`);
 
-		const latestRelease = releases[0];
+		const latestTag = stringField(releases[0], "tag_name");
 		for (const rel of releases) {
 			await this.upsertRelease(projectFolder, projectFile, rel);
 		}
@@ -398,65 +437,84 @@ export class CodeProjectManager {
 		let commits: UnreleasedCommit[] = [];
 		let totalCommits = 0;
 		let compareError: string | undefined;
-		let compare: any;
-		if (latestRelease?.tag_name) {
+		let compare: unknown;
+		if (latestTag) {
 			try {
 				compare = await client.compareCommits(
 					owner,
 					repoName,
-					latestRelease.tag_name,
-					defaultBranch,
+					latestTag,
+					defaultBranch
 				);
 			} catch (err) {
 				compareError =
 					`Synced ${releases.length} releases, but ` +
 					describeGitHubError(
 						err,
-						`comparing ${latestRelease.tag_name}...${defaultBranch}`,
+						`comparing ${latestTag}...${defaultBranch}`,
 						!!token,
-						"ref",
+						"ref"
 					);
 			}
 		}
 		if (compare) {
-			commits = (compare.commits || []).map((c: any) => ({
-				sha: String(c.sha ?? "").substring(0, 7),
-				message: String(c.commit?.message ?? "").split("\n")[0],
-				date: c.commit?.author?.date || "",
-				url: c.html_url || "",
+			const listed = field(compare, "commits") || [];
+			if (!Array.isArray(listed)) {
+				throw new TypeError("GitHub compare response has no commit list");
+			}
+			commits = listed.map((c: unknown) => ({
+				sha: String(field(c, "sha") ?? "").substring(0, 7),
+				message: String(field(field(c, "commit"), "message") ?? "").split(
+					"\n"
+				)[0],
+				date: stringField(field(field(c, "commit"), "author"), "date") || "",
+				url: stringField(c, "html_url") || "",
 			}));
-			totalCommits = Number(compare.total_commits ?? commits.length);
+			totalCommits = Number(field(compare, "total_commits") ?? commits.length);
 		}
 
 		// Rewritten as a whole each time (also when the comparison failed, so stale commits
 		// do not linger): the set of unreleased commits changes between refreshes.
-		await this.writeUnreleasedCommitsNote(projectFolder, buildUnreleasedCommitsNote({
-			project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
-			base: latestRelease?.tag_name ?? null,
-			refreshed: new Date().toISOString(),
-			totalCommits,
-			truncated: totalCommits > commits.length,
-			commits,
-			error: compareError,
-		}));
+		await this.writeUnreleasedCommitsNote(
+			projectFolder,
+			buildUnreleasedCommitsNote({
+				project: `[[${stripMdExtension(projectFile.path)}|Dashboard]]`,
+				base: latestTag ?? null,
+				refreshed: new Date().toISOString(),
+				totalCommits,
+				truncated: totalCommits > commits.length,
+				commits,
+				error: compareError,
+			})
+		);
 		if (compareError) {
 			throw new Error(compareError);
 		}
 
-		const legacyCommitNotes = await this.cleanUpLegacyCommitNotes(projectFile, projectFolder, options);
+		const legacyCommitNotes = await this.cleanUpLegacyCommitNotes(
+			projectFile,
+			projectFolder,
+			options
+		);
 		const summary: RefreshSummary = {
 			releases: releases.length,
 			unreleasedCommits: commits.length,
 			legacyCommitNotes,
 		};
-		const legacyHint = legacyCommitNotes > 0
-			? ` ${legacyCommitNotes} old notes in commits/ are no longer used.`
-			: "";
-		new Notice(`Synced ${summary.releases} releases, ${summary.unreleasedCommits} unreleased commits.${legacyHint}`);
+		const legacyHint =
+			legacyCommitNotes > 0
+				? ` ${legacyCommitNotes} old notes in commits/ are no longer used.`
+				: "";
+		new Notice(
+			`Synced ${summary.releases} releases, ${summary.unreleasedCommits} unreleased commits.${legacyHint}`
+		);
 		return summary;
 	}
 
-	private async writeUnreleasedCommitsNote(projectFolder: string, content: string): Promise<void> {
+	private async writeUnreleasedCommitsNote(
+		projectFolder: string,
+		content: string
+	): Promise<void> {
 		const path = `${projectFolder}/${UNRELEASED_COMMITS_NOTE}.md`;
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) {
@@ -474,10 +532,12 @@ export class CodeProjectManager {
 	private async cleanUpLegacyCommitNotes(
 		projectFile: TFile,
 		projectFolder: string,
-		options: RefreshOptions,
+		options: RefreshOptions
 	): Promise<number> {
 		const prefix = `${projectFolder}/commits/`;
-		const legacy = this.app.vault.getFiles().filter((f) => f.path.startsWith(prefix));
+		const legacy = this.app.vault
+			.getFiles()
+			.filter((f) => f.path.startsWith(prefix));
 		if (legacy.length === 0 || !options.confirmLegacyCleanup) return legacy.length;
 
 		const fm = this.app.metadataCache.getFileCache(projectFile)?.frontmatter ?? {};
@@ -489,10 +549,13 @@ export class CodeProjectManager {
 			});
 			return legacy.length;
 		}
-		const fileManager = this.app.fileManager as { trashFile?: (file: TFile) => Promise<void> };
+		// Optional here: older Obsidian versions do not have trashFile.
+		const fileManager: { trashFile?: (file: TFile) => Promise<void> } =
+			this.app.fileManager;
 		for (const file of legacy) {
 			// trashFile follows the user's "Deleted files" setting; older Obsidian lacks it.
-			if (typeof fileManager.trashFile === "function") await fileManager.trashFile(file);
+			if (typeof fileManager.trashFile === "function")
+				await fileManager.trashFile(file);
 			else await this.app.vault.trash(file, true);
 		}
 		return 0;
@@ -501,15 +564,16 @@ export class CodeProjectManager {
 	private async upsertRelease(
 		projectFolder: string,
 		projectFile: TFile,
-		release: any,
+		release: unknown
 	): Promise<void> {
-		const tag = release.tag_name;
+		const tag = stringField(release, "tag_name");
 		if (!tag) return;
 		const filePath = `${projectFolder}/releases/${tag}.md`;
 		const existing = this.app.vault.getAbstractFileByPath(filePath);
 
-		const releaseUrl = release.html_url ?? release.url ?? "";
-		const releaseDate = release.published_at ?? "";
+		const releaseUrl =
+			stringField(release, "html_url") ?? stringField(release, "url") ?? "";
+		const releaseDate = stringField(release, "published_at") ?? "";
 
 		if (existing instanceof TFile) {
 			// Update existing file, preserve id/create via processFrontMatter
@@ -536,9 +600,9 @@ export class CodeProjectManager {
 					{
 						title: "",
 						level: 0,
-						content: [release.body || ""],
+						content: [stringField(release, "body") || ""],
 					},
-				],
+				]
 			);
 		}
 	}
@@ -547,4 +611,3 @@ export class CodeProjectManager {
 		await this.app.workspace.getLeaf(false).openFile(file);
 	}
 }
-

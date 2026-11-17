@@ -7,12 +7,21 @@ import { App } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	rawFrontmatter,
 } from "../../../__mocks__/testHelpers";
 import { ResearchManager } from "../../../service/projects/researchManager";
 
-const KEPT_KEYS = ["project_id", "project_name", "status", "repo", "defaultBranch", "project_code", "granularity"];
+const KEPT_KEYS = [
+	"project_id",
+	"project_name",
+	"status",
+	"repo",
+	"defaultBranch",
+	"project_code",
+	"granularity",
+];
 
 describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 	let app: App;
@@ -20,7 +29,10 @@ describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 
 	beforeEach(() => {
 		app = createMockApp();
-		manager = new ResearchManager(app as any, createMockSettings({ researchRootPath: "Research" }));
+		manager = new ResearchManager(
+			asObsidianApp(app),
+			createMockSettings({ researchRootPath: "Research" })
+		);
 	});
 
 	afterEach(() => {
@@ -30,7 +42,7 @@ describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 	it("createProject writes a Dashboard without a created key", async () => {
 		const file = await manager.createProject("Thesis");
 
-		const fm = rawFrontmatter((app.vault as any)._getContent(file.path));
+		const fm = rawFrontmatter(app.vault._getContent(file.path));
 		expect(fm).not.toMatch(/^created:/m);
 		for (const key of KEPT_KEYS) {
 			expect(fm).toMatch(new RegExp(`^${key}:`, "m"));
@@ -42,7 +54,7 @@ describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 
 		const file = await manager.importExistingProject("Research/Imported");
 
-		const fm = rawFrontmatter((app.vault as any)._getContent(file.path));
+		const fm = rawFrontmatter(app.vault._getContent(file.path));
 		expect(fm).not.toMatch(/^created:/m);
 		expect(fm).toMatch(/^project_code:/m);
 	});

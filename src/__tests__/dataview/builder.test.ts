@@ -3,9 +3,8 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, clearVault } from "../../__mocks__/testHelpers";
+import { asObsidianApp, createMockApp, clearVault } from "../../__mocks__/testHelpers";
 import { DataviewJSManager } from "../../dataview/manager";
-import { DataviewScriptBuilder } from "../../dataview/builder";
 
 describe("DataviewScriptBuilder", () => {
 	let app: App;
@@ -14,7 +13,7 @@ describe("DataviewScriptBuilder", () => {
 
 	beforeEach(async () => {
 		app = createMockApp();
-		manager = new DataviewJSManager(app, scriptsFolder);
+		manager = new DataviewJSManager(asObsidianApp(app), scriptsFolder);
 		await manager.onload();
 	});
 
@@ -87,16 +86,16 @@ describe("DataviewScriptBuilder", () => {
 
 		it("should throw when name is missing", async () => {
 			const builder = manager.createScriptBuilder();
-			await expect(
-				builder.id("x").content("return 1;").build()
-			).rejects.toThrow("Script must have id, name, and content");
+			await expect(builder.id("x").content("return 1;").build()).rejects.toThrow(
+				"Script must have id, name, and content"
+			);
 		});
 
 		it("should throw when content is missing", async () => {
 			const builder = manager.createScriptBuilder();
-			await expect(
-				builder.id("x").name("X").build()
-			).rejects.toThrow("Script must have id, name, and content");
+			await expect(builder.id("x").name("X").build()).rejects.toThrow(
+				"Script must have id, name, and content"
+			);
 		});
 	});
 

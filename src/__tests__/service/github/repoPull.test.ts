@@ -11,7 +11,13 @@
  *   or the file name has a character Obsidian rejects (* " \ / < > : | ?).
  */
 
-import { generateRuleId, validatePullRule, selectPullFiles, resolvePullTarget } from "../../../service/github/repoPull";
+import {
+	generateRuleId,
+	validatePullRule,
+	selectPullFiles,
+	resolvePullTarget,
+} from "../../../service/github/repoPull";
+import type { GitHubContentEntry } from "../../../service/github/repoPull";
 import type { GithubPullRule } from "../../../types";
 
 const rule = (overrides: Partial<GithubPullRule> = {}): GithubPullRule => ({
@@ -24,7 +30,10 @@ const rule = (overrides: Partial<GithubPullRule> = {}): GithubPullRule => ({
 });
 
 /** Contents API directory entry. */
-const entry = (name: string, overrides: Record<string, any> = {}) => ({
+const entry = (
+	name: string,
+	overrides: Partial<GitHubContentEntry> = {}
+): GitHubContentEntry => ({
 	name,
 	path: `lit/papers/${name}`,
 	sha: "0".repeat(40),
@@ -85,7 +94,9 @@ describe("generateRuleId (B6)", () => {
 describe("validatePullRule (B6)", () => {
 	it("accepts a valid rule", () => {
 		expect(validatePullRule(rule())).toBeNull();
-		expect(validatePullRule(rule({ label: undefined, target: "materials" }))).toBeNull();
+		expect(
+			validatePullRule(rule({ label: undefined, target: "materials" }))
+		).toBeNull();
 		expect(validatePullRule(rule({ filePattern: ".*" }))).toBeNull();
 	});
 
@@ -131,40 +142,46 @@ describe("selectPullFiles (B6)", () => {
 			entry("d.pdf"),
 		];
 
-		const selected = selectPullFiles(entries as any, rule());
+		const selected = selectPullFiles(entries, rule());
 
-		expect(selected.map((e: any) => e.name)).toEqual(["a.pdf", "d.pdf"]);
+		expect(selected.map((e) => e.name)).toEqual(["a.pdf", "d.pdf"]);
 		expect(selected[0]).toEqual(entries[0]);
 	});
 
 	it("tests the pattern against the name without anchoring it", () => {
 		const entries = [entry("2026-report.md"), entry("notes.md"), entry("report")];
 
-		const selected = selectPullFiles(entries as any, rule({ filePattern: "report" }));
+		const selected = selectPullFiles(entries, rule({ filePattern: "report" }));
 
-		expect(selected.map((e: any) => e.name)).toEqual(["2026-report.md", "report"]);
+		expect(selected.map((e) => e.name)).toEqual(["2026-report.md", "report"]);
 	});
 
 	it("returns an empty list when nothing matches", () => {
-		expect(selectPullFiles([entry("a.txt")] as any, rule())).toEqual([]);
-		expect(selectPullFiles([] as any, rule())).toEqual([]);
+		expect(selectPullFiles([entry("a.txt")], rule())).toEqual([]);
+		expect(selectPullFiles([], rule())).toEqual([]);
 	});
 });
 
 describe("resolvePullTarget (B6)", () => {
 	it("joins project folder, target and file name", () => {
-		expect(resolvePullTarget("Research/P", "materials", "a.pdf")).toBe("Research/P/materials/a.pdf");
+		expect(resolvePullTarget("Research/P", "materials", "a.pdf")).toBe(
+			"Research/P/materials/a.pdf"
+		);
 		expect(resolvePullTarget("Research/P", "materials/papers", "Paper 1.pdf")).toBe(
 			"Research/P/materials/papers/Paper 1.pdf"
 		);
 	});
 
 	it("normalizes duplicate and trailing slashes", () => {
-		expect(resolvePullTarget("Research/P", "materials//papers/", "a.pdf")).toBe("Research/P/materials/papers/a.pdf");
+		expect(resolvePullTarget("Research/P", "materials//papers/", "a.pdf")).toBe(
+			"Research/P/materials/papers/a.pdf"
+		);
 	});
 
 	it("keeps non-ASCII file names", () => {
-		expect(resolvePullTarget("Research/P", "materials", "Grüße 研究.md")).toBe("Research/P/materials/Grüße 研究.md");
+		expect(resolvePullTarget("Research/P", "materials", "Grüße 研究.md")).toBe(
+			"Research/P/materials/Grüße 研究.md"
+		);
 	});
 
 	it.each(["..", "../P2", "../../x", "materials/../..", "materials/../../P2"])(
@@ -174,10 +191,17 @@ describe("resolvePullTarget (B6)", () => {
 		}
 	);
 
-	it.each(["a*b.pdf", 'a"b.pdf', "a\\b.pdf", "a/b.pdf", "a<b.pdf", "a>b.pdf", "a:b.pdf", "a|b.pdf", "a?b.pdf"])(
-		"returns null for a file name Obsidian rejects (%s)",
-		(fileName) => {
-			expect(resolvePullTarget("Research/P", "materials", fileName)).toBeNull();
-		}
-	);
+	it.each([
+		"a*b.pdf",
+		'a"b.pdf',
+		"a\\b.pdf",
+		"a/b.pdf",
+		"a<b.pdf",
+		"a>b.pdf",
+		"a:b.pdf",
+		"a|b.pdf",
+		"a?b.pdf",
+	])("returns null for a file name Obsidian rejects (%s)", (fileName) => {
+		expect(resolvePullTarget("Research/P", "materials", fileName)).toBeNull();
+	});
 });

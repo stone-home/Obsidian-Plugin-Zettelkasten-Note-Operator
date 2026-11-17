@@ -6,10 +6,12 @@
  */
 
 import {
+	asObsidianApp,
 	createMockApp,
 	createFakeDv,
 	createFakePage,
 	fakeLink,
+	readPath,
 	runDataviewScript,
 } from "../../__mocks__/testHelpers";
 import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
@@ -27,8 +29,12 @@ const basename = (p: string) => sansMd(p.split("/").pop() || "");
  * Like Obsidian: takes a bare linkpath (no #subpath, no |alias) and resolves it
  * by full path, path suffix or basename, with or without ".md".
  */
-function getFirstLinkpathDest(linkpath: string, _sourcePath: string): { path: string; basename: string; extension: string } | null {
-	if (typeof linkpath !== "string" || linkpath === "" || /[#|]/.test(linkpath)) return null;
+function getFirstLinkpathDest(
+	linkpath: string,
+	_sourcePath: string
+): { path: string; basename: string; extension: string } | null {
+	if (typeof linkpath !== "string" || linkpath === "" || /[#|]/.test(linkpath))
+		return null;
 	const target = sansMd(linkpath);
 	const hit =
 		VAULT_FILES.find((f) => sansMd(f) === target) ??
@@ -37,8 +43,11 @@ function getFirstLinkpathDest(linkpath: string, _sourcePath: string): { path: st
 	return hit ? { path: hit, basename: basename(hit), extension: "md" } : null;
 }
 
-const step = (name: string, objective?: any) =>
-	createFakePage(`${P}/steps/${name}.md`, objective === undefined ? { status: "todo" } : { objective, status: "todo" });
+const step = (name: string, objective?: unknown) =>
+	createFakePage(
+		`${P}/steps/${name}.md`,
+		objective === undefined ? { status: "todo" } : { objective, status: "todo" }
+	);
 
 const STEPS = [
 	step("s1 link to Foo", fakeLink(FOO, "TP - Foo")),
@@ -50,30 +59,55 @@ const STEPS = [
 	step("s7 no objective"),
 	step("s8 wikilink Foo Bar with heading", "[[TP - Foo Bar#Foo]]"),
 ];
-const FOO_STEPS = ["s1 link to Foo", "s3 wikilink Foo", "s5 wikilink Foo with heading and alias", "s6 full path with md"];
-const FOO_BAR_STEPS = ["s2 link to Foo Bar", "s4 wikilink Foo Bar with alias", "s8 wikilink Foo Bar with heading"];
+const FOO_STEPS = [
+	"s1 link to Foo",
+	"s3 wikilink Foo",
+	"s5 wikilink Foo with heading and alias",
+	"s6 full path with md",
+];
+const FOO_BAR_STEPS = [
+	"s2 link to Foo Bar",
+	"s4 wikilink Foo Bar with alias",
+	"s8 wikilink Foo Bar with heading",
+];
 
-const PAGES = [createFakePage(FOO, { status: "active" }), createFakePage(FOO_BAR, { status: "active" }), createFakePage(DASHBOARD), ...STEPS];
+const PAGES = [
+	createFakePage(FOO, { status: "active" }),
+	createFakePage(FOO_BAR, { status: "active" }),
+	createFakePage(DASHBOARD),
+	...STEPS,
+];
 
-function cellName(cell: any): string {
-	if (cell && typeof cell === "object" && typeof cell.path === "string") return basename(cell.path);
+function cellName(cell: unknown): string {
+	const path = readPath(cell, "path");
+	if (typeof path === "string") return basename(path);
 	const s = String(cell);
 	const m = s.match(/^\[\[([^|\]#]+)/);
 	return m ? basename(m[1]) : s;
 }
 
-async function run(currentPath: string, input: Record<string, any> = {}) {
+/** The built-in default content of a script; fails the test when there is none. */
+function defaultContentOf(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No default content for ${id}`);
+	return content;
+}
+
+async function run(currentPath: string, input: Record<string, unknown> = {}) {
 	const { dv, out } = createFakeDv({
 		currentPath,
 		pages: PAGES,
 		app: { metadataCache: { getFirstLinkpathDest } },
 	});
-	await runDataviewScript(getDefaultScriptContent("zk-research-objective-steps")!, dv, input);
+	await runDataviewScript(defaultContentOf("zk-research-objective-steps"), dv, input);
 	return out;
 }
 
 beforeAll(async () => {
-	await new DataviewJSManager(createMockApp() as any, "dataview-scripts").onload();
+	await new DataviewJSManager(
+		asObsidianApp(createMockApp()),
+		"dataview-scripts"
+	).onload();
 });
 
 describe("zk-research-objective-steps (D1)", () => {

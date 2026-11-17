@@ -17,7 +17,7 @@ export class ConfirmModal extends Modal {
 	constructor(
 		app: App,
 		private readonly options: ConfirmOptions,
-		private readonly onResult: (confirmed: boolean) => void,
+		private readonly onResult: (confirmed: boolean) => void
 	) {
 		super(app);
 	}
@@ -35,7 +35,9 @@ export class ConfirmModal extends Modal {
 			this.settle(true);
 			this.close();
 		});
-		const cancelBtn = buttons.createEl("button", { text: this.options.cancelText ?? "Cancel" });
+		const cancelBtn = buttons.createEl("button", {
+			text: this.options.cancelText ?? "Cancel",
+		});
 		cancelBtn.addEventListener("click", () => {
 			this.settle(false);
 			this.close();

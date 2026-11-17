@@ -2,16 +2,9 @@
  * Tests for DataviewJSManager
  */
 
-import { App, TFile } from "../../__mocks__/obsidian";
-import {
-	createMockApp,
-	clearVault,
-	populateVault,
-} from "../../__mocks__/testHelpers";
-import {
-	DataviewJSManager,
-	getDefaultScriptContent,
-} from "../../dataview/manager";
+import { App } from "../../__mocks__/obsidian";
+import { asObsidianApp, createMockApp, clearVault } from "../../__mocks__/testHelpers";
+import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
 
 describe("DataviewJSManager", () => {
 	let app: App;
@@ -20,7 +13,7 @@ describe("DataviewJSManager", () => {
 
 	beforeEach(() => {
 		app = createMockApp();
-		manager = new DataviewJSManager(app, scriptsFolder);
+		manager = new DataviewJSManager(asObsidianApp(app), scriptsFolder);
 	});
 
 	afterEach(() => {
@@ -44,7 +37,10 @@ describe("DataviewJSManager", () => {
 		});
 
 		it("should use custom scripts folder path", async () => {
-			const customManager = new DataviewJSManager(app, "custom/scripts");
+			const customManager = new DataviewJSManager(
+				asObsidianApp(app),
+				"custom/scripts"
+			);
 			await customManager.onload();
 
 			const folder = app.vault.getAbstractFileByPath("custom/scripts");
@@ -250,9 +246,7 @@ describe("DataviewJSManager", () => {
 
 			await manager.onload();
 
-			const content = (app.vault as any)._getContent(
-				`${scriptsFolder}/user-custom.js`
-			);
+			const content = app.vault._getContent(`${scriptsFolder}/user-custom.js`);
 			expect(content).toBe("// user content");
 		});
 	});
@@ -321,9 +315,7 @@ describe("DataviewJSManager", () => {
 		});
 
 		it("should set error text when script not found", async () => {
-			const el = document.createElement("div") as HTMLElement & {
-				setText?(s: string): void;
-			};
+			const el = document.createElement("div");
 			el.setText = (s: string) => {
 				el.textContent = s;
 			};
@@ -332,48 +324,54 @@ describe("DataviewJSManager", () => {
 		});
 
 		it("should set error text when Dataview plugin not available", async () => {
-			const el = document.createElement("div") as HTMLElement & {
-				setText?(s: string): void;
-			};
+			const el = document.createElement("div");
 			el.setText = (s: string) => {
 				el.textContent = s;
 			};
-			(app as any).plugins = { plugins: {} };
+			app.plugins = { plugins: {} };
 			await manager.executeScript("zk-research-quick-actions", el, {});
 			expect(el.textContent).toContain("Dataview");
 		});
 
 		it("should call executeJs when Dataview API available", async () => {
-			const el = document.createElement("div") as HTMLElement & {
-				setText?(s: string): void;
-			};
+			const el = document.createElement("div");
 			el.setText = (s: string) => {
 				el.textContent = s;
 			};
 			const executeJs = jest.fn().mockResolvedValue(undefined);
-			(app as any).plugins = {
+			app.plugins = {
 				plugins: {
 					dataview: { api: { executeJs } },
 				},
 			};
-			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			await manager.executeScript(
+				"zk-research-quick-actions",
+				el,
+				{},
+				{ sourcePath: "test.md" }
+			);
 			expect(executeJs).toHaveBeenCalled();
 		});
 
 		it("should set error text when executeJs rejects", async () => {
-			const el = document.createElement("div") as HTMLElement & {
-				setText?(s: string): void;
-			};
+			const el = document.createElement("div");
 			el.setText = (s: string) => {
 				el.textContent = s;
 			};
-			const executeJs = jest.fn().mockRejectedValue(new Error("Dataview execution failed"));
-			(app as any).plugins = {
+			const executeJs = jest
+				.fn()
+				.mockRejectedValue(new Error("Dataview execution failed"));
+			app.plugins = {
 				plugins: {
 					dataview: { api: { executeJs } },
 				},
 			};
-			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			await manager.executeScript(
+				"zk-research-quick-actions",
+				el,
+				{},
+				{ sourcePath: "test.md" }
+			);
 			expect(el.textContent).toContain("Error:");
 			expect(el.textContent).toContain("Dataview execution failed");
 		});
@@ -395,7 +393,7 @@ describe("DataviewJSManager", () => {
 			);
 			const script = manager.getScript("zk-research-quick-actions");
 			expect(script?.name).toBe("Overwritten");
-			const content = (app.vault as any)._getContent(
+			const content = app.vault._getContent(
 				`${scriptsFolder}/zk-research-quick-actions.js`
 			);
 			expect(content).toContain("return 42;");
@@ -421,7 +419,9 @@ describe("DataviewJSManager", () => {
 			expect(manager.getScripts().length).toBeGreaterThan(0);
 			manager.setScriptsFolder("other-folder");
 			expect(manager.getScripts().length).toBe(0);
-			expect(manager.getScriptContent("zk-research-quick-actions")).toBeUndefined();
+			expect(
+				manager.getScriptContent("zk-research-quick-actions")
+			).toBeUndefined();
 		});
 	});
 
@@ -436,7 +436,7 @@ describe("DataviewJSManager", () => {
 			const content = manager.getScriptContent("zk-research-quick-actions");
 			expect(content).toBeDefined();
 			expect(typeof content).toBe("string");
-			expect(content!.length).toBeGreaterThan(0);
+			expect(content?.length).toBeGreaterThan(0);
 		});
 
 		it("should return undefined for unknown id", () => {
@@ -450,7 +450,7 @@ describe("DataviewJSManager", () => {
 describe("getDefaultScriptContent", () => {
 	beforeAll(async () => {
 		const app = createMockApp();
-		const m = new DataviewJSManager(app, "dataview-scripts");
+		const m = new DataviewJSManager(asObsidianApp(app), "dataview-scripts");
 		await m.onload();
 	});
 

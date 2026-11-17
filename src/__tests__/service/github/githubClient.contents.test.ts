@@ -13,21 +13,29 @@ import {
 	getHeader,
 	githubFileRoute,
 	mockGitHubApi,
+	readPath,
 	requestedCalls,
 	toArrayBuffer,
 } from "../../../__mocks__/testHelpers";
 import { GitHubClient } from "../../../service/github/githubClient";
 
-interface ContentsCapable {
-	listDirectory(owner: string, repo: string, path: string, ref: string): Promise<any[]>;
-	downloadRaw(owner: string, repo: string, path: string, ref: string): Promise<ArrayBuffer>;
-}
-
-const client = (token: string) => new GitHubClient(token) as unknown as ContentsCapable;
+const client = (token: string) => new GitHubClient(token);
 
 const LISTING = [
-	{ name: "a.pdf", path: "my dir/sub/a.pdf", type: "file", sha: "1".repeat(40), download_url: "https://raw/x" },
-	{ name: "deeper", path: "my dir/sub/deeper", type: "dir", sha: "2".repeat(40), download_url: null },
+	{
+		name: "a.pdf",
+		path: "my dir/sub/a.pdf",
+		type: "file",
+		sha: "1".repeat(40),
+		download_url: "https://raw/x",
+	},
+	{
+		name: "deeper",
+		path: "my dir/sub/deeper",
+		type: "dir",
+		sha: "2".repeat(40),
+		download_url: null,
+	},
 ];
 
 describe("GitHubClient.listDirectory (B6)", () => {
@@ -37,7 +45,9 @@ describe("GitHubClient.listDirectory (B6)", () => {
 		await client("tok").listDirectory("octo", "notes", "my dir/sub", "feat/x");
 
 		const [call] = requestedCalls();
-		expect(call.url).toBe("https://api.github.com/repos/octo/notes/contents/my%20dir/sub?ref=feat%2Fx");
+		expect(call.url).toBe(
+			"https://api.github.com/repos/octo/notes/contents/my%20dir/sub?ref=feat%2Fx"
+		);
 		expect(call.method).toBe("GET");
 	});
 
@@ -54,7 +64,9 @@ describe("GitHubClient.listDirectory (B6)", () => {
 	it("resolves to the listing array", async () => {
 		mockGitHubApi({ "/repos/octo/notes/contents/my dir/sub": { json: LISTING } });
 
-		await expect(client("tok").listDirectory("octo", "notes", "my dir/sub", "main")).resolves.toEqual(LISTING);
+		await expect(
+			client("tok").listDirectory("octo", "notes", "my dir/sub", "main")
+		).resolves.toEqual(LISTING);
 	});
 
 	it("sends the PAT when there is one and no Authorization header without one", async () => {
@@ -76,29 +88,50 @@ describe("GitHubClient.listDirectory (B6)", () => {
 			.catch((e) => e);
 
 		expect(err).toBeInstanceOf(Error);
-		expect((err as { status?: number }).status).toBe(404);
+		expect(readPath(err, "status")).toBe(404);
 	});
 });
 
 describe("GitHubClient.downloadRaw (B6)", () => {
-	const BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0xff, 0x00, 0xfe, 0x80, 0x0a]);
+	const BYTES = new Uint8Array([
+		0x25, 0x50, 0x44, 0x46, 0xff, 0x00, 0xfe, 0x80, 0x0a,
+	]);
 
 	it("GETs the encoded contents URL with the raw media type", async () => {
-		mockGitHubApi({ "/repos/octo/notes/contents/lit/A paper.pdf": githubFileRoute(BYTES, "lit/A paper.pdf") });
+		mockGitHubApi({
+			"/repos/octo/notes/contents/lit/A paper.pdf": githubFileRoute(
+				BYTES,
+				"lit/A paper.pdf"
+			),
+		});
 
 		await client("tok").downloadRaw("octo", "notes", "lit/A paper.pdf", "feat/x");
 
 		const [call] = requestedCalls();
-		expect(call.url).toBe("https://api.github.com/repos/octo/notes/contents/lit/A%20paper.pdf?ref=feat%2Fx");
+		expect(call.url).toBe(
+			"https://api.github.com/repos/octo/notes/contents/lit/A%20paper.pdf?ref=feat%2Fx"
+		);
 		expect(call.method).toBe("GET");
-		expect(getHeader(call.headers, "Accept")).toBe("application/vnd.github.raw+json");
+		expect(getHeader(call.headers, "Accept")).toBe(
+			"application/vnd.github.raw+json"
+		);
 		expect(getHeader(call.headers, "Authorization")).toBe("Bearer tok");
 	});
 
 	it("resolves to the exact bytes from the response arrayBuffer", async () => {
-		mockGitHubApi({ "/repos/octo/notes/contents/lit/A paper.pdf": githubFileRoute(BYTES, "lit/A paper.pdf") });
+		mockGitHubApi({
+			"/repos/octo/notes/contents/lit/A paper.pdf": githubFileRoute(
+				BYTES,
+				"lit/A paper.pdf"
+			),
+		});
 
-		const result = await client("tok").downloadRaw("octo", "notes", "lit/A paper.pdf", "main");
+		const result = await client("tok").downloadRaw(
+			"octo",
+			"notes",
+			"lit/A paper.pdf",
+			"main"
+		);
 
 		expect(result).toBeInstanceOf(ArrayBuffer);
 		expect(Buffer.from(result).equals(Buffer.from(BYTES))).toBe(true);
@@ -106,7 +139,7 @@ describe("GitHubClient.downloadRaw (B6)", () => {
 
 	it("returns the arrayBuffer even when the bytes are not text", async () => {
 		const buffer = toArrayBuffer(new Uint8Array([0xc3, 0x28, 0xa0, 0xa1]));
-		(requestUrl as jest.Mock).mockResolvedValue({
+		requestUrl.mockResolvedValue({
 			status: 200,
 			headers: {},
 			text: "�(��",
@@ -114,18 +147,28 @@ describe("GitHubClient.downloadRaw (B6)", () => {
 			arrayBuffer: buffer,
 		});
 
-		const result = await client("tok").downloadRaw("octo", "notes", "bin/x.dat", "main");
+		const result = await client("tok").downloadRaw(
+			"octo",
+			"notes",
+			"bin/x.dat",
+			"main"
+		);
 
 		expect(Buffer.from(result).equals(Buffer.from(buffer))).toBe(true);
 	});
 
 	it("lets HTTP errors propagate with their status", async () => {
-		mockGitHubApi({ "/repos/octo/notes/contents/lit/a.pdf": { status: 403, json: { message: "Forbidden" } } });
+		mockGitHubApi({
+			"/repos/octo/notes/contents/lit/a.pdf": {
+				status: 403,
+				json: { message: "Forbidden" },
+			},
+		});
 
 		const err = await client("tok")
 			.downloadRaw("octo", "notes", "lit/a.pdf", "main")
 			.catch((e) => e);
 
-		expect((err as { status?: number }).status).toBe(403);
+		expect(readPath(err, "status")).toBe(403);
 	});
 });

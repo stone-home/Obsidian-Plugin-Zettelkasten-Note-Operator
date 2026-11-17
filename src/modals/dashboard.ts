@@ -1,15 +1,15 @@
-import { App, Modal, Notice, setIcon, TFolder, FuzzySuggestModal } from 'obsidian';
-import { NoteTypeMap, INoteFrontmatter } from "markdown-note-orm"
-import type { NoteFactory } from '../service/factory';
-import {INoteOption, INoteOptionExtraParams, ZettelkastenSettings} from '../types';
-import { DEFAULT_NOTE_CATEGORIES } from "../constants"
-import { Logger } from '../logger';
-import { stripMdExtension } from '../utils/path';
-import { TemplateGridModal } from './template';
-import { FileNameModal } from './filename';
-import { ResearchProjectsModal } from './researchProjectsModal';
-import { CodeProjectsModal } from './codeProjectsModal';
-import { SearchModal } from './searchModal';
+import { App, Modal, Notice, setIcon, TFolder, FuzzySuggestModal } from "obsidian";
+import { NoteTypeMap, INoteFrontmatter, isValidNoteType } from "markdown-note-orm";
+import type { NoteFactory } from "../service/factory";
+import { INoteOption, ZettelkastenSettings } from "../types";
+import { DEFAULT_NOTE_CATEGORIES } from "../constants";
+import { Logger } from "../logger";
+import { stripMdExtension } from "../utils/path";
+import { TemplateGridModal } from "./template";
+import { FileNameModal } from "./filename";
+import { ResearchProjectsModal } from "./researchProjectsModal";
+import { CodeProjectsModal } from "./codeProjectsModal";
+import { SearchModal } from "./searchModal";
 
 export type OnNoteCreateCallback = (
 	option: INoteOption,
@@ -28,7 +28,7 @@ class FolderFuzzyModal extends FuzzySuggestModal<TFolder> {
 		super(app);
 		this.rootPath = rootPath;
 		this.onSelect = onSelect;
-		this.setPlaceholder(`Move to folder in: ${rootPath || 'Root'}...`);
+		this.setPlaceholder(`Move to folder in: ${rootPath || "Root"}...`);
 	}
 
 	getItems(): TFolder[] {
@@ -38,10 +38,12 @@ class FolderFuzzyModal extends FuzzySuggestModal<TFolder> {
 		return allFiles.filter((f): f is TFolder => {
 			if (!(f instanceof TFolder)) return false;
 
-			const normalizedRoot = this.rootPath ? this.rootPath.replace(/\/$/, '') : '';
+			const normalizedRoot = this.rootPath
+				? this.rootPath.replace(/\/$/, "")
+				: "";
 			if (!normalizedRoot) return true; // If root setting is empty, allow all
 
-			return f.path === normalizedRoot || f.path.startsWith(normalizedRoot + '/');
+			return f.path === normalizedRoot || f.path.startsWith(normalizedRoot + "/");
 		});
 	}
 
@@ -54,10 +56,9 @@ class FolderFuzzyModal extends FuzzySuggestModal<TFolder> {
 	}
 }
 
-
 export class Dashboard extends Modal {
 	private settings: ZettelkastenSettings;
-	private logger = Logger.createLogger('ZettelkastenModal');
+	private logger = Logger.createLogger("ZettelkastenModal");
 	private onComplete: OnNoteCreateCallback;
 	private factory: NoteFactory; // [NEW] 持有 Factory 引用
 
@@ -74,12 +75,12 @@ export class Dashboard extends Modal {
 	}
 
 	async onOpen() {
-		this.modalEl.addClass('zettelkasten-modal-container');
+		this.modalEl.addClass("zettelkasten-modal-container");
 		const { contentEl } = this;
-		contentEl.addClass('zettelkasten-dashboard-content');
+		contentEl.addClass("zettelkasten-dashboard-content");
 
-		const header = contentEl.createDiv('dashboard-header');
-		header.createEl('h2', { text: 'Zettelkasten Control', cls: 'modal-title' });
+		const header = contentEl.createDiv("dashboard-header");
+		header.createEl("h2", { text: "Zettelkasten Control", cls: "modal-title" });
 
 		this.renderQuickAccess(contentEl);
 		this.renderNewNoteSection(contentEl);
@@ -88,31 +89,31 @@ export class Dashboard extends Modal {
 	}
 
 	private renderQuickAccess(container: HTMLElement) {
-		const section = container.createDiv('dashboard-section quick-access-section');
-		const header = section.createDiv('section-header');
-		header.createEl('h3', { text: 'Quick Actions' });
+		const section = container.createDiv("dashboard-section quick-access-section");
+		const header = section.createDiv("section-header");
+		header.createEl("h3", { text: "Quick Actions" });
 
-		const buttonGroup = section.createDiv('quick-access-grid');
+		const buttonGroup = section.createDiv("quick-access-grid");
 		const buttons = [
 			{
-				label: 'Search',
-				icon: 'search',
+				label: "Search",
+				icon: "search",
 				callback: () => {
 					this.close();
 					new SearchModal(this.app, this.settings, this.factory).open();
 				},
 			},
 			{
-				label: 'Research',
-				icon: 'atom',
+				label: "Research",
+				icon: "atom",
 				callback: async () => {
 					this.close();
 					new ResearchProjectsModal(this.app, this.settings).open();
 				},
 			},
 			{
-				label: 'Projects',
-				icon: 'folder-tree',
+				label: "Projects",
+				icon: "folder-tree",
 				callback: async () => {
 					this.close();
 					new CodeProjectsModal(this.app, this.settings).open();
@@ -121,33 +122,37 @@ export class Dashboard extends Modal {
 		];
 
 		buttons.forEach(({ label, icon, callback }) => {
-			const buttonEl = buttonGroup.createEl('div', {
-				cls: 'quick-access-btn',
-				attr: { 'aria-label': label },
+			const buttonEl = buttonGroup.createEl("div", {
+				cls: "quick-access-btn",
+				attr: { "aria-label": label },
 			});
-			const iconContainer = buttonEl.createSpan('btn-icon');
+			const iconContainer = buttonEl.createSpan("btn-icon");
 			setIcon(iconContainer, icon);
-			buttonEl.createSpan({ text: label, cls: 'btn-label' });
+			buttonEl.createSpan({ text: label, cls: "btn-label" });
 
-			buttonEl.addEventListener('click', async () => {
+			buttonEl.addEventListener("click", async () => {
 				await callback();
 			});
 		});
 	}
 
-	private renderCategoryGrid(container: HTMLElement, types: (keyof NoteTypeMap)[], noteExtraParams?: INoteFrontmatter) {
-		const grid = container.createDiv('note-type-grid');
+	private renderCategoryGrid(
+		container: HTMLElement,
+		types: (keyof NoteTypeMap)[],
+		noteExtraParams?: INoteFrontmatter
+	) {
+		const grid = container.createDiv("note-type-grid");
 
 		types.forEach((nType) => {
 			const category = DEFAULT_NOTE_CATEGORIES[nType];
 
-			const card = grid.createEl('div', {
+			const card = grid.createEl("div", {
 				cls: `note-type-card ${category.className}`,
 			});
 
-			const iconWrapper = card.createDiv('card-icon-wrapper');
+			const iconWrapper = card.createDiv("card-icon-wrapper");
 			setIcon(iconWrapper, category.icon);
-			card.createDiv({ text: category.label, cls: 'card-label' });
+			card.createDiv({ text: category.label, cls: "card-label" });
 
 			card.onclick = () => {
 				new TemplateGridModal(
@@ -155,37 +160,43 @@ export class Dashboard extends Modal {
 					nType,
 					this.settings.createNoteOptions,
 					(selectedOption) => {
-						new FileNameModal(this.app, selectedOption.specificFolder, async (title) => {
-							try {
-								// Do not mutate selectedOption (templates in settings). Build a one-off option
-								// so Upgrade gets sources for this create only, and Create New Note always gets sources: [].
-								const optionToPass = noteExtraParams
-									? {
-											...selectedOption,
-											extraInfo: {
-												...selectedOption.extraInfo,
-												properties: {
-													...selectedOption.extraInfo?.properties,
-													...noteExtraParams?.properties,
+						new FileNameModal(
+							this.app,
+							selectedOption.specificFolder,
+							async (title) => {
+								try {
+									// Do not mutate selectedOption (templates in settings). Build a one-off option
+									// so Upgrade gets sources for this create only, and Create New Note always gets sources: [].
+									const optionToPass = noteExtraParams
+										? {
+												...selectedOption,
+												extraInfo: {
+													...selectedOption.extraInfo,
+													properties: {
+														...selectedOption.extraInfo
+															?.properties,
+														...noteExtraParams?.properties,
+													},
 												},
-											},
-										}
-									: {
-											...selectedOption,
-											extraInfo: {
-												...selectedOption.extraInfo,
-												properties: {
-													...selectedOption.extraInfo?.properties,
-													sources: [] as string[],
+											}
+										: {
+												...selectedOption,
+												extraInfo: {
+													...selectedOption.extraInfo,
+													properties: {
+														...selectedOption.extraInfo
+															?.properties,
+														sources: [],
+													},
 												},
-											},
-										};
-								await this.onComplete(optionToPass, title);
-								this.close();
-							} catch (e) {
-								this.logger.error('Error creating note', e);
+											};
+									await this.onComplete(optionToPass, title);
+									this.close();
+								} catch (e) {
+									this.logger.error("Error creating note", e);
+								}
 							}
-						}).open();
+						).open();
 					}
 				).open();
 			};
@@ -193,34 +204,39 @@ export class Dashboard extends Modal {
 	}
 
 	private renderNewNoteSection(container: HTMLElement): void {
-		const section = container.createDiv('dashboard-section new-note-section');
+		const section = container.createDiv("dashboard-section new-note-section");
 
-		const header = section.createDiv('section-header');
-		header.createEl('h3', { text: 'Create New Note' });
-		header.createEl('span', { text: 'Select type', cls: 'section-subtitle' });
+		const header = section.createDiv("section-header");
+		header.createEl("h3", { text: "Create New Note" });
+		header.createEl("span", { text: "Select type", cls: "section-subtitle" });
 
 		// Get all keys from DEFAULT_NOTE_CATEGORIES
-		const allTypes = Object.keys(DEFAULT_NOTE_CATEGORIES) as (keyof NoteTypeMap)[];
+		const allTypes = Object.keys(DEFAULT_NOTE_CATEGORIES).filter(isValidNoteType);
 
 		// Reuse the logic
 		this.renderCategoryGrid(section, allTypes);
 	}
 
 	private async renderUpgradeSection(container: HTMLElement): Promise<void> {
-
 		const activeNote = await this.factory.loadActiveNote();
 		if (activeNote) {
-			const currentType =
-				activeNote.properties.get('type') || ('fleeting' as keyof NoteTypeMap);
+			const currentType = activeNote.properties.get("type") || "fleeting";
 
 			// Notes such as type: run / objective have no upgrade path; say so instead of failing.
-			if (!Object.prototype.hasOwnProperty.call(DEFAULT_NOTE_CATEGORIES, currentType)) {
-				const section = container.createDiv('dashboard-section new-note-section');
-				const header = section.createDiv('section-header');
-				header.createEl('h3', { text: 'Upgrade' });
-				section.createEl('p', {
+			if (
+				!Object.prototype.hasOwnProperty.call(
+					DEFAULT_NOTE_CATEGORIES,
+					currentType
+				)
+			) {
+				const section = container.createDiv(
+					"dashboard-section new-note-section"
+				);
+				const header = section.createDiv("section-header");
+				header.createEl("h3", { text: "Upgrade" });
+				section.createEl("p", {
 					text: `This note type (${String(currentType)}) is not in the upgrade range.`,
-					cls: 'section-subtitle',
+					cls: "section-subtitle",
 				});
 				return;
 			}
@@ -230,67 +246,69 @@ export class Dashboard extends Modal {
 			// Only render if there are upgrade paths
 			if (!upgradePathList || upgradePathList.length === 0) return;
 
-			const section = container.createDiv('dashboard-section new-note-section');
-			const header = section.createDiv('section-header');
-			header.createEl('h3', { text: 'Upgrade' });
-			header.createEl('span', { text: 'Select type', cls: 'section-subtitle' });
+			const section = container.createDiv("dashboard-section new-note-section");
+			const header = section.createDiv("section-header");
+			header.createEl("h3", { text: "Upgrade" });
+			header.createEl("span", { text: "Select type", cls: "section-subtitle" });
 
 			// Reuse the logic with the specific list
-			this.renderCategoryGrid(
-				section,
-				upgradePathList,
-				{
-					properties: {
-						sources: [
-							`[[${stripMdExtension(activeNote.title)}]]`
-						]
-					}
-				}
-			);
+			this.renderCategoryGrid(section, upgradePathList, {
+				properties: {
+					sources: [`[[${stripMdExtension(activeNote.title)}]]`],
+				},
+			});
 		}
 	}
 
 	private async renderActiveNoteSection(container: HTMLElement): Promise<void> {
-		const section = container.createDiv('dashboard-section active-note-section');
+		const section = container.createDiv("dashboard-section active-note-section");
 
-		const headerRow = section.createDiv('section-header-row');
-		headerRow.createEl('h3', { text: 'Active Context' });
+		const headerRow = section.createDiv("section-header-row");
+		headerRow.createEl("h3", { text: "Active Context" });
 
-		const infoCard = section.createDiv('info-card');
+		const infoCard = section.createDiv("info-card");
 		const activeNote = await this.factory.loadActiveNote();
-		const moveButton = headerRow.createEl('button', {
-			cls: 'clickable-icon',
-			attr: { 'aria-label': 'Move Note' },
+		const moveButton = headerRow.createEl("button", {
+			cls: "clickable-icon",
+			attr: { "aria-label": "Move Note" },
 		});
-		setIcon(moveButton, 'folder-input');
-		moveButton.addEventListener('click', async () => {
+		setIcon(moveButton, "folder-input");
+		moveButton.addEventListener("click", async () => {
 			const activeNote = await this.factory.loadActiveNote();
 			if (!activeNote) {
-				new Notice('No active note to move.');
+				new Notice("No active note to move.");
 				return;
 			}
 
 			const activeFile = this.app.workspace.getActiveFile();
-			if (!activeFile || activeFile.extension !== 'md') {
-				new Notice('No active note to move.');
+			if (!activeFile || activeFile.extension !== "md") {
+				new Notice("No active note to move.");
 				return;
 			}
 
 			// 1. Get current type (handle lowercase as requested)
-			const rawType = activeNote.properties.get('type') as string;
-			const currentType = (rawType ? rawType.toLowerCase() : 'fleeting') as keyof NoteTypeMap;
+			const rawType = activeNote.properties.get("type");
+			const currentType = rawType ? rawType.toLowerCase() : "fleeting";
 
 			// 2. Determine allowed Root Path based on Settings
-			let allowedRoot = '';
+			let allowedRoot = "";
 			switch (currentType) {
-				case 'fleeting': allowedRoot = this.settings.fleetingPath; break;
-				case 'literature': allowedRoot = this.settings.literaturePath; break;
-				case 'permanent': allowedRoot = this.settings.permanentPath; break;
-				case 'atom': allowedRoot = this.settings.atomPath; break;
+				case "fleeting":
+					allowedRoot = this.settings.fleetingPath;
+					break;
+				case "literature":
+					allowedRoot = this.settings.literaturePath;
+					break;
+				case "permanent":
+					allowedRoot = this.settings.permanentPath;
+					break;
+				case "atom":
+					allowedRoot = this.settings.atomPath;
+					break;
 				default:
 					// Fallback: If type is unknown, maybe allow root? or warn?
 					// For safety, defaulting to fleetingPath or root if undefined
-					allowedRoot = this.settings.fleetingPath || '';
+					allowedRoot = this.settings.fleetingPath || "";
 					break;
 			}
 
@@ -309,44 +327,45 @@ export class Dashboard extends Modal {
 					this.contentEl.empty();
 					this.onOpen();
 				} catch (e) {
-					this.logger.error('Failed to move note', e);
-					new Notice('Move failed.');
+					this.logger.error("Failed to move note", e);
+					new Notice("Move failed.");
 				}
 			}).open();
 		});
 
 		if (activeNote) {
-			this.renderInfoRow(infoCard, 'Name:', activeNote.title);
+			this.renderInfoRow(infoCard, "Name:", activeNote.title);
 			this.renderInfoRow(
 				infoCard,
-				'Type:',
-				`${activeNote.properties.get('type') || 'Unknown'}`
+				"Type:",
+				`${activeNote.properties.get("type") || "Unknown"}`
 			);
 
-			const tags = (activeNote.properties.get('tags') as string[]) || [];
-			this.renderInfoRow(
-				infoCard,
-				'Tags:',
-				tags.length > 0 ? tags.join(', ') : 'None'
-			);
+			const tags: unknown = activeNote.properties.get("tags");
+			const tagText =
+				Array.isArray(tags) && tags.length > 0
+					? tags.join(", ")
+					: typeof tags === "string" && tags
+						? tags
+						: "None";
+			this.renderInfoRow(infoCard, "Tags:", tagText);
 		} else {
-			const emptyState = infoCard.createDiv('zk-active-empty');
-			setIcon(emptyState, 'file-minus');
+			const emptyState = infoCard.createDiv("zk-active-empty");
+			setIcon(emptyState, "file-minus");
 			emptyState.createDiv({
-				text: 'No active Markdown note.',
+				text: "No active Markdown note.",
 			});
 		}
 	}
 
 	private renderInfoRow(container: HTMLElement, label: string, value: string) {
-		const row = container.createDiv('info-row');
-		row.createSpan({ text: label, cls: 'info-label' });
-		row.createSpan({ text: value, cls: 'info-value' });
+		const row = container.createDiv("info-row");
+		row.createSpan({ text: label, cls: "info-label" });
+		row.createSpan({ text: value, cls: "info-value" });
 	}
-
 
 	onClose() {
 		this.contentEl.empty();
-		this.modalEl.removeClass('zettelkasten-modal-container');
+		this.modalEl.removeClass("zettelkasten-modal-container");
 	}
 }

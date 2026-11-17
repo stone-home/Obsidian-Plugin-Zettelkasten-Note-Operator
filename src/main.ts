@@ -1,7 +1,7 @@
-import { Plugin, TFile, Notice } from 'obsidian';
-import { NoteTemplateConfig } from 'markdown-note-orm';
+import { Plugin, TFile, TFolder, Notice } from "obsidian";
+import { NoteTemplateConfig } from "markdown-note-orm";
 import { GithubPullRule, ZettelkastenSettings } from "./types";
-import { DEFAULT_SETTINGS, DEFAULT_AI_PROMPT_RULES } from "./constants"
+import { DEFAULT_SETTINGS } from "./constants";
 import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
@@ -14,6 +14,15 @@ import { CodeProjectManager } from "./service/projects/codeProjectManager";
 import { askLegacyCommitCleanup } from "./modals/codeProjectsModal";
 import { DraftCompiler } from "./service/compiler/draftCompiler";
 import { PromptGenerator } from "./service/compiler/promptGenerator";
+
+/** The `window.ZettelkastenOperator` API that Dataview scripts call. */
+type ZettelkastenOperatorApi = ReturnType<MyPlugin["createGlobalApi"]>;
+
+declare global {
+	interface Window {
+		ZettelkastenOperator?: ZettelkastenOperatorApi;
+	}
+}
 
 export default class MyPlugin extends Plugin {
 	public settings!: ZettelkastenSettings;
@@ -30,29 +39,29 @@ export default class MyPlugin extends Plugin {
 
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		this.addRibbonIcon('plus-square', 'Create New Note', () => {
+		this.addRibbonIcon("plus-square", "Create New Note", () => {
 			this.factory.openCreationModal();
 		});
 
 		this.addCommand({
-			id: 'create-zettel-note',
-			name: 'Create New Zettel Note',
+			id: "create-zettel-note",
+			name: "Create New Zettel Note",
 			callback: () => {
 				this.factory.openCreationModal();
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'open-zettelkasten-search',
-			name: 'Open Zettelkasten Search',
+			id: "open-zettelkasten-search",
+			name: "Open Zettelkasten Search",
 			callback: () => {
 				new SearchModal(this.app, this.settings, this.factory).open();
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'compile-current-draft',
-			name: 'Compile current draft to materials',
+			id: "compile-current-draft",
+			name: "Compile current draft to materials",
 			callback: async () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile) {
@@ -69,12 +78,12 @@ export default class MyPlugin extends Plugin {
 				const outputPath = await compiler.compileDraft(activeFile, cfg);
 				const sectionBase = activeFile.basename.replace("logic_", "");
 				await compiler.updateManifest(cfg, sectionBase, outputPath);
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'generate-ai-prompt',
-			name: 'Generate AI Prompt from current draft',
+			id: "generate-ai-prompt",
+			name: "Generate AI Prompt from current draft",
 			callback: async () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile) {
@@ -87,7 +96,7 @@ export default class MyPlugin extends Plugin {
 				}
 				const generator = new PromptGenerator(this.app, this.settings);
 				await generator.generatePrompt(activeFile);
-			}
+			},
 		});
 
 		// Create dataview instance immediately when enabled so settings/refresh never create a second one (avoids "already registered").
@@ -109,15 +118,20 @@ export default class MyPlugin extends Plugin {
 			this.settings.aiPromptMaxDepth = DEFAULT_SETTINGS.aiPromptMaxDepth ?? 1;
 		}
 		if (this.settings.aiPromptMaxCharsPerNote === undefined) {
-			this.settings.aiPromptMaxCharsPerNote = DEFAULT_SETTINGS.aiPromptMaxCharsPerNote ?? 4000;
+			this.settings.aiPromptMaxCharsPerNote =
+				DEFAULT_SETTINGS.aiPromptMaxCharsPerNote ?? 4000;
 		}
 		if (!this.settings.aiPromptWrapperStyle) {
-			this.settings.aiPromptWrapperStyle = DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
+			this.settings.aiPromptWrapperStyle =
+				DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
 		}
 		// Migrate: summaryHeader -> summaryHeaders for existing rules
 		if (this.settings.aiPromptRules?.length) {
 			for (const rule of this.settings.aiPromptRules) {
-				if (rule.summaryHeader && (!rule.summaryHeaders || rule.summaryHeaders.length === 0)) {
+				if (
+					rule.summaryHeader &&
+					(!rule.summaryHeaders || rule.summaryHeaders.length === 0)
+				) {
 					rule.summaryHeaders = [rule.summaryHeader];
 				}
 			}
@@ -130,18 +144,44 @@ export default class MyPlugin extends Plugin {
 
 	onunload() {
 		this.dataview?.unload();
-		delete (window as any).ZettelkastenOperator;
+		delete window.ZettelkastenOperator;
 	}
 
 	private registerGlobalActions(): void {
-		const plugin = this;
-		(window as any).ZettelkastenOperator = {
+		window.ZettelkastenOperator = this.createGlobalApi();
+	}
+
+	/**
+	 * Looks up a vault path for the global API.
+	 * @returns The file at `path`, or null when nothing or a folder is there.
+	 */
+	private getFileByPath(path: string): TFile | null {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		return file instanceof TFile ? file : null;
+	}
+
+	/**
+	 * Looks up a vault path for the global API methods that accept a file or a folder:
+	 * the create methods' project and objective paths, and pushToGitHub's project path.
+	 * @returns The file or folder at `path`, or null when nothing is there.
+	 */
+	private getFileOrFolderByPath(path: string): TFile | TFolder | null {
+		const entry = this.app.vault.getAbstractFileByPath(path);
+		return entry instanceof TFile || entry instanceof TFolder ? entry : null;
+	}
+
+	private createGlobalApi() {
+		return {
 			getGithubTokenKeys: async (): Promise<string[]> => {
-				const storage = (plugin.app as any).secretStorage;
-				if (storage && typeof storage.listSecrets === "function") {
+				// secretStorage is missing from the obsidian typings this plugin builds against.
+				const storage: unknown =
+					"secretStorage" in this.app ? this.app.secretStorage : undefined;
+				if (hasListSecrets(storage)) {
 					try {
-						const ids = await storage.listSecrets();
-						return Array.isArray(ids) ? ids : [];
+						const ids: unknown = await storage.listSecrets();
+						return Array.isArray(ids)
+							? ids.filter((id): id is string => typeof id === "string")
+							: [];
 					} catch {
 						// Return empty array if listSecrets fails
 					}
@@ -149,73 +189,76 @@ export default class MyPlugin extends Plugin {
 				return [];
 			},
 			createResearchObjective: async (projectPath: string, title: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.createObjective(file, title);
 			},
 			createResearchStep: async (
 				projectPath: string,
 				objectivePath: string,
-				title: string,
+				title: string
 			) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const projectFile = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
-				const objectiveFile = plugin.app.vault.getAbstractFileByPath(objectivePath) as TFile;
-				if (!projectFile || !objectiveFile) throw new Error("Project or objective not found");
+				const manager = new ResearchManager(this.app, this.settings);
+				const projectFile = this.getFileOrFolderByPath(projectPath);
+				const objectiveFile = this.getFileOrFolderByPath(objectivePath);
+				if (!projectFile || !objectiveFile)
+					throw new Error("Project or objective not found");
 				return await manager.createStep(projectFile, objectiveFile, title);
 			},
 			createResearchExperiment: async (projectPath: string, title: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.createExperiment(file, title);
 			},
 			createResearchDraft: async (
 				projectPath: string,
 				title: string,
-				templateOptionIndex?: number,
+				templateOptionIndex?: number
 			) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				let templateConfig: NoteTemplateConfig | undefined;
 				if (
 					templateOptionIndex !== undefined &&
 					templateOptionIndex >= 0 &&
-					plugin.settings.createNoteOptions &&
-					plugin.settings.createNoteOptions[templateOptionIndex]
+					this.settings.createNoteOptions &&
+					this.settings.createNoteOptions[templateOptionIndex]
 				) {
-					templateConfig = plugin.settings.createNoteOptions[templateOptionIndex]
-						.templateConfig;
+					templateConfig =
+						this.settings.createNoteOptions[templateOptionIndex]
+							.templateConfig;
 				}
 				return await manager.createDraft(file, title, templateConfig);
 			},
 			createResearchRequirement: async (projectPath: string, title: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.createRequirement(file, title);
 			},
 			createCodeRequirement: async (projectPath: string, title: string) => {
-				const manager = new CodeProjectManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new CodeProjectManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.createRequirement(file, title);
 			},
 			refreshCodeProject: async (projectPath: string, tokenKey?: string) => {
-				const manager = new CodeProjectManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new CodeProjectManager(this.app, this.settings);
+				const file = this.getFileByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.refreshProject(file, tokenKey, {
-					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(plugin.app, count),
+					confirmLegacyCleanup: (count) =>
+						askLegacyCommitCleanup(this.app, count),
 				});
 			},
 			updateProjectDashboardProperties: async (
 				projectPath: string,
-				updates: { github_token_key?: string; public_repo?: boolean },
+				updates: { github_token_key?: string; public_repo?: boolean }
 			) => {
-				const manager = new CodeProjectManager(plugin.app, plugin.settings);
+				const manager = new CodeProjectManager(this.app, this.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
 			},
 			updateResearchDashboardProperties: async (
@@ -226,24 +269,24 @@ export default class MyPlugin extends Plugin {
 					repo?: string;
 					defaultBranch?: string;
 					github_target_folder?: string;
-				},
+				}
 			) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const manager = new ResearchManager(this.app, this.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
 			},
 			getGanttStatusColors: (): Record<string, string> => {
-				return { ...plugin.settings.ganttStatusColors };
+				return { ...this.settings.ganttStatusColors };
 			},
 			getSettings: (): ZettelkastenSettings => {
-				return { ...plugin.settings };
+				return { ...this.settings };
 			},
 			getLastPushRequestDebug: (): LastPushRequestDebug | null => {
-				return plugin.lastPushRequestDebug ?? null;
+				return this.lastPushRequestDebug ?? null;
 			},
 			compileDraft: async (draftPath: string) => {
-				const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
+				const file = this.getFileByPath(draftPath);
 				if (!file) throw new Error("Draft not found");
-				const compiler = new DraftCompiler(plugin.app, plugin.settings);
+				const compiler = new DraftCompiler(this.app, this.settings);
 				const cfg = await compiler.resolveConfig(file);
 				if (!cfg) throw new Error("Could not resolve project config");
 				return await compiler.compileDraft(file, cfg);
@@ -251,53 +294,65 @@ export default class MyPlugin extends Plugin {
 			generateAIPrompt: async (draftFileOrPath: TFile | string) => {
 				let file: TFile | null = null;
 				if (typeof draftFileOrPath === "string") {
-					file = plugin.app.vault.getAbstractFileByPath(draftFileOrPath) as TFile;
+					file = this.getFileByPath(draftFileOrPath);
 				} else {
 					file = draftFileOrPath;
 				}
 				if (!file) throw new Error("Draft not found");
-				const generator = new PromptGenerator(plugin.app, plugin.settings);
+				const generator = new PromptGenerator(this.app, this.settings);
 				return await generator.generatePrompt(file);
 			},
 			pushToGitHub: async (projectPath: string, tokenKey?: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileOrFolderByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				const result = await manager.pushToGitHub(file, tokenKey);
-				if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
+				if (result?.lastRequestDebug)
+					this.lastPushRequestDebug = result.lastRequestDebug;
 				return result;
 			},
-			getPullRules: (): GithubPullRule[] => plugin.settings.githubPullRules ?? [],
+			getPullRules: (): GithubPullRule[] => this.settings.githubPullRules ?? [],
 			setResearchPullRules: async (projectPath: string, ids: string[]) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				await manager.setPullRules(file, ids);
 			},
 			pullFromGitHub: async (projectPath: string, tokenKey?: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const manager = new ResearchManager(this.app, this.settings);
+				const file = this.getFileByPath(projectPath);
 				if (!file) throw new Error("Project not found");
 				return await manager.pullFromGitHub(file, tokenKey);
 			},
 			renderDraftsTable: (container: HTMLElement, projectPath: string) => {
-				const manager = new ResearchManager(plugin.app, plugin.settings);
+				const manager = new ResearchManager(this.app, this.settings);
 				manager.renderDraftsTable(container, projectPath, {
 					generateAIPrompt: async (draftPath: string) => {
-						const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
+						const file = this.getFileByPath(draftPath);
 						if (!file) throw new Error("Draft not found");
-						const generator = new PromptGenerator(plugin.app, plugin.settings);
+						const generator = new PromptGenerator(this.app, this.settings);
 						return await generator.generatePrompt(file);
 					},
 					pushToGitHub: async (projPath: string, tokenKey?: string) => {
-						const rm = new ResearchManager(plugin.app, plugin.settings);
-						const file = plugin.app.vault.getAbstractFileByPath(projPath) as TFile;
+						const rm = new ResearchManager(this.app, this.settings);
+						const file = this.getFileByPath(projPath);
 						if (!file) throw new Error("Project not found");
 						const result = await rm.pushToGitHub(file, tokenKey);
-						if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
+						if (result?.lastRequestDebug)
+							this.lastPushRequestDebug = result.lastRequestDebug;
 					},
 				});
 			},
 		};
 	}
+}
+
+/** True when `value` is an object or function with a callable `listSecrets` member. */
+function hasListSecrets(value: unknown): value is { listSecrets: () => unknown } {
+	return (
+		(typeof value === "object" || typeof value === "function") &&
+		value !== null &&
+		"listSecrets" in value &&
+		typeof value.listSecrets === "function"
+	);
 }

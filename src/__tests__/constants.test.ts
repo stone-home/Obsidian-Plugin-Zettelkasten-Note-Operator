@@ -62,7 +62,9 @@ describe("constants", () => {
 		});
 
 		it("should have ganttStatusColors populated", () => {
-			expect(Object.keys(DEFAULT_SETTINGS.ganttStatusColors).length).toBeGreaterThan(0);
+			expect(
+				Object.keys(DEFAULT_SETTINGS.ganttStatusColors).length
+			).toBeGreaterThan(0);
 		});
 
 		it("should auto-open new notes by default", () => {

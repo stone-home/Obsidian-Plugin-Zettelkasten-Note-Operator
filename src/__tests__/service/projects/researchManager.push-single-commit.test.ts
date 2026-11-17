@@ -12,6 +12,7 @@
  * the exact query text or aliases.
  */
 
+import type { TFile as ObsidianTFile } from "obsidian";
 import { App, TFile, requestUrl, stringifyYaml } from "../../../__mocks__/obsidian";
 import {
 	clearNotices,
@@ -19,15 +20,20 @@ import {
 	createFakeGitHubGraphQL,
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
+	asObsidianFile,
+	commitFileChanges,
 	enableFolderChildren,
 	getHeader,
 	gitBlobShaForTest,
 	mockGitHubApi,
 	noticeMessages,
+	readPath,
 	requestedCalls,
 	setFrontmatterCache,
 	toArrayBuffer,
 	type FakeGitHubGraphQL,
+	type FakeGraphQLOperation,
 } from "../../../__mocks__/testHelpers";
 import { ResearchManager } from "../../../service/projects/researchManager";
 
@@ -41,7 +47,9 @@ const HEAD_3 = "c3".repeat(20);
 const GRAPHQL_URL = "https://api.github.com/graphql";
 
 const b64 = (bytes: Uint8Array | string) =>
-	Buffer.from(typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes).toString("base64");
+	Buffer.from(
+		typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes
+	).toString("base64");
 
 const BASE_FM = {
 	repo: "octo/notes",
@@ -53,14 +61,14 @@ const BASE_FM = {
 describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 	let app: App;
 	let manager: ResearchManager;
-	let projectFile: TFile;
+	let projectFile: ObsidianTFile;
 	let fake: FakeGitHubGraphQL;
 
-	const setDashboard = async (fm: Record<string, any>) => {
+	const setDashboard = async (fm: Record<string, unknown>) => {
 		const content = `---\n${stringifyYaml(fm)}---\n\n# Research Command Center\n`;
 		const existing = app.vault.getAbstractFileByPath(DASHBOARD);
 		if (existing instanceof TFile) await app.vault.modify(existing, content);
-		else projectFile = await app.vault.create(DASHBOARD, content);
+		else projectFile = asObsidianFile(await app.vault.create(DASHBOARD, content));
 		setFrontmatterCache(app.metadataCache, DASHBOARD, fm);
 	};
 
@@ -70,7 +78,9 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 		else await app.vault.createBinary(path, toArrayBuffer(content));
 	};
 
-	const useRemote = (branches: Record<string, { oid: string; files: Record<string, string> }>) => {
+	const useRemote = (
+		branches: Record<string, { oid: string; files: Record<string, string> }>
+	) => {
 		fake = createFakeGitHubGraphQL({ owner: "octo", name: "notes", branches });
 		mockGitHubApi({ "/graphql": fake.route });
 	};
@@ -81,19 +91,28 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 		expect(fake.queries().length).toBeGreaterThanOrEqual(1);
 		return fake.queries()[0];
 	};
-	/** createCommitOnBranch input of mutation number i (fails clearly when it was not sent). */
-	const commitInput = (i: number = 0) => {
+	/** createCommitOnBranch mutation number i (fails clearly when it was not sent). */
+	const commitOp = (i: number = 0) => {
 		expect(fake.mutations().length).toBeGreaterThan(i);
-		return fake.mutations()[i].commitInput;
+		return fake.mutations()[i];
 	};
-	const sortedAdditions = (input: any) =>
-		[...(input?.fileChanges?.additions ?? [])].sort((a: any, b: any) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	/** createCommitOnBranch input of mutation number i. */
+	const commitInput = (i: number = 0) => commitOp(i).commitInput;
+	const sortedAdditions = (op: FakeGraphQLOperation) =>
+		[...commitFileChanges(op).additions].sort((a, b) =>
+			a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+		);
 
 	beforeEach(async () => {
 		app = createMockApp();
 		enableFolderChildren(app.vault);
-		manager = new ResearchManager(app as any, createMockSettings({ researchRootPath: "Research" }));
-		(app as any).secretStorage = { getSecret: jest.fn(async (key: string) => (key === "gh" ? TOKEN : null)) };
+		manager = new ResearchManager(
+			asObsidianApp(app),
+			createMockSettings({ researchRootPath: "Research" })
+		);
+		app.secretStorage = {
+			getSecret: jest.fn(async (key: string) => (key === "gh" ? TOKEN : null)),
+		};
 		await app.vault.createFolder("Research");
 		await app.vault.createFolder(PROJECT);
 		await app.vault.createFolder(PROMPTS);
@@ -133,17 +152,22 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 			expect(kinds()).toEqual(["query", "mutation"]);
 			const input = commitInput(0);
 			expect(input).toBeTruthy();
-			expect(input.expectedHeadOid).toBe(HEAD_1);
-			expect(input.branch).toEqual({ repositoryNameWithOwner: "octo/notes", branchName: "trunk" });
-			expect(sortedAdditions(input)).toEqual([
+			expect(readPath(input, "expectedHeadOid")).toBe(HEAD_1);
+			expect(readPath(input, "branch")).toEqual({
+				repositoryNameWithOwner: "octo/notes",
+				branchName: "trunk",
+			});
+			expect(sortedAdditions(commitOp(0))).toEqual([
 				{ path: "ai/prompts/changed.md", contents: b64("# Changed v2\n") },
 				{ path: "ai/prompts/new.md", contents: b64("# New ✓\n") },
 			]);
-			expect(input.fileChanges.deletions ?? []).toEqual([]);
+			expect(commitFileChanges(commitOp(0)).deletions).toEqual([]);
 			expect(result).toMatchObject({ successCount: 2, errorCount: 0 });
 			// The commit really landed on the fake branch.
 			expect(fake.state.branches.trunk.oid).not.toBe(HEAD_1);
-			expect(fake.state.branches.trunk.files["ai/prompts/new.md"]).toBe(gitBlobShaForTest("# New ✓\n"));
+			expect(fake.state.branches.trunk.files["ai/prompts/new.md"]).toBe(
+				gitBlobShaForTest("# New ✓\n")
+			);
 		});
 
 		it("uses only authenticated POSTs to the GraphQL endpoint, never the REST contents API", async () => {
@@ -156,7 +180,9 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 			for (const call of calls) {
 				expect(call.url).toBe(GRAPHQL_URL);
 				expect(call.method).toBe("POST");
-				expect(getHeader(call.headers, "Authorization")).toBe(`Bearer ${TOKEN}`);
+				expect(getHeader(call.headers, "Authorization")).toBe(
+					`Bearer ${TOKEN}`
+				);
 			}
 			expect(calls.some((c) => /\/contents\//.test(c.url))).toBe(false);
 		});
@@ -168,7 +194,14 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 
 			const query = firstQuery();
 			const values = Object.values(query.variables);
-			expect(values).toEqual(expect.arrayContaining(["octo", "notes", "refs/heads/trunk", "ai/prompts"]));
+			expect(values).toEqual(
+				expect.arrayContaining([
+					"octo",
+					"notes",
+					"refs/heads/trunk",
+					"ai/prompts",
+				])
+			);
 			expect(query.query).not.toContain("refs/heads/trunk");
 			expect(query.query).not.toContain("ai/prompts");
 		});
@@ -176,7 +209,12 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 		it("falls back to branch main and folder prompts when the Dashboard sets neither", async () => {
 			await setDashboard({ repo: "octo/notes", github_token_key: "gh" });
 			await addPrompt("a.md", "A\n");
-			useRemote({ main: { oid: HEAD_1, files: { "prompts/old.md": gitBlobShaForTest("old") } } });
+			useRemote({
+				main: {
+					oid: HEAD_1,
+					files: { "prompts/old.md": gitBlobShaForTest("old") },
+				},
+			});
 
 			const result = await manager.pushToGitHub(projectFile);
 
@@ -184,20 +222,27 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 				expect.arrayContaining(["refs/heads/main", "prompts"])
 			);
 			const input = commitInput(0);
-			expect(input.branch).toEqual({ repositoryNameWithOwner: "octo/notes", branchName: "main" });
-			expect(sortedAdditions(input)).toEqual([{ path: "prompts/a.md", contents: b64("A\n") }]);
+			expect(readPath(input, "branch")).toEqual({
+				repositoryNameWithOwner: "octo/notes",
+				branchName: "main",
+			});
+			expect(sortedAdditions(commitOp(0))).toEqual([
+				{ path: "prompts/a.md", contents: b64("A\n") },
+			]);
 			expect(result).toMatchObject({ successCount: 1, errorCount: 0 });
 		});
 
 		it("sends every prompt when the target folder does not exist on the branch yet", async () => {
 			await addPrompt("one.md", "1\n");
 			await addPrompt("two.md", "2\n");
-			useRemote({ trunk: { oid: HEAD_1, files: { "README.md": gitBlobShaForTest("r") } } });
+			useRemote({
+				trunk: { oid: HEAD_1, files: { "README.md": gitBlobShaForTest("r") } },
+			});
 
 			const result = await manager.pushToGitHub(projectFile);
 
 			expect(kinds()).toEqual(["query", "mutation"]);
-			expect(sortedAdditions(commitInput(0))).toEqual([
+			expect(sortedAdditions(commitOp(0))).toEqual([
 				{ path: "ai/prompts/one.md", contents: b64("1\n") },
 				{ path: "ai/prompts/two.md", contents: b64("2\n") },
 			]);
@@ -211,7 +256,9 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 
 			await manager.pushToGitHub(projectFile);
 
-			expect(sortedAdditions(commitInput(0)).map((a: any) => a.path)).toEqual(["ai/prompts/p.md"]);
+			expect(sortedAdditions(commitOp(0)).map((a) => a.path)).toEqual([
+				"ai/prompts/p.md",
+			]);
 		});
 	});
 
@@ -224,9 +271,12 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 
 			await manager.pushToGitHub(projectFile);
 
-			expect(sortedAdditions(commitInput(0))).toEqual([
+			expect(sortedAdditions(commitOp(0))).toEqual([
 				{ path: "ai/prompts/binary.md", contents: b64(binary) },
-				{ path: "ai/prompts/text.md", contents: b64("Grüße ✓ 研究\r\nline 2\n") },
+				{
+					path: "ai/prompts/text.md",
+					contents: b64("Grüße ✓ 研究\r\nline 2\n"),
+				},
 			]);
 		});
 
@@ -249,13 +299,20 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 
 			const result = await manager.pushToGitHub(projectFile);
 
-			expect(sortedAdditions(commitInput(0)).map((a: any) => a.path)).toEqual(["ai/prompts/edited.md"]);
+			expect(sortedAdditions(commitOp(0)).map((a) => a.path)).toEqual([
+				"ai/prompts/edited.md",
+			]);
 			expect(result).toMatchObject({ successCount: 1, errorCount: 0 });
 		});
 
 		it("sends no mutation, says there is nothing to push, and returns zero counts when nothing changed", async () => {
 			await addPrompt("same.md", "# Same\n");
-			useRemote({ trunk: { oid: HEAD_1, files: { "ai/prompts/same.md": gitBlobShaForTest("# Same\n") } } });
+			useRemote({
+				trunk: {
+					oid: HEAD_1,
+					files: { "ai/prompts/same.md": gitBlobShaForTest("# Same\n") },
+				},
+			});
 
 			const result = await manager.pushToGitHub(projectFile);
 
@@ -275,9 +332,9 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 			const result = await manager.pushToGitHub(projectFile);
 
 			expect(kinds()).toEqual(["query", "mutation", "query", "mutation"]);
-			expect(commitInput(0).expectedHeadOid).toBe(HEAD_1);
-			expect(commitInput(1).expectedHeadOid).toBe(HEAD_2);
-			expect(sortedAdditions(commitInput(1)).map((a: any) => a.path)).toEqual([
+			expect(readPath(commitInput(0), "expectedHeadOid")).toBe(HEAD_1);
+			expect(readPath(commitInput(1), "expectedHeadOid")).toBe(HEAD_2);
+			expect(sortedAdditions(commitOp(1)).map((a) => a.path)).toEqual([
 				"ai/prompts/changed.md",
 				"ai/prompts/new.md",
 			]);
@@ -298,7 +355,10 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 
 		it("does not retry a GraphQL error that is not about the expected head oid", async () => {
 			await standardScenario();
-			fake.commitError = () => ({ type: "FORBIDDEN", message: "Resource not accessible by personal access token" });
+			fake.commitError = () => ({
+				type: "FORBIDDEN",
+				message: "Resource not accessible by personal access token",
+			});
 
 			const result = await manager.pushToGitHub(projectFile);
 
@@ -347,7 +407,10 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 			await setDashboard({ github_token_key: "gh" });
 			await addPrompt("a.md", "A\n");
 
-			await expect(manager.pushToGitHub(projectFile)).resolves.toMatchObject({ successCount: 0, errorCount: 0 });
+			await expect(manager.pushToGitHub(projectFile)).resolves.toMatchObject({
+				successCount: 0,
+				errorCount: 0,
+			});
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
 
@@ -363,7 +426,10 @@ describe("ResearchManager.pushToGitHub as a single GraphQL commit (R2)", () => {
 		it("makes no request when the prompts folder has no .md files", async () => {
 			await app.vault.create(`${PROMPTS}/notes.txt`, "x");
 
-			await expect(manager.pushToGitHub(projectFile)).resolves.toMatchObject({ successCount: 0, errorCount: 0 });
+			await expect(manager.pushToGitHub(projectFile)).resolves.toMatchObject({
+				successCount: 0,
+				errorCount: 0,
+			});
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
 	});

@@ -3,7 +3,15 @@ import { DataviewJSManager } from "./manager";
 
 export class DataviewScriptBuilder {
 	private manager: DataviewJSManager;
-	private script: Partial<IDataviewScript & { content: string }> = {};
+	private script: {
+		id?: string;
+		name?: string;
+		description?: string;
+		category?: string;
+		parameters?: IDataviewParameter[];
+		tags?: string[];
+		content?: string;
+	} = {};
 
 	constructor(manager: DataviewJSManager) {
 		this.manager = manager;
@@ -33,8 +41,8 @@ export class DataviewScriptBuilder {
 		name: string,
 		type: IDataviewParameter["type"],
 		required = false,
-		defaultValue?: any,
-		description?: string,
+		defaultValue?: unknown,
+		description?: string
 	): this {
 		if (!this.script.parameters) this.script.parameters = [];
 		this.script.parameters.push({
@@ -71,7 +79,7 @@ export class DataviewScriptBuilder {
 				category: this.script.category,
 				parameters: this.script.parameters,
 				tags: this.script.tags,
-			},
+			}
 		);
 	}
 }
