@@ -1,10 +1,20 @@
 import { App, Modal, ButtonComponent } from "obsidian";
 import type MyPlugin from "../main";
 import type { IDataviewScript } from "../dataview/types";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
+import {
+	EditorView,
+	keymap,
+	lineNumbers,
+	highlightActiveLine,
+	drawSelection,
+} from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import {
+	syntaxHighlighting,
+	defaultHighlightStyle,
+	bracketMatching,
+} from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
 
@@ -117,7 +127,10 @@ export class DataviewScriptEditorModal extends Modal {
 
 		if (isNew) {
 			const idRow = contentEl.createDiv({ cls: "zk-script-editor-row" });
-			idRow.createEl("label", { text: "Script ID", attr: { for: "zk-script-id" } });
+			idRow.createEl("label", {
+				text: "Script ID",
+				attr: { for: "zk-script-id" },
+			});
 			this.idInput = idRow.createEl("input", {
 				type: "text",
 				cls: "zk-script-editor-input",
@@ -126,7 +139,10 @@ export class DataviewScriptEditorModal extends Modal {
 			this.idInput.placeholder = "e.g. my-custom-script";
 
 			const nameRow = contentEl.createDiv({ cls: "zk-script-editor-row" });
-			nameRow.createEl("label", { text: "Script Name", attr: { for: "zk-script-name" } });
+			nameRow.createEl("label", {
+				text: "Script Name",
+				attr: { for: "zk-script-name" },
+			});
 			this.nameInput = nameRow.createEl("input", {
 				type: "text",
 				cls: "zk-script-editor-input",
@@ -134,13 +150,17 @@ export class DataviewScriptEditorModal extends Modal {
 			this.nameInput.id = "zk-script-name";
 			this.nameInput.placeholder = "Display name";
 		} else if (this.script) {
-			contentEl.createEl("h3", { text: `${this.script.name} (${this.script.id})` });
+			contentEl.createEl("h3", {
+				text: `${this.script.name} (${this.script.id})`,
+			});
 		}
 
 		const labelRow = contentEl.createDiv({ cls: "zk-script-editor-row" });
 		labelRow.createEl("label", { text: "Script content (JavaScript)" });
 
-		const codeWrapper = contentEl.createDiv({ cls: "zk-script-editor-codemirror-wrap" });
+		const codeWrapper = contentEl.createDiv({
+			cls: "zk-script-editor-codemirror-wrap",
+		});
 		this.codeEditorView = mountCodeMirror(
 			codeWrapper,
 			this.initialContent,
@@ -161,7 +181,9 @@ export class DataviewScriptEditorModal extends Modal {
 	}
 
 	private async handleSave(): Promise<void> {
-		const content = this.codeEditorView ? this.codeEditorView.state.doc.toString() : this.currentContent;
+		const content = this.codeEditorView
+			? this.codeEditorView.state.doc.toString()
+			: this.currentContent;
 		if (this.script === null) {
 			const id = this.idInput!.value.trim();
 			const name = this.nameInput!.value.trim();

@@ -41,10 +41,18 @@ describe("DataviewCommand debounce bookkeeping (D5)", () => {
 		const { cmd, exec, handler } = await setup();
 
 		for (let i = 0; i < 3; i++) {
-			handler("my-script", { isConnected: true, n: i }, { sourcePath: `Live${i}.md`, getSectionInfo: () => ({ lineStart: 2 }) });
+			handler(
+				"my-script",
+				{ isConnected: true, n: i },
+				{ sourcePath: `Live${i}.md`, getSectionInfo: () => ({ lineStart: 2 }) }
+			);
 		}
 		for (let i = 0; i < 2; i++) {
-			handler("my-script", { isConnected: false, n: i }, { sourcePath: `Reading${i}.md` });
+			handler(
+				"my-script",
+				{ isConnected: false, n: i },
+				{ sourcePath: `Reading${i}.md` }
+			);
 		}
 		await jest.advanceTimersByTimeAsync(2000);
 

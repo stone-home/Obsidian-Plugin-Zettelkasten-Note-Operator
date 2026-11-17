@@ -1,9 +1,9 @@
 // src/types.ts
-import { NoteType, NoteTemplateConfig, INoteFrontmatter } from 'markdown-note-orm';
+import { NoteType, NoteTemplateConfig, INoteFrontmatter } from "markdown-note-orm";
 
 export interface INoteOptionExtraParams {
 	prefix?: string;
-	properties?: INoteFrontmatter
+	properties?: INoteFrontmatter;
 }
 
 export interface INoteOption {
@@ -114,5 +114,3 @@ export interface NoteCategory {
 	upgradePath: NoteType[];
 	description?: string; // Optional description for tooltip or subtitle
 }
-
-

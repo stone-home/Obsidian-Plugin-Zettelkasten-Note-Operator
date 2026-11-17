@@ -27,7 +27,12 @@ export class GitHubClient {
 	}
 
 	/** Contents API URL with every path segment and the ref URI-encoded. */
-	private contentsUrl(owner: string, repo: string, path: string, ref: string): string {
+	private contentsUrl(
+		owner: string,
+		repo: string,
+		path: string,
+		ref: string
+	): string {
 		const encodedPath = path
 			.split("/")
 			.filter((segment) => segment.length > 0)
@@ -37,15 +42,25 @@ export class GitHubClient {
 	}
 
 	/** Entries directly inside a repo folder (GitHub returns at most 1000). */
-	async listDirectory(owner: string, repo: string, path: string, ref: string): Promise<any[]> {
+	async listDirectory(
+		owner: string,
+		repo: string,
+		path: string,
+		ref: string
+	): Promise<any[]> {
 		return await this.getJson(this.contentsUrl(owner, repo, path, ref));
 	}
 
 	/** The exact bytes of one file. */
-	async downloadRaw(owner: string, repo: string, path: string, ref: string): Promise<ArrayBuffer> {
+	async downloadRaw(
+		owner: string,
+		repo: string,
+		path: string,
+		ref: string
+	): Promise<ArrayBuffer> {
 		const response = await this.get(
 			this.contentsUrl(owner, repo, path, ref),
-			"application/vnd.github.raw+json",
+			"application/vnd.github.raw+json"
 		);
 		return response.arrayBuffer;
 	}
@@ -68,22 +83,28 @@ export class GitHubClient {
 			headers,
 			body: JSON.stringify({ query, variables }),
 		});
-		const json = response.json as { data?: T; errors?: Array<{ message?: string }> } | undefined;
+		const json = response.json as
+			| { data?: T; errors?: Array<{ message?: string }> }
+			| undefined;
 		if (json?.errors && json.errors.length > 0) {
-			throw new Error(`GitHub GraphQL error: ${json.errors[0]?.message ?? "unknown error"}`);
+			throw new Error(
+				`GitHub GraphQL error: ${json.errors[0]?.message ?? "unknown error"}`
+			);
 		}
 		return json?.data as T;
 	}
 
 	async listReleases(owner: string, repo: string): Promise<any[]> {
-		return await this.getJson(`https://api.github.com/repos/${owner}/${repo}/releases`);
+		return await this.getJson(
+			`https://api.github.com/repos/${owner}/${repo}/releases`
+		);
 	}
 
 	async compareCommits(
 		owner: string,
 		repo: string,
 		base: string,
-		head: string,
+		head: string
 	): Promise<any> {
 		// URL encode base and head to handle branch names with '/' like 'feature/foo'
 		const encodedBase = encodeURIComponent(base);
@@ -92,4 +113,3 @@ export class GitHubClient {
 		return await this.getJson(url);
 	}
 }
-

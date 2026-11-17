@@ -87,16 +87,16 @@ describe("DataviewScriptBuilder", () => {
 
 		it("should throw when name is missing", async () => {
 			const builder = manager.createScriptBuilder();
-			await expect(
-				builder.id("x").content("return 1;").build()
-			).rejects.toThrow("Script must have id, name, and content");
+			await expect(builder.id("x").content("return 1;").build()).rejects.toThrow(
+				"Script must have id, name, and content"
+			);
 		});
 
 		it("should throw when content is missing", async () => {
 			const builder = manager.createScriptBuilder();
-			await expect(
-				builder.id("x").name("X").build()
-			).rejects.toThrow("Script must have id, name, and content");
+			await expect(builder.id("x").name("X").build()).rejects.toThrow(
+				"Script must have id, name, and content"
+			);
 		});
 	});
 

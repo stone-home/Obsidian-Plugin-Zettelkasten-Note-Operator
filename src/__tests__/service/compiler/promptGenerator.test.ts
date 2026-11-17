@@ -35,8 +35,10 @@ describe("PromptGenerator", () => {
 
 	describe("extractAIPromptSection", () => {
 		it("returns null aiPromptBlock when no AI prompt section exists", () => {
-			const content = "---\ntitle: Draft\n---\n\n## Introduction\n\nSome text.\n\n## Other\n\nMore.";
-			const { aiPromptBlock, restContent } = generator.extractAIPromptSection(content);
+			const content =
+				"---\ntitle: Draft\n---\n\n## Introduction\n\nSome text.\n\n## Other\n\nMore.";
+			const { aiPromptBlock, restContent } =
+				generator.extractAIPromptSection(content);
 			expect(aiPromptBlock).toBeNull();
 			expect(restContent).toContain("Introduction");
 			expect(restContent).toContain("Some text");
@@ -56,7 +58,8 @@ describe("PromptGenerator", () => {
 				"",
 				"This is the outline.",
 			].join("\n");
-			const { aiPromptBlock, restContent } = generator.extractAIPromptSection(content);
+			const { aiPromptBlock, restContent } =
+				generator.extractAIPromptSection(content);
 			expect(aiPromptBlock).not.toBeNull();
 			expect(aiPromptBlock).toContain("## AI prompt");
 			expect(aiPromptBlock).toContain("Use a formal tone.");
@@ -77,7 +80,8 @@ describe("PromptGenerator", () => {
 				"",
 				"Rest of doc.",
 			].join("\n");
-			const { aiPromptBlock, restContent } = generator.extractAIPromptSection(content);
+			const { aiPromptBlock, restContent } =
+				generator.extractAIPromptSection(content);
 			expect(aiPromptBlock).not.toBeNull();
 			expect(aiPromptBlock).toContain("Custom instructions here.");
 			expect(restContent).toContain("Rest of doc.");
@@ -101,7 +105,10 @@ describe("PromptGenerator", () => {
 			await app.vault.create(draftPath, draftContent);
 
 			(app.metadataCache as any)._setCache(draftPath, {
-				frontmatter: { section_title: "Introduction", section_goal: "Explain the problem." },
+				frontmatter: {
+					section_title: "Introduction",
+					section_goal: "Explain the problem.",
+				},
 			});
 
 			const draft = app.vault.getAbstractFileByPath(draftPath) as TFile;
@@ -144,7 +151,9 @@ describe("PromptGenerator", () => {
 
 			const draft = app.vault.getAbstractFileByPath(draftPath) as TFile;
 			const outPath = await generator.generatePrompt(draft);
-			const content = await app.vault.read(app.vault.getAbstractFileByPath(outPath) as TFile);
+			const content = await app.vault.read(
+				app.vault.getAbstractFileByPath(outPath) as TFile
+			);
 
 			const aiPromptIndex = content.indexOf("## AI prompt");
 			const personaIndex = content.indexOf("## Persona & Task");

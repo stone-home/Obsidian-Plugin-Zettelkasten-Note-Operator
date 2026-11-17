@@ -28,7 +28,10 @@ async function setup() {
 	return { cmd, exec, handler };
 }
 
-const sameBlockCtx = () => ({ sourcePath: "Same.md", getSectionInfo: () => ({ lineStart: 5 }) });
+const sameBlockCtx = () => ({
+	sourcePath: "Same.md",
+	getSectionInfo: () => ({ lineStart: 5 }),
+});
 
 describe("DataviewCommand with several panes (D6)", () => {
 	beforeEach(() => {

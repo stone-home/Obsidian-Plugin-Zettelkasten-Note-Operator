@@ -3,15 +3,8 @@
  */
 
 import { App, TFile } from "../../__mocks__/obsidian";
-import {
-	createMockApp,
-	clearVault,
-	populateVault,
-} from "../../__mocks__/testHelpers";
-import {
-	DataviewJSManager,
-	getDefaultScriptContent,
-} from "../../dataview/manager";
+import { createMockApp, clearVault, populateVault } from "../../__mocks__/testHelpers";
+import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
 
 describe("DataviewJSManager", () => {
 	let app: App;
@@ -356,7 +349,12 @@ describe("DataviewJSManager", () => {
 					dataview: { api: { executeJs } },
 				},
 			};
-			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			await manager.executeScript(
+				"zk-research-quick-actions",
+				el,
+				{},
+				{ sourcePath: "test.md" }
+			);
 			expect(executeJs).toHaveBeenCalled();
 		});
 
@@ -367,13 +365,20 @@ describe("DataviewJSManager", () => {
 			el.setText = (s: string) => {
 				el.textContent = s;
 			};
-			const executeJs = jest.fn().mockRejectedValue(new Error("Dataview execution failed"));
+			const executeJs = jest
+				.fn()
+				.mockRejectedValue(new Error("Dataview execution failed"));
 			(app as any).plugins = {
 				plugins: {
 					dataview: { api: { executeJs } },
 				},
 			};
-			await manager.executeScript("zk-research-quick-actions", el, {}, { sourcePath: "test.md" });
+			await manager.executeScript(
+				"zk-research-quick-actions",
+				el,
+				{},
+				{ sourcePath: "test.md" }
+			);
 			expect(el.textContent).toContain("Error:");
 			expect(el.textContent).toContain("Dataview execution failed");
 		});
@@ -421,7 +426,9 @@ describe("DataviewJSManager", () => {
 			expect(manager.getScripts().length).toBeGreaterThan(0);
 			manager.setScriptsFolder("other-folder");
 			expect(manager.getScripts().length).toBe(0);
-			expect(manager.getScriptContent("zk-research-quick-actions")).toBeUndefined();
+			expect(
+				manager.getScriptContent("zk-research-quick-actions")
+			).toBeUndefined();
 		});
 	});
 

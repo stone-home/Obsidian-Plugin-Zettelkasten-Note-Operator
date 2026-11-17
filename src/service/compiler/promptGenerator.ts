@@ -55,12 +55,13 @@ export class PromptGenerator {
 			content,
 			rules,
 			maxDepth,
-			maxChars,
+			maxChars
 		);
 
 		const cache = this.app.metadataCache.getFileCache(draft);
 		const fm = cache?.frontmatter || {};
-		const sectionTitle = (fm.section_title as string) || (fm.title as string) || draft.basename;
+		const sectionTitle =
+			(fm.section_title as string) || (fm.title as string) || draft.basename;
 		const sectionGoal = (fm.section_goal as string) || "TODO: Define section goal";
 
 		const prompt = this.buildPrompt(
@@ -70,7 +71,7 @@ export class PromptGenerator {
 			cleanedNarrative,
 			contextBlocks,
 			citationList,
-			wrapperStyle,
+			wrapperStyle
 		);
 
 		const projectFolder = this.getProjectFolder(draft);
@@ -100,7 +101,10 @@ export class PromptGenerator {
 	/**
 	 * Extract optional "AI prompt" section from draft body; return it and the rest.
 	 */
-	extractAIPromptSection(content: string): { aiPromptBlock: string | null; restContent: string } {
+	extractAIPromptSection(content: string): {
+		aiPromptBlock: string | null;
+		restContent: string;
+	} {
 		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 		const afterFm = content.replace(fmRegex, "").trim();
 		const lines = afterFm.split("\n");
@@ -149,8 +153,11 @@ export class PromptGenerator {
 			else restLines.push(line);
 		}
 
-		const aiPromptBlock = aiLines.length ? `## AI prompt\n\n${aiLines.join("\n").trim()}` : null;
-		const restContent = restLines.join("\n").trim() || content.replace(fmRegex, "").trim();
+		const aiPromptBlock = aiLines.length
+			? `## AI prompt\n\n${aiLines.join("\n").trim()}`
+			: null;
+		const restContent =
+			restLines.join("\n").trim() || content.replace(fmRegex, "").trim();
 		return { aiPromptBlock, restContent };
 	}
 
@@ -187,7 +194,8 @@ export class PromptGenerator {
 				if (path === value || path.startsWith(prefix)) return rule;
 			} else if (rule.matchType === "tag") {
 				const tags = fm?.tags as string[] | undefined;
-				if (Array.isArray(tags) && tags.some((t: string) => t.includes(value))) return rule;
+				if (Array.isArray(tags) && tags.some((t: string) => t.includes(value)))
+					return rule;
 				const tag = fm?.tag as string | undefined;
 				if (typeof tag === "string" && tag.includes(value)) return rule;
 			} else if (rule.matchType === "regex") {
@@ -208,7 +216,7 @@ export class PromptGenerator {
 		file: TFile,
 		rule: AIPromptRule,
 		maxChars: number,
-		rawContent?: string,
+		rawContent?: string
 	): Promise<string> {
 		const raw = rawContent ?? (await this.app.vault.read(file));
 		const fmRegex = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
@@ -267,14 +275,18 @@ export class PromptGenerator {
 	/**
 	 * Find section content by exact or normalized heading match (case-insensitive, ignores markdown/emoji).
 	 */
-	private findSectionByHeading(sections: Map<string, string>, userHeader: string): string | undefined {
+	private findSectionByHeading(
+		sections: Map<string, string>,
+		userHeader: string
+	): string | undefined {
 		const key = userHeader.replace(/^#+\s*/, "").trim();
 		const exact = sections.get(key) ?? sections.get(userHeader);
 		if (exact) return exact;
 		const normalizedInput = this.normalizeHeadingForMatch(key);
 		if (!normalizedInput) return undefined;
 		for (const [heading, content] of sections) {
-			if (this.normalizeHeadingForMatch(heading) === normalizedInput) return content;
+			if (this.normalizeHeadingForMatch(heading) === normalizedInput)
+				return content;
 		}
 		return undefined;
 	}
@@ -318,7 +330,7 @@ export class PromptGenerator {
 		sourceContent: string,
 		rules: AIPromptRule[],
 		maxDepth: number,
-		maxChars: number,
+		maxChars: number
 	): Promise<ResolvedContent> {
 		const contextBlocks: ContextBlock[] = [];
 		const contextPaths = new Set<string>();
@@ -330,7 +342,7 @@ export class PromptGenerator {
 		const processFile = async (
 			file: TFile,
 			content: string,
-			depth: number,
+			depth: number
 		): Promise<void> => {
 			if (depth <= 0 || visited.has(file.path)) return;
 			visited.add(file.path);
@@ -367,12 +379,19 @@ export class PromptGenerator {
 					wrapperStyle === "xml"
 						? `<source id="${file.basename}" path="${file.path}" type="${rule.label}">\n${titleLine}\n\n${body}\n</source>`
 						: `### Context Note: [${file.basename}]\n**${titleLine}**\n\n${body}`;
-				contextBlocks.push({ label: rule.label, content: wrapped, sourcePath: file.path });
+				contextBlocks.push({
+					label: rule.label,
+					content: wrapped,
+					sourcePath: file.path,
+				});
 
 				if (depth > 1) {
 					const links = this.extractLinksInOrder(content);
 					for (const linkName of links) {
-						const linked = this.app.metadataCache.getFirstLinkpathDest(linkName, file.path);
+						const linked = this.app.metadataCache.getFirstLinkpathDest(
+							linkName,
+							file.path
+						);
 						if (linked instanceof TFile) {
 							const linkedContent = await this.app.vault.read(linked);
 							await processFile(linked, linkedContent, depth - 1);
@@ -384,7 +403,10 @@ export class PromptGenerator {
 
 		const linkNames = this.extractLinksInOrder(sourceContent);
 		for (const linkName of linkNames) {
-			const file = this.app.metadataCache.getFirstLinkpathDest(linkName, sourceFile.path);
+			const file = this.app.metadataCache.getFirstLinkpathDest(
+				linkName,
+				sourceFile.path
+			);
 			if (!(file instanceof TFile)) continue;
 			const fileContent = await this.app.vault.read(file);
 			await processFile(file, fileContent, maxDepth);
@@ -399,12 +421,18 @@ export class PromptGenerator {
 	private cleanNarrative(content: string): string {
 		let result = content;
 
-		result = result.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, name, alias) => {
-			return `_${alias || name.split("/").pop() || name}_`;
-		});
-		result = result.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, name, alias) => {
-			return alias || name.split("/").pop() || name;
-		});
+		result = result.replace(
+			/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+			(_, name, alias) => {
+				return `_${alias || name.split("/").pop() || name}_`;
+			}
+		);
+		result = result.replace(
+			/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+			(_, name, alias) => {
+				return alias || name.split("/").pop() || name;
+			}
+		);
 
 		return result.trim();
 	}
@@ -428,7 +456,7 @@ export class PromptGenerator {
 		narrative: string,
 		contextBlocks: ContextBlock[],
 		citationList: CitationEntry[],
-		_wrapperStyle: string,
+		_wrapperStyle: string
 	): string {
 		const sections: string[] = [];
 
@@ -453,12 +481,16 @@ export class PromptGenerator {
 		// Persona / Task / Constraints (instructions)
 		sections.push("## Persona & Task");
 		sections.push("");
-		sections.push("You are an academic writing assistant helping to draft a PhD thesis section.");
+		sections.push(
+			"You are an academic writing assistant helping to draft a PhD thesis section."
+		);
 		sections.push("");
 		sections.push("## Constraints");
 		sections.push("");
-		sections.push('- Use **Author Narrative** below as the **outline and flow**.');
-		sections.push('- Use **Context from Linked Notes** as background; synthesize and paraphrase, do not copy verbatim.');
+		sections.push("- Use **Author Narrative** below as the **outline and flow**.");
+		sections.push(
+			"- Use **Context from Linked Notes** as background; synthesize and paraphrase, do not copy verbatim."
+		);
 		sections.push(`- Focus of this section: ${sectionGoal}`);
 		sections.push("");
 
@@ -476,7 +508,7 @@ export class PromptGenerator {
 			sections.push("");
 			for (const block of contextBlocks) {
 				const path = block.sourcePath ?? "";
-				const basename = path ? path.split("/").pop() ?? path : "(unknown)";
+				const basename = path ? (path.split("/").pop() ?? path) : "(unknown)";
 				sections.push(`- **${basename}** (\`${path}\`) — ${block.label}`);
 			}
 			sections.push("");
@@ -502,7 +534,9 @@ export class PromptGenerator {
 		if (citationList.length > 0) {
 			sections.push("## Citation list");
 			sections.push("");
-			sections.push("Use these keys in text (e.g. \\cite{citationKey} or [@citationKey]).");
+			sections.push(
+				"Use these keys in text (e.g. \\cite{citationKey} or [@citationKey])."
+			);
 			sections.push("");
 			for (const entry of citationList) {
 				sections.push(`- \`${entry.citationKey}\` → ${entry.title}`);
@@ -515,7 +549,9 @@ export class PromptGenerator {
 		// Output format
 		sections.push("## Output Format");
 		sections.push("");
-		sections.push("Target format: a LaTeX section (without preamble), with \\section, \\subsection, and citation placeholders (e.g. \\cite{}).");
+		sections.push(
+			"Target format: a LaTeX section (without preamble), with \\section, \\subsection, and citation placeholders (e.g. \\cite{})."
+		);
 		sections.push("");
 
 		return sections.join("\n");

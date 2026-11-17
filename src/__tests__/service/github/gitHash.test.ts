@@ -10,7 +10,10 @@ import { createHash } from "crypto";
 import { gitBlobSha, bytesToBase64 } from "../../../service/github/gitHash";
 
 const nodeBlobSha = (bytes: Uint8Array) =>
-	createHash("sha1").update(Buffer.from(`blob ${bytes.byteLength}\0`)).update(Buffer.from(bytes)).digest("hex");
+	createHash("sha1")
+		.update(Buffer.from(`blob ${bytes.byteLength}\0`))
+		.update(Buffer.from(bytes))
+		.digest("hex");
 
 /** Deterministic pseudo-random bytes (all 256 values occur, so not valid UTF-8). */
 function pseudoRandomBytes(length: number, seed: number = 1): Uint8Array {
@@ -27,14 +30,22 @@ const utf8 = (s: string) => new TextEncoder().encode(s);
 
 describe("gitBlobSha (R2)", () => {
 	it("matches git's id for the empty blob", async () => {
-		await expect(gitBlobSha(new ArrayBuffer(0))).resolves.toBe("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
-		await expect(gitBlobSha(new Uint8Array(0))).resolves.toBe("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+		await expect(gitBlobSha(new ArrayBuffer(0))).resolves.toBe(
+			"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+		);
+		await expect(gitBlobSha(new Uint8Array(0))).resolves.toBe(
+			"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+		);
 	});
 
 	it('matches git\'s id for "hello\\n"', async () => {
-		await expect(gitBlobSha(utf8("hello\n"))).resolves.toBe("ce013625030ba8dba906f756967f9e9ca394464a");
+		await expect(gitBlobSha(utf8("hello\n"))).resolves.toBe(
+			"ce013625030ba8dba906f756967f9e9ca394464a"
+		);
 		const buffer = utf8("hello\n").slice().buffer;
-		await expect(gitBlobSha(buffer)).resolves.toBe("ce013625030ba8dba906f756967f9e9ca394464a");
+		await expect(gitBlobSha(buffer)).resolves.toBe(
+			"ce013625030ba8dba906f756967f9e9ca394464a"
+		);
 	});
 
 	it("returns 40 lowercase hex characters", async () => {
@@ -68,7 +79,9 @@ describe("gitBlobSha (R2)", () => {
 describe("bytesToBase64 (R2)", () => {
 	const expectSameAsBuffer = (bytes: Uint8Array) => {
 		expect(bytesToBase64(bytes)).toBe(Buffer.from(bytes).toString("base64"));
-		expect(bytesToBase64(bytes.slice().buffer)).toBe(Buffer.from(bytes).toString("base64"));
+		expect(bytesToBase64(bytes.slice().buffer)).toBe(
+			Buffer.from(bytes).toString("base64")
+		);
 	};
 
 	it("encodes the empty input as an empty string", () => {

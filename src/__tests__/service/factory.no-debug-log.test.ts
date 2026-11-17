@@ -3,7 +3,11 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+} from "../../__mocks__/testHelpers";
 import { NoteFactory } from "../../service/factory";
 import type { INoteOption } from "../../types";
 
@@ -33,7 +37,9 @@ describe("NoteFactory.createNoteFromOption: no debug output (A6)", () => {
 		const note = await (factory as any).createNoteFromOption(option, "Quiet Note");
 
 		expect(note).toBeTruthy();
-		expect(app.vault.getAbstractFileByPath("001-Fleeting/Quiet Note.md")).toBeTruthy();
+		expect(
+			app.vault.getAbstractFileByPath("001-Fleeting/Quiet Note.md")
+		).toBeTruthy();
 		expect(console.error).not.toHaveBeenCalled();
 	});
 });

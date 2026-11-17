@@ -3,7 +3,11 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+} from "../../__mocks__/testHelpers";
 import { DataviewCommand } from "../../dataview/command";
 
 function createMockPlugin(registerThrows?: "already registered" | "other") {
@@ -18,7 +22,11 @@ function createMockPlugin(registerThrows?: "already registered" | "other") {
 		registerMarkdownCodeBlockProcessor: jest.fn(
 			(
 				_language: string,
-				_handler: (source: string, el: HTMLElement, ctx: any) => Promise<void> | void
+				_handler: (
+					source: string,
+					el: HTMLElement,
+					ctx: any
+				) => Promise<void> | void
 			) => {
 				registerCallCount++;
 				if (registerThrows === "already registered" && registerCallCount > 1) {
@@ -140,8 +148,8 @@ describe("DataviewCommand", () => {
 			plugin.app = app;
 			const cmd = new DataviewCommand(app, plugin as any);
 			await cmd.initialize();
-			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock).mock
-				.calls[0][1];
+			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock)
+				.mock.calls[0][1];
 			const el = document.createElement("div");
 			await handler("  \n  ", el, {});
 			await jest.advanceTimersByTimeAsync(400);
@@ -153,8 +161,8 @@ describe("DataviewCommand", () => {
 			plugin.app = app;
 			const cmd = new DataviewCommand(app, plugin as any);
 			await cmd.initialize();
-			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock).mock
-				.calls[0][1];
+			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock)
+				.mock.calls[0][1];
 			const el = document.createElement("div");
 			await handler("", el, {});
 			await jest.advanceTimersByTimeAsync(400);
@@ -166,10 +174,14 @@ describe("DataviewCommand", () => {
 			plugin.app = app;
 			const cmd = new DataviewCommand(app, plugin as any);
 			await cmd.initialize();
-			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock).mock
-				.calls[0][1];
-			const el = document.createElement("div") as HTMLElement & { setText?(s: string): void };
-			el.setText = (s: string) => { el.textContent = s; };
+			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock)
+				.mock.calls[0][1];
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
 			await handler("nonexistent-script", el, {});
 			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toContain("not found");
@@ -185,10 +197,14 @@ describe("DataviewCommand", () => {
 			);
 			const cmd = new DataviewCommand(app, plugin as any);
 			await cmd.initialize();
-			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock).mock
-				.calls[0][1];
-			const el = document.createElement("div") as HTMLElement & { setText?(s: string): void };
-			el.setText = (s: string) => { el.textContent = s; };
+			const handler = (plugin.registerMarkdownCodeBlockProcessor as jest.Mock)
+				.mock.calls[0][1];
+			const el = document.createElement("div") as HTMLElement & {
+				setText?(s: string): void;
+			};
+			el.setText = (s: string) => {
+				el.textContent = s;
+			};
 			await handler("test\nfoo: 1\nbar= 2", el, {});
 			await jest.advanceTimersByTimeAsync(400);
 			expect(el.textContent).toBeDefined();
@@ -242,7 +258,11 @@ describe("DataviewCommand", () => {
 			plugin.app = app;
 			const cmd = new DataviewCommand(app, plugin as any);
 			await cmd.initialize();
-			const script = await cmd.createScript("new-script", "New Script", "dv.paragraph('hi');");
+			const script = await cmd.createScript(
+				"new-script",
+				"New Script",
+				"dv.paragraph('hi');"
+			);
 			expect(script).toBeDefined();
 			expect(script.id).toBe("new-script");
 			expect(script.name).toBe("New Script");

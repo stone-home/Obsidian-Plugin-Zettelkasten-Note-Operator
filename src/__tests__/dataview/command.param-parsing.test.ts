@@ -40,18 +40,30 @@ describe("DataviewCommand block parameter parsing (D2)", () => {
 	it("keeps '=' and ':' inside values and still parses JSON values", async () => {
 		const { exec, handler } = await setup();
 
-		handler("my-script\nfilter: a=b\nurl: http://x.org/a\nn = 3", { isConnected: true }, { sourcePath: "Note.md" });
+		handler(
+			"my-script\nfilter: a=b\nurl: http://x.org/a\nn = 3",
+			{ isConnected: true },
+			{ sourcePath: "Note.md" }
+		);
 		await jest.advanceTimersByTimeAsync(1000);
 
 		expect(exec).toHaveBeenCalledTimes(1);
 		expect(exec.mock.calls[0][0]).toBe("my-script");
-		expect(exec.mock.calls[0][2]).toEqual({ filter: "a=b", url: "http://x.org/a", n: 3 });
+		expect(exec.mock.calls[0][2]).toEqual({
+			filter: "a=b",
+			url: "http://x.org/a",
+			n: 3,
+		});
 	});
 
 	it("splits at the first separator only, whichever it is", async () => {
 		const { exec, handler } = await setup();
 
-		handler('my-script\nexpr = a:b=c\nlist: ["x", "y"]', { isConnected: true }, { sourcePath: "Note.md" });
+		handler(
+			'my-script\nexpr = a:b=c\nlist: ["x", "y"]',
+			{ isConnected: true },
+			{ sourcePath: "Note.md" }
+		);
 		await jest.advanceTimersByTimeAsync(1000);
 
 		expect(exec.mock.calls[0][2]).toEqual({ expr: "a:b=c", list: ["x", "y"] });

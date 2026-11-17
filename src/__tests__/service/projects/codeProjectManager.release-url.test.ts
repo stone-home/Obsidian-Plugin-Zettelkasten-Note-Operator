@@ -27,7 +27,10 @@ describe("CodeProjectManager release notes keep the release URL (C8)", () => {
 	beforeEach(async () => {
 		setOrmMergeMode("preserve-existing");
 		app = createMockApp();
-		manager = new CodeProjectManager(app as any, createMockSettings({ projectRootPath: "Projects" }));
+		manager = new CodeProjectManager(
+			app as any,
+			createMockSettings({ projectRootPath: "Projects" })
+		);
 		projectFile = (await manager.createProject("RelProj")) as unknown as TFile;
 		setFrontmatterCache(app.metadataCache, projectFile.path, {
 			repo: "owner/repo",
@@ -49,12 +52,16 @@ describe("CodeProjectManager release notes keep the release URL (C8)", () => {
 		});
 		mockGitHubApi({
 			"/repos/owner/repo/releases": { json: [release] },
-			"/repos/owner/repo/compare/v1.0.0...main": { json: { total_commits: 0, commits: [] } },
+			"/repos/owner/repo/compare/v1.0.0...main": {
+				json: { total_commits: 0, commits: [] },
+			},
 		});
 
 		await manager.refreshProject(projectFile as any);
 
-		const content = (app.vault as any)._getContent("Projects/RelProj/releases/v1.0.0.md");
+		const content = (app.vault as any)._getContent(
+			"Projects/RelProj/releases/v1.0.0.md"
+		);
 		expect(content).toBeDefined();
 		const fm = parseNoteFrontmatter(content);
 		expect(fm.url).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");

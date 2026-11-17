@@ -1,7 +1,7 @@
-import { Plugin, TFile, Notice } from 'obsidian';
-import { NoteTemplateConfig } from 'markdown-note-orm';
+import { Plugin, TFile, Notice } from "obsidian";
+import { NoteTemplateConfig } from "markdown-note-orm";
 import { GithubPullRule, ZettelkastenSettings } from "./types";
-import { DEFAULT_SETTINGS, DEFAULT_AI_PROMPT_RULES } from "./constants"
+import { DEFAULT_SETTINGS, DEFAULT_AI_PROMPT_RULES } from "./constants";
 import { SampleSettingTab } from "./settings";
 import { NoteFactory } from "./service/factory";
 import { DataviewCommand } from "./dataview/command";
@@ -30,29 +30,29 @@ export default class MyPlugin extends Plugin {
 
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		this.addRibbonIcon('plus-square', 'Create New Note', () => {
+		this.addRibbonIcon("plus-square", "Create New Note", () => {
 			this.factory.openCreationModal();
 		});
 
 		this.addCommand({
-			id: 'create-zettel-note',
-			name: 'Create New Zettel Note',
+			id: "create-zettel-note",
+			name: "Create New Zettel Note",
 			callback: () => {
 				this.factory.openCreationModal();
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'open-zettelkasten-search',
-			name: 'Open Zettelkasten Search',
+			id: "open-zettelkasten-search",
+			name: "Open Zettelkasten Search",
 			callback: () => {
 				new SearchModal(this.app, this.settings, this.factory).open();
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'compile-current-draft',
-			name: 'Compile current draft to materials',
+			id: "compile-current-draft",
+			name: "Compile current draft to materials",
 			callback: async () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile) {
@@ -69,12 +69,12 @@ export default class MyPlugin extends Plugin {
 				const outputPath = await compiler.compileDraft(activeFile, cfg);
 				const sectionBase = activeFile.basename.replace("logic_", "");
 				await compiler.updateManifest(cfg, sectionBase, outputPath);
-			}
+			},
 		});
 
 		this.addCommand({
-			id: 'generate-ai-prompt',
-			name: 'Generate AI Prompt from current draft',
+			id: "generate-ai-prompt",
+			name: "Generate AI Prompt from current draft",
 			callback: async () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile) {
@@ -87,7 +87,7 @@ export default class MyPlugin extends Plugin {
 				}
 				const generator = new PromptGenerator(this.app, this.settings);
 				await generator.generatePrompt(activeFile);
-			}
+			},
 		});
 
 		// Create dataview instance immediately when enabled so settings/refresh never create a second one (avoids "already registered").
@@ -109,15 +109,20 @@ export default class MyPlugin extends Plugin {
 			this.settings.aiPromptMaxDepth = DEFAULT_SETTINGS.aiPromptMaxDepth ?? 1;
 		}
 		if (this.settings.aiPromptMaxCharsPerNote === undefined) {
-			this.settings.aiPromptMaxCharsPerNote = DEFAULT_SETTINGS.aiPromptMaxCharsPerNote ?? 4000;
+			this.settings.aiPromptMaxCharsPerNote =
+				DEFAULT_SETTINGS.aiPromptMaxCharsPerNote ?? 4000;
 		}
 		if (!this.settings.aiPromptWrapperStyle) {
-			this.settings.aiPromptWrapperStyle = DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
+			this.settings.aiPromptWrapperStyle =
+				DEFAULT_SETTINGS.aiPromptWrapperStyle ?? "xml";
 		}
 		// Migrate: summaryHeader -> summaryHeaders for existing rules
 		if (this.settings.aiPromptRules?.length) {
 			for (const rule of this.settings.aiPromptRules) {
-				if (rule.summaryHeader && (!rule.summaryHeaders || rule.summaryHeaders.length === 0)) {
+				if (
+					rule.summaryHeader &&
+					(!rule.summaryHeaders || rule.summaryHeaders.length === 0)
+				) {
 					rule.summaryHeaders = [rule.summaryHeader];
 				}
 			}
@@ -150,34 +155,45 @@ export default class MyPlugin extends Plugin {
 			},
 			createResearchObjective: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.createObjective(file, title);
 			},
 			createResearchStep: async (
 				projectPath: string,
 				objectivePath: string,
-				title: string,
+				title: string
 			) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const projectFile = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
-				const objectiveFile = plugin.app.vault.getAbstractFileByPath(objectivePath) as TFile;
-				if (!projectFile || !objectiveFile) throw new Error("Project or objective not found");
+				const projectFile = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
+				const objectiveFile = plugin.app.vault.getAbstractFileByPath(
+					objectivePath
+				) as TFile;
+				if (!projectFile || !objectiveFile)
+					throw new Error("Project or objective not found");
 				return await manager.createStep(projectFile, objectiveFile, title);
 			},
 			createResearchExperiment: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.createExperiment(file, title);
 			},
 			createResearchDraft: async (
 				projectPath: string,
 				title: string,
-				templateOptionIndex?: number,
+				templateOptionIndex?: number
 			) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				let templateConfig: NoteTemplateConfig | undefined;
 				if (
@@ -186,34 +202,42 @@ export default class MyPlugin extends Plugin {
 					plugin.settings.createNoteOptions &&
 					plugin.settings.createNoteOptions[templateOptionIndex]
 				) {
-					templateConfig = plugin.settings.createNoteOptions[templateOptionIndex]
-						.templateConfig;
+					templateConfig =
+						plugin.settings.createNoteOptions[templateOptionIndex]
+							.templateConfig;
 				}
 				return await manager.createDraft(file, title, templateConfig);
 			},
 			createResearchRequirement: async (projectPath: string, title: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.createRequirement(file, title);
 			},
 			createCodeRequirement: async (projectPath: string, title: string) => {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.createRequirement(file, title);
 			},
 			refreshCodeProject: async (projectPath: string, tokenKey?: string) => {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.refreshProject(file, tokenKey, {
-					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(plugin.app, count),
+					confirmLegacyCleanup: (count) =>
+						askLegacyCommitCleanup(plugin.app, count),
 				});
 			},
 			updateProjectDashboardProperties: async (
 				projectPath: string,
-				updates: { github_token_key?: string; public_repo?: boolean },
+				updates: { github_token_key?: string; public_repo?: boolean }
 			) => {
 				const manager = new CodeProjectManager(plugin.app, plugin.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
@@ -226,7 +250,7 @@ export default class MyPlugin extends Plugin {
 					repo?: string;
 					defaultBranch?: string;
 					github_target_folder?: string;
-				},
+				}
 			) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				await manager.updateDashboardProperties(projectPath, updates);
@@ -251,7 +275,9 @@ export default class MyPlugin extends Plugin {
 			generateAIPrompt: async (draftFileOrPath: TFile | string) => {
 				let file: TFile | null = null;
 				if (typeof draftFileOrPath === "string") {
-					file = plugin.app.vault.getAbstractFileByPath(draftFileOrPath) as TFile;
+					file = plugin.app.vault.getAbstractFileByPath(
+						draftFileOrPath
+					) as TFile;
 				} else {
 					file = draftFileOrPath;
 				}
@@ -261,22 +287,29 @@ export default class MyPlugin extends Plugin {
 			},
 			pushToGitHub: async (projectPath: string, tokenKey?: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				const result = await manager.pushToGitHub(file, tokenKey);
-				if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
+				if (result?.lastRequestDebug)
+					plugin.lastPushRequestDebug = result.lastRequestDebug;
 				return result;
 			},
 			getPullRules: (): GithubPullRule[] => plugin.settings.githubPullRules ?? [],
 			setResearchPullRules: async (projectPath: string, ids: string[]) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				await manager.setPullRules(file, ids);
 			},
 			pullFromGitHub: async (projectPath: string, tokenKey?: string) => {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
-				const file = plugin.app.vault.getAbstractFileByPath(projectPath) as TFile;
+				const file = plugin.app.vault.getAbstractFileByPath(
+					projectPath
+				) as TFile;
 				if (!file) throw new Error("Project not found");
 				return await manager.pullFromGitHub(file, tokenKey);
 			},
@@ -284,17 +317,25 @@ export default class MyPlugin extends Plugin {
 				const manager = new ResearchManager(plugin.app, plugin.settings);
 				manager.renderDraftsTable(container, projectPath, {
 					generateAIPrompt: async (draftPath: string) => {
-						const file = plugin.app.vault.getAbstractFileByPath(draftPath) as TFile;
+						const file = plugin.app.vault.getAbstractFileByPath(
+							draftPath
+						) as TFile;
 						if (!file) throw new Error("Draft not found");
-						const generator = new PromptGenerator(plugin.app, plugin.settings);
+						const generator = new PromptGenerator(
+							plugin.app,
+							plugin.settings
+						);
 						return await generator.generatePrompt(file);
 					},
 					pushToGitHub: async (projPath: string, tokenKey?: string) => {
 						const rm = new ResearchManager(plugin.app, plugin.settings);
-						const file = plugin.app.vault.getAbstractFileByPath(projPath) as TFile;
+						const file = plugin.app.vault.getAbstractFileByPath(
+							projPath
+						) as TFile;
 						if (!file) throw new Error("Project not found");
 						const result = await rm.pushToGitHub(file, tokenKey);
-						if (result?.lastRequestDebug) plugin.lastPushRequestDebug = result.lastRequestDebug;
+						if (result?.lastRequestDebug)
+							plugin.lastPushRequestDebug = result.lastRequestDebug;
 					},
 				});
 			},

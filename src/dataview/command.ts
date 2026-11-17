@@ -7,7 +7,12 @@ import type { IDataviewScript } from "./types";
 const CODE_BLOCK_DEBOUNCE_MS = 350;
 
 /** `component` owns the Dataview renderer so it is unloaded together with the code block. */
-type PendingDvjsPayload = { source: string; el: HTMLElement; ctx: any; component?: Component };
+type PendingDvjsPayload = {
+	source: string;
+	el: HTMLElement;
+	ctx: any;
+	component?: Component;
+};
 
 /** Debounced renders of one block, one payload per element (several panes can show the same block). */
 type PendingDvjsEntry = {
@@ -41,7 +46,7 @@ export class DataviewCommand {
 					}
 				},
 				notify: (message) => new Notice(message, 15000),
-			},
+			}
 		);
 	}
 
@@ -66,7 +71,7 @@ export class DataviewCommand {
 				this.plugin.settings.dataviewCodeBlockType,
 				(source, el, ctx) => {
 					this.scheduleProcessDvjsBlock(source, el, ctx);
-				},
+				}
 			);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -105,7 +110,12 @@ export class DataviewCommand {
 			overwrite?: boolean;
 		}
 	): Promise<IDataviewScript> {
-		return this.dataviewManager.createScript(id, name, scriptContent, options ?? {});
+		return this.dataviewManager.createScript(
+			id,
+			name,
+			scriptContent,
+			options ?? {}
+		);
 	}
 
 	/**
@@ -132,7 +142,10 @@ export class DataviewCommand {
 	}
 
 	private scheduleProcessDvjsBlock(source: string, el: HTMLElement, ctx: any): void {
-		const lines = source.trim().split("\n").filter((line) => line.trim().length);
+		const lines = source
+			.trim()
+			.split("\n")
+			.filter((line) => line.trim().length);
 		const scriptId = lines[0];
 		if (!scriptId) {
 			return;
@@ -154,7 +167,10 @@ export class DataviewCommand {
 				const run = () => {
 					void this.runDvjsBlock(payload);
 				};
-				if (payload.el.isConnected === false && typeof requestAnimationFrame === "function") {
+				if (
+					payload.el.isConnected === false &&
+					typeof requestAnimationFrame === "function"
+				) {
 					requestAnimationFrame(() => {
 						requestAnimationFrame(run);
 					});
@@ -191,8 +207,16 @@ export class DataviewCommand {
 		}, CODE_BLOCK_DEBOUNCE_MS);
 	}
 
-	private async runDvjsBlock({ source, el, ctx, component }: PendingDvjsPayload): Promise<void> {
-		const lines = source.trim().split("\n").filter((line) => line.trim().length);
+	private async runDvjsBlock({
+		source,
+		el,
+		ctx,
+		component,
+	}: PendingDvjsPayload): Promise<void> {
+		const lines = source
+			.trim()
+			.split("\n")
+			.filter((line) => line.trim().length);
 		const scriptId = lines[0];
 		if (!scriptId) {
 			return;
@@ -214,10 +238,16 @@ export class DataviewCommand {
 		});
 
 		try {
-			await this.dataviewManager.executeScript(scriptId, el, params, ctx, component);
+			await this.dataviewManager.executeScript(
+				scriptId,
+				el,
+				params,
+				ctx,
+				component
+			);
 		} catch (error) {
 			new Notice(
-				`Error executing script ${scriptId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				`Error executing script ${scriptId}: ${error instanceof Error ? error.message : "Unknown error"}`
 			);
 		}
 	}

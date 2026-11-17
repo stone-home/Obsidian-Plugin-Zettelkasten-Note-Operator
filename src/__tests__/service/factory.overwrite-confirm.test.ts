@@ -8,7 +8,11 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+} from "../../__mocks__/testHelpers";
 import { NoteFactory } from "../../service/factory";
 import type { INoteOption } from "../../types";
 
@@ -52,7 +56,10 @@ describe("NoteFactory.createNoteFromOption: overwrite confirmation (A1)", () => 
 	it("does not ask and creates the note when the file does not exist", async () => {
 		const openSpy = jest.spyOn(app.workspace, "openLinkText");
 
-		const note = await (factory as any).createNoteFromOption(makeOption(), "Fresh Idea");
+		const note = await (factory as any).createNoteFromOption(
+			makeOption(),
+			"Fresh Idea"
+		);
 
 		expect(confirmOverwrite).not.toHaveBeenCalled();
 		expect(note).toBeTruthy();
@@ -67,7 +74,10 @@ describe("NoteFactory.createNoteFromOption: overwrite confirmation (A1)", () => 
 		const modifySpy = jest.spyOn(app.vault, "modify");
 		const openSpy = jest.spyOn(app.workspace, "openLinkText");
 
-		const result = await (factory as any).createNoteFromOption(makeOption(), "My Note");
+		const result = await (factory as any).createNoteFromOption(
+			makeOption(),
+			"My Note"
+		);
 
 		expect(confirmOverwrite).toHaveBeenCalledTimes(1);
 		expect(confirmOverwrite).toHaveBeenCalledWith(`${FOLDER}/My Note.md`);
@@ -82,7 +92,10 @@ describe("NoteFactory.createNoteFromOption: overwrite confirmation (A1)", () => 
 		await app.vault.create(`${FOLDER}/My Note.md`, ORIGINAL);
 		confirmOverwrite.mockResolvedValue(true);
 
-		const note = await (factory as any).createNoteFromOption(makeOption(), "My Note");
+		const note = await (factory as any).createNoteFromOption(
+			makeOption(),
+			"My Note"
+		);
 
 		expect(confirmOverwrite).toHaveBeenCalledWith(`${FOLDER}/My Note.md`);
 		expect(note).toBeTruthy();
@@ -102,14 +115,19 @@ describe("NoteFactory.createNoteFromOption: overwrite confirmation (A1)", () => 
 
 		expect(confirmOverwrite).toHaveBeenCalledWith(`${FOLDER}/inbox - My Note.md`);
 		expect(result).toBeNull();
-		expect((app.vault as any)._getContent(`${FOLDER}/inbox - My Note.md`)).toBe(ORIGINAL);
+		expect((app.vault as any)._getContent(`${FOLDER}/inbox - My Note.md`)).toBe(
+			ORIGINAL
+		);
 	});
 
 	it("asks when a file that differs only in letter case exists (case-insensitive file systems)", async () => {
 		await app.vault.create(`${FOLDER}/my note.md`, ORIGINAL);
 		confirmOverwrite.mockResolvedValue(false);
 
-		const result = await (factory as any).createNoteFromOption(makeOption(), "My Note");
+		const result = await (factory as any).createNoteFromOption(
+			makeOption(),
+			"My Note"
+		);
 
 		expect(confirmOverwrite).toHaveBeenCalledTimes(1);
 		expect(result).toBeNull();

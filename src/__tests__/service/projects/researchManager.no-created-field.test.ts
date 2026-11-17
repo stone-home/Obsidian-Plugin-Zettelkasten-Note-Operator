@@ -12,7 +12,15 @@ import {
 } from "../../../__mocks__/testHelpers";
 import { ResearchManager } from "../../../service/projects/researchManager";
 
-const KEPT_KEYS = ["project_id", "project_name", "status", "repo", "defaultBranch", "project_code", "granularity"];
+const KEPT_KEYS = [
+	"project_id",
+	"project_name",
+	"status",
+	"repo",
+	"defaultBranch",
+	"project_code",
+	"granularity",
+];
 
 describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 	let app: App;
@@ -20,7 +28,10 @@ describe("ResearchManager Dashboard frontmatter without `created` (R1)", () => {
 
 	beforeEach(() => {
 		app = createMockApp();
-		manager = new ResearchManager(app as any, createMockSettings({ researchRootPath: "Research" }));
+		manager = new ResearchManager(
+			app as any,
+			createMockSettings({ researchRootPath: "Research" })
+		);
 	});
 
 	afterEach(() => {

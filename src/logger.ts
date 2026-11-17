@@ -61,7 +61,7 @@ export class Logger {
 			const errorDetails = Logger.getErrorDetails(error);
 			console.error(
 				`[Zettelkasten] ERROR: ${message} - ${errorDetails.message}`,
-				errorDetails.stack ? { stack: errorDetails.stack } : {},
+				errorDetails.stack ? { stack: errorDetails.stack } : {}
 			);
 		} else {
 			console.error(`[Zettelkasten] ERROR: ${message}`);
@@ -101,7 +101,7 @@ export class Logger {
 	public static logError(
 		context: string,
 		error: unknown,
-		showNotice: boolean = true,
+		showNotice: boolean = true
 	): void {
 		Logger.error(context, error);
 
@@ -137,11 +137,8 @@ export class ContextLogger {
 		if (error !== undefined) {
 			const errorDetails = Logger.getErrorDetails(error);
 			console.error(
-				this.formatMessage(
-					"ERROR",
-					`${message} - ${errorDetails.message}`,
-				),
-				errorDetails.stack ? { stack: errorDetails.stack } : {},
+				this.formatMessage("ERROR", `${message} - ${errorDetails.message}`),
+				errorDetails.stack ? { stack: errorDetails.stack } : {}
 			);
 		} else {
 			console.error(this.formatMessage("ERROR", message));
@@ -174,11 +171,7 @@ export class ContextLogger {
 	 * @param error - The error object
 	 * @param showNotice - Whether to show user notification (default: true)
 	 */
-	public logError(
-		message: string,
-		error: unknown,
-		showNotice: boolean = true,
-	): void {
+	public logError(message: string, error: unknown, showNotice: boolean = true): void {
 		this.error(message, error);
 
 		if (showNotice) {

@@ -19,7 +19,8 @@ import {
 import * as cpm from "../../../service/projects/codeProjectManager";
 import { CodeProjectManager } from "../../../service/projects/codeProjectManager";
 
-const buildUnreleasedCommitsNote = (input: any): string => (cpm as any).buildUnreleasedCommitsNote(input);
+const buildUnreleasedCommitsNote = (input: any): string =>
+	(cpm as any).buildUnreleasedCommitsNote(input);
 
 const PROJECT = "Projects/Proj";
 const NOTE_PATH = `${PROJECT}/Unreleased Commits.md`;
@@ -35,8 +36,18 @@ function tableRows(content: string): string[] {
 
 describe("buildUnreleasedCommitsNote (C1)", () => {
 	const commits = [
-		{ sha: "abc1234567890", message: "feat: add \"quoted\" thing", date: "2026-11-10T09:00:00Z", url: "https://github.com/owner/repo/commit/abc1234567890" },
-		{ sha: "def4567890123", message: "fix a|b pipe", date: "2026-11-11T09:00:00Z", url: "https://github.com/owner/repo/commit/def4567890123" },
+		{
+			sha: "abc1234567890",
+			message: 'feat: add "quoted" thing',
+			date: "2026-11-10T09:00:00Z",
+			url: "https://github.com/owner/repo/commit/abc1234567890",
+		},
+		{
+			sha: "def4567890123",
+			message: "fix a|b pipe",
+			date: "2026-11-11T09:00:00Z",
+			url: "https://github.com/owner/repo/commit/def4567890123",
+		},
 	];
 
 	it("puts the commit data into YAML frontmatter that round-trips", () => {
@@ -98,8 +109,10 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 	let manager: CodeProjectManager;
 	let projectFile: TFile;
 
-	const legacyFiles = () => app.vault.getFiles().filter((f) => f.path.startsWith(`${PROJECT}/commits/`));
-	const noteContent = (): string | undefined => (app.vault as any)._getContent(NOTE_PATH);
+	const legacyFiles = () =>
+		app.vault.getFiles().filter((f) => f.path.startsWith(`${PROJECT}/commits/`));
+	const noteContent = (): string | undefined =>
+		(app.vault as any)._getContent(NOTE_PATH);
 
 	function mockOneRelease(commitShas: string[]) {
 		mockGitHubApi({
@@ -108,7 +121,11 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 				json: {
 					total_commits: commitShas.length,
 					commits: commitShas.map((sha, i) =>
-						createMockCommit({ sha, message: `change ${i}`, date: `2026-11-1${i}T00:00:00Z` })
+						createMockCommit({
+							sha,
+							message: `change ${i}`,
+							date: `2026-11-1${i}T00:00:00Z`,
+						})
 					),
 				},
 			},
@@ -117,13 +134,22 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 
 	async function addLegacyNotes() {
 		await app.vault.createFolder(`${PROJECT}/commits`);
-		await app.vault.create(`${PROJECT}/commits/1111111.md`, "---\nsha: 1111111\n---\n");
-		await app.vault.create(`${PROJECT}/commits/2222222.md`, "---\nsha: 2222222\n---\n");
+		await app.vault.create(
+			`${PROJECT}/commits/1111111.md`,
+			"---\nsha: 1111111\n---\n"
+		);
+		await app.vault.create(
+			`${PROJECT}/commits/2222222.md`,
+			"---\nsha: 2222222\n---\n"
+		);
 	}
 
 	beforeEach(async () => {
 		app = createMockApp();
-		manager = new CodeProjectManager(app as any, createMockSettings({ projectRootPath: "Projects" }));
+		manager = new CodeProjectManager(
+			app as any,
+			createMockSettings({ projectRootPath: "Projects" })
+		);
 		projectFile = (await manager.createProject("Proj")) as unknown as TFile;
 		setFrontmatterCache(app.metadataCache, projectFile.path, {
 			repo: "owner/repo",
@@ -142,7 +168,9 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 
 		await manager.importExistingProject("Projects/Imported");
 		expect(app.vault.getAbstractFileByPath("Projects/Imported/commits")).toBeNull();
-		expect(app.vault.getAbstractFileByPath("Projects/Imported/releases")).toBeTruthy();
+		expect(
+			app.vault.getAbstractFileByPath("Projects/Imported/releases")
+		).toBeTruthy();
 	});
 
 	it("writes Unreleased Commits.md with the compare result and creates nothing under commits/", async () => {
@@ -154,7 +182,10 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 		expect(content).toBeDefined();
 		const fm = parseNoteFrontmatter(content);
 		expect(fm.commits.map((c: any) => c.sha)).toEqual(
-			expect.arrayContaining([expect.stringMatching(/^aaaaaaa/), expect.stringMatching(/^bbbbbbb/)])
+			expect.arrayContaining([
+				expect.stringMatching(/^aaaaaaa/),
+				expect.stringMatching(/^bbbbbbb/),
+			])
 		);
 		expect(fm.commits).toHaveLength(2);
 		expect(fm.base).toBe("v1.0.0");
@@ -221,7 +252,9 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 				return true;
 			});
 
-			await (manager as any).refreshProject(projectFile, undefined, { confirmLegacyCleanup });
+			await (manager as any).refreshProject(projectFile, undefined, {
+				confirmLegacyCleanup,
+			});
 
 			expect(confirmLegacyCleanup).toHaveBeenCalledTimes(1);
 			expect(confirmLegacyCleanup).toHaveBeenCalledWith(2);
@@ -261,7 +294,9 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			});
 
 			expect(legacyFiles()).toHaveLength(2);
-			const dashboardFm = parseNoteFrontmatter((app.vault as any)._getContent(projectFile.path));
+			const dashboardFm = parseNoteFrontmatter(
+				(app.vault as any)._getContent(projectFile.path)
+			);
 			expect(dashboardFm.legacy_commits).toBe("keep");
 		});
 
@@ -273,7 +308,9 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			mockOneRelease(["aaaaaaa0000001"]);
 			const confirmLegacyCleanup = jest.fn().mockResolvedValue(true);
 
-			await (manager as any).refreshProject(projectFile, undefined, { confirmLegacyCleanup });
+			await (manager as any).refreshProject(projectFile, undefined, {
+				confirmLegacyCleanup,
+			});
 
 			expect(confirmLegacyCleanup).not.toHaveBeenCalled();
 			expect(legacyFiles()).toHaveLength(2);

@@ -9,7 +9,8 @@
 import { describeGitHubError, githubErrorStatus } from "../../../service/github/errors";
 
 /** Shape of the error Obsidian's requestUrl rejects with for HTTP errors. */
-const httpError = (status: number) => Object.assign(new Error(`Request failed, status ${status}`), { status });
+const httpError = (status: number) =>
+	Object.assign(new Error(`Request failed, status ${status}`), { status });
 
 describe("githubErrorStatus (C3)", () => {
 	it("reads the status property", () => {
@@ -33,12 +34,16 @@ describe("describeGitHubError (C3)", () => {
 
 	it("401: the PAT was rejected", () => {
 		const msg = describeGitHubError(httpError(401), action, true, "repo");
-		expect(msg.startsWith(`${action} failed (401): GitHub rejected the PAT`)).toBe(true);
+		expect(msg.startsWith(`${action} failed (401): GitHub rejected the PAT`)).toBe(
+			true
+		);
 	});
 
 	it("403 with a PAT: the PAT may lack access", () => {
 		const msg = describeGitHubError(httpError(403), action, true, "repo");
-		expect(msg.startsWith(`${action} failed (403): The PAT may lack access`)).toBe(true);
+		expect(msg.startsWith(`${action} failed (403): The PAT may lack access`)).toBe(
+			true
+		);
 	});
 
 	it("403 without a PAT: mentions the anonymous rate limit", () => {
@@ -76,7 +81,12 @@ describe("describeGitHubError (C3)", () => {
 	});
 
 	it("errors without a status still name the action and the message", () => {
-		const msg = describeGitHubError(new Error("network down"), action, true, "repo");
+		const msg = describeGitHubError(
+			new Error("network down"),
+			action,
+			true,
+			"repo"
+		);
 		expect(msg).toContain(action);
 		expect(msg).toContain("network down");
 	});

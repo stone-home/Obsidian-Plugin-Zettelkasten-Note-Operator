@@ -38,7 +38,9 @@ describe("Dashboard.renderUpgradeSection (A2)", () => {
 		const dashboard = makeDashboard(app, fakeNote("run", "2026-11-13 run"));
 		const container = createFakeElement("div");
 
-		await expect((dashboard as any).renderUpgradeSection(container)).resolves.not.toThrow();
+		await expect(
+			(dashboard as any).renderUpgradeSection(container)
+		).resolves.not.toThrow();
 
 		const text = collectText(container);
 		expect(text).toContain("not in the upgrade range");

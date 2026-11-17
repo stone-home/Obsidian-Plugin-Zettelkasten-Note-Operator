@@ -34,7 +34,13 @@ import { ResearchManager } from "../../../service/projects/researchManager";
 import { DEFAULT_SETTINGS } from "../../../constants";
 import { setOrmMergeMode } from "../../../__mocks__/markdown-note-orm";
 
-type PullRule = { id: string; label?: string; sourceDir: string; filePattern: string; target: string };
+type PullRule = {
+	id: string;
+	label?: string;
+	sourceDir: string;
+	filePattern: string;
+	target: string;
+};
 type PullResult = {
 	added: number;
 	updated: number;
@@ -54,9 +60,26 @@ const TOKEN = "pull-token-value";
 const API = "/repos/octo/notes/contents";
 
 const RULES: PullRule[] = [
-	{ id: "papers", label: "Papers", sourceDir: "lit/papers", filePattern: "\\.pdf$", target: "materials/papers" },
-	{ id: "data", sourceDir: "data", filePattern: "\\.csv$", target: "materials/data/raw" },
-	{ id: "unused", label: "Unused", sourceDir: "other", filePattern: ".*", target: "other" },
+	{
+		id: "papers",
+		label: "Papers",
+		sourceDir: "lit/papers",
+		filePattern: "\\.pdf$",
+		target: "materials/papers",
+	},
+	{
+		id: "data",
+		sourceDir: "data",
+		filePattern: "\\.csv$",
+		target: "materials/data/raw",
+	},
+	{
+		id: "unused",
+		label: "Unused",
+		sourceDir: "other",
+		filePattern: ".*",
+		target: "other",
+	},
 ];
 
 const bytes = (...values: number[]) => new Uint8Array(values);
@@ -67,7 +90,12 @@ const C_PDF_OLD = bytes(0x25, 0x50, 0x44, 0x46, 0x03);
 const X_CSV = "id,value\n1,ä\n";
 
 /** Contents API entry for a file in `dir`. */
-const fileEntry = (dir: string, name: string, content: Uint8Array | string, overrides: Record<string, any> = {}) => ({
+const fileEntry = (
+	dir: string,
+	name: string,
+	content: Uint8Array | string,
+	overrides: Record<string, any> = {}
+) => ({
 	name,
 	path: `${dir}/${name}`,
 	sha: gitBlobShaForTest(content),
@@ -107,19 +135,47 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		fileEntry("lit/papers", "b.pdf", B_PDF), // identical locally → skipped
 		fileEntry("lit/papers", "c.pdf", C_PDF_NEW), // different locally → updated
 		fileEntry("lit/papers", "notes.md", "# notes"), // does not match the pattern
-		{ name: "sub", path: "lit/papers/sub", sha: "d".repeat(40), size: 0, type: "dir", download_url: null },
-		{ name: "module.pdf", path: "lit/papers/module.pdf", sha: "e".repeat(40), size: 0, type: "file", download_url: null },
+		{
+			name: "sub",
+			path: "lit/papers/sub",
+			sha: "d".repeat(40),
+			size: 0,
+			type: "dir",
+			download_url: null,
+		},
+		{
+			name: "module.pdf",
+			path: "lit/papers/module.pdf",
+			sha: "e".repeat(40),
+			size: 0,
+			type: "file",
+			download_url: null,
+		},
 	];
 
 	/** Routes for the standard repo on branch trunk; `extra` overrides or adds paths. */
 	const standardRoutes = (extra: Record<string, GitHubRouteHandler> = {}) => {
 		mockGitHubApi({
 			[`${API}/lit/papers`]: routeForRef("trunk", { json: papersListing() }),
-			[`${API}/lit/papers/a.pdf`]: routeForRef("trunk", githubFileRoute(A_PDF, "lit/papers/a.pdf")),
-			[`${API}/lit/papers/b.pdf`]: routeForRef("trunk", githubFileRoute(B_PDF, "lit/papers/b.pdf")),
-			[`${API}/lit/papers/c.pdf`]: routeForRef("trunk", githubFileRoute(C_PDF_NEW, "lit/papers/c.pdf")),
-			[`${API}/data`]: routeForRef("trunk", { json: [fileEntry("data", "x.csv", X_CSV)] }),
-			[`${API}/data/x.csv`]: routeForRef("trunk", githubFileRoute(X_CSV, "data/x.csv")),
+			[`${API}/lit/papers/a.pdf`]: routeForRef(
+				"trunk",
+				githubFileRoute(A_PDF, "lit/papers/a.pdf")
+			),
+			[`${API}/lit/papers/b.pdf`]: routeForRef(
+				"trunk",
+				githubFileRoute(B_PDF, "lit/papers/b.pdf")
+			),
+			[`${API}/lit/papers/c.pdf`]: routeForRef(
+				"trunk",
+				githubFileRoute(C_PDF_NEW, "lit/papers/c.pdf")
+			),
+			[`${API}/data`]: routeForRef("trunk", {
+				json: [fileEntry("data", "x.csv", X_CSV)],
+			}),
+			[`${API}/data/x.csv`]: routeForRef(
+				"trunk",
+				githubFileRoute(X_CSV, "data/x.csv")
+			),
 			...extra,
 		});
 	};
@@ -130,11 +186,16 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		app = createMockApp();
 		manager = new ResearchManager(
 			app as any,
-			createMockSettings({ researchRootPath: "Research", githubPullRules: RULES } as any)
+			createMockSettings({
+				researchRootPath: "Research",
+				githubPullRules: RULES,
+			} as any)
 		);
 		pull = manager as unknown as PullCapable;
 		(app as any).secretStorage = {
-			getSecret: jest.fn(async (key: string) => (key === "gh" ? TOKEN : key === "other" ? "other-token" : null)),
+			getSecret: jest.fn(async (key: string) =>
+				key === "gh" ? TOKEN : key === "other" ? "other-token" : null
+			),
 		};
 		await app.vault.createFolder("Research");
 		await app.vault.createFolder(PROJECT);
@@ -170,7 +231,9 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			try {
 				const file = await manager.createProject("Fresh");
 
-				const fm = parseNoteFrontmatter((app.vault as any)._getContent(file.path));
+				const fm = parseNoteFrontmatter(
+					(app.vault as any)._getContent(file.path)
+				);
 				expect(fm.github_pull).toEqual([]);
 			} finally {
 				setOrmMergeMode("override");
@@ -186,13 +249,18 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			const fm = parseNoteFrontmatter((app.vault as any)._getContent(DASHBOARD));
 			expect(fm.github_pull).toEqual(["data", "papers", "zzz999"]);
 			expect(fm.repo).toBe("octo/notes");
-			expect(app.metadataCache.getFileCache(projectFile)?.frontmatter?.github_pull).toEqual(["data", "papers", "zzz999"]);
+			expect(
+				app.metadataCache.getFileCache(projectFile)?.frontmatter?.github_pull
+			).toEqual(["data", "papers", "zzz999"]);
 		});
 
 		it("setPullRules can clear the list", async () => {
 			await pull.setPullRules(projectFile, []);
 
-			expect(parseNoteFrontmatter((app.vault as any)._getContent(DASHBOARD)).github_pull).toEqual([]);
+			expect(
+				parseNoteFrontmatter((app.vault as any)._getContent(DASHBOARD))
+					.github_pull
+			).toEqual([]);
 		});
 	});
 
@@ -202,11 +270,33 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 			const result = await pull.pullFromGitHub(projectFile);
 
-			expect(result).toMatchObject({ added: 2, updated: 1, skipped: 1, failed: 0, unknownRules: [] });
-			expect((await readLocal(`${PROJECT}/materials/papers/a.pdf`)).equals(Buffer.from(A_PDF))).toBe(true);
-			expect((await readLocal(`${PROJECT}/materials/papers/b.pdf`)).equals(Buffer.from(B_PDF))).toBe(true);
-			expect((await readLocal(`${PROJECT}/materials/papers/c.pdf`)).equals(Buffer.from(C_PDF_NEW))).toBe(true);
-			expect((await readLocal(`${PROJECT}/materials/data/raw/x.csv`)).equals(Buffer.from(X_CSV, "utf8"))).toBe(true);
+			expect(result).toMatchObject({
+				added: 2,
+				updated: 1,
+				skipped: 1,
+				failed: 0,
+				unknownRules: [],
+			});
+			expect(
+				(await readLocal(`${PROJECT}/materials/papers/a.pdf`)).equals(
+					Buffer.from(A_PDF)
+				)
+			).toBe(true);
+			expect(
+				(await readLocal(`${PROJECT}/materials/papers/b.pdf`)).equals(
+					Buffer.from(B_PDF)
+				)
+			).toBe(true);
+			expect(
+				(await readLocal(`${PROJECT}/materials/papers/c.pdf`)).equals(
+					Buffer.from(C_PDF_NEW)
+				)
+			).toBe(true);
+			expect(
+				(await readLocal(`${PROJECT}/materials/data/raw/x.csv`)).equals(
+					Buffer.from(X_CSV, "utf8")
+				)
+			).toBe(true);
 		});
 
 		it("lists each sourceDir on the Dashboard branch, with the PAT", async () => {
@@ -220,7 +310,9 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				"https://api.github.com/repos/octo/notes/contents/data?ref=trunk",
 			]);
 			for (const call of requestedCalls()) {
-				expect(getHeader(call.headers, "Authorization")).toBe(`Bearer ${TOKEN}`);
+				expect(getHeader(call.headers, "Authorization")).toBe(
+					`Bearer ${TOKEN}`
+				);
 			}
 		});
 
@@ -233,7 +325,9 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			expect(urlsMatching(/\/a\.pdf/)).toHaveLength(1);
 			expect(urlsMatching(/\/c\.pdf/)).toHaveLength(1);
 			for (const call of urlsMatching(/\/(a|c)\.pdf|x\.csv/)) {
-				expect(getHeader(call.headers, "Accept")).toBe("application/vnd.github.raw+json");
+				expect(getHeader(call.headers, "Accept")).toBe(
+					"application/vnd.github.raw+json"
+				);
 			}
 		});
 
@@ -253,7 +347,9 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 			await pull.pullFromGitHub(projectFile);
 
-			expect(modifySpy.mock.calls.map((c) => (c[0] as TFile).path)).toEqual([`${PROJECT}/materials/papers/c.pdf`]);
+			expect(modifySpy.mock.calls.map((c) => (c[0] as TFile).path)).toEqual([
+				`${PROJECT}/materials/papers/c.pdf`,
+			]);
 			expect(spies.createBinary.mock.calls.map((c) => c[0]).sort()).toEqual([
 				`${PROJECT}/materials/data/raw/x.csv`,
 				`${PROJECT}/materials/papers/a.pdf`,
@@ -280,16 +376,27 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 			expect(trashSpy).not.toHaveBeenCalled();
 			expect(deleteSpy).not.toHaveBeenCalled();
-			expect(app.vault.getAbstractFileByPath(`${PROJECT}/materials/papers/local-only.pdf`)).toBeInstanceOf(TFile);
+			expect(
+				app.vault.getAbstractFileByPath(
+					`${PROJECT}/materials/papers/local-only.pdf`
+				)
+			).toBeInstanceOf(TFile);
 		});
 
 		it("runs the rules in github_pull order", async () => {
-			await setDashboard({ repo: "octo/notes", defaultBranch: "trunk", github_token_key: "gh", github_pull: ["data", "papers"] });
+			await setDashboard({
+				repo: "octo/notes",
+				defaultBranch: "trunk",
+				github_token_key: "gh",
+				github_pull: ["data", "papers"],
+			});
 			standardRoutes();
 
 			await pull.pullFromGitHub(projectFile);
 
-			const listings = urlsMatching(/\/contents\/(lit\/papers|data)\?/).map((c) => c.url);
+			const listings = urlsMatching(/\/contents\/(lit\/papers|data)\?/).map(
+				(c) => c.url
+			);
 			expect(listings).toEqual([
 				"https://api.github.com/repos/octo/notes/contents/data?ref=trunk",
 				"https://api.github.com/repos/octo/notes/contents/lit/papers?ref=trunk",
@@ -297,7 +404,12 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		});
 
 		it("reports ids that match no rule in unknownRules and still runs the others", async () => {
-			await setDashboard({ repo: "octo/notes", defaultBranch: "trunk", github_token_key: "gh", github_pull: ["ghost", "data"] });
+			await setDashboard({
+				repo: "octo/notes",
+				defaultBranch: "trunk",
+				github_token_key: "gh",
+				github_pull: ["ghost", "data"],
+			});
 			standardRoutes();
 
 			const result = await pull.pullFromGitHub(projectFile);
@@ -308,16 +420,27 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		});
 
 		it("uses branch main when the Dashboard has no defaultBranch", async () => {
-			await setDashboard({ repo: "octo/notes", github_token_key: "gh", github_pull: ["data"] });
+			await setDashboard({
+				repo: "octo/notes",
+				github_token_key: "gh",
+				github_pull: ["data"],
+			});
 			mockGitHubApi({
-				[`${API}/data`]: routeForRef("main", { json: [fileEntry("data", "x.csv", X_CSV)] }),
-				[`${API}/data/x.csv`]: routeForRef("main", githubFileRoute(X_CSV, "data/x.csv")),
+				[`${API}/data`]: routeForRef("main", {
+					json: [fileEntry("data", "x.csv", X_CSV)],
+				}),
+				[`${API}/data/x.csv`]: routeForRef(
+					"main",
+					githubFileRoute(X_CSV, "data/x.csv")
+				),
 			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
 			expect(result).toMatchObject({ added: 1, failed: 0 });
-			expect(urlsMatching(/\/contents\/data\?/)[0].url).toBe("https://api.github.com/repos/octo/notes/contents/data?ref=main");
+			expect(urlsMatching(/\/contents\/data\?/)[0].url).toBe(
+				"https://api.github.com/repos/octo/notes/contents/data?ref=main"
+			);
 		});
 
 		it("shows a Notice that summarises added, updated, skipped and failed", async () => {
@@ -335,8 +458,12 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 	describe("limits and problems", () => {
 		it("warns when a folder listing has exactly 1000 entries (GitHub's limit)", async () => {
-			const many = Array.from({ length: 1000 }, (_, i) => fileEntry("lit/papers", `f${i}.txt`, `t${i}`));
-			standardRoutes({ [`${API}/lit/papers`]: routeForRef("trunk", { json: many }) });
+			const many = Array.from({ length: 1000 }, (_, i) =>
+				fileEntry("lit/papers", `f${i}.txt`, `t${i}`)
+			);
+			standardRoutes({
+				[`${API}/lit/papers`]: routeForRef("trunk", { json: many }),
+			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
@@ -344,8 +471,12 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		});
 
 		it("does not warn about the limit for 999 entries", async () => {
-			const some = Array.from({ length: 999 }, (_, i) => fileEntry("lit/papers", `f${i}.txt`, `t${i}`));
-			standardRoutes({ [`${API}/lit/papers`]: routeForRef("trunk", { json: some }) });
+			const some = Array.from({ length: 999 }, (_, i) =>
+				fileEntry("lit/papers", `f${i}.txt`, `t${i}`)
+			);
+			standardRoutes({
+				[`${API}/lit/papers`]: routeForRef("trunk", { json: some }),
+			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
@@ -354,49 +485,88 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 		it("counts a file whose name Obsidian rejects as failed, with a warning", async () => {
 			standardRoutes({
-				[`${API}/lit/papers`]: routeForRef("trunk", { json: [fileEntry("lit/papers", "a:b.pdf", A_PDF)] }),
+				[`${API}/lit/papers`]: routeForRef("trunk", {
+					json: [fileEntry("lit/papers", "a:b.pdf", A_PDF)],
+				}),
 			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
 			expect(result.failed).toBe(1);
 			expect(result.warnings.length).toBeGreaterThan(0);
-			expect(spies.createBinary.mock.calls.some((c) => String(c[0]).includes("a:b.pdf"))).toBe(false);
+			expect(
+				spies.createBinary.mock.calls.some((c) =>
+					String(c[0]).includes("a:b.pdf")
+				)
+			).toBe(false);
 		});
 
 		it("reports a failed listing with describeGitHubError wording, counts it as failed, and runs the other rules", async () => {
-			standardRoutes({ [`${API}/lit/papers`]: { status: 401, json: { message: "Bad credentials" } } });
+			standardRoutes({
+				[`${API}/lit/papers`]: {
+					status: 401,
+					json: { message: "Bad credentials" },
+				},
+			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
 			expect(result.failed).toBe(1);
-			expect(result.warnings.some((w) => /failed \(401\): GitHub rejected the PAT/.test(w))).toBe(true);
+			expect(
+				result.warnings.some((w) =>
+					/failed \(401\): GitHub rejected the PAT/.test(w)
+				)
+			).toBe(true);
 			expect(result.added).toBe(1); // data/x.csv
 		});
 
 		it("reports a failed download with describeGitHubError wording and keeps going", async () => {
-			standardRoutes({ [`${API}/lit/papers/a.pdf`]: { status: 403, json: { message: "Forbidden" } } });
+			standardRoutes({
+				[`${API}/lit/papers/a.pdf`]: {
+					status: 403,
+					json: { message: "Forbidden" },
+				},
+			});
 
 			const result = await pull.pullFromGitHub(projectFile);
 
-			expect(result).toMatchObject({ added: 1, updated: 1, skipped: 1, failed: 1 });
-			expect(result.warnings.some((w) => /failed \(403\): The PAT may lack access/.test(w))).toBe(true);
-			expect(app.vault.getAbstractFileByPath(`${PROJECT}/materials/papers/a.pdf`)).toBeNull();
+			expect(result).toMatchObject({
+				added: 1,
+				updated: 1,
+				skipped: 1,
+				failed: 1,
+			});
+			expect(
+				result.warnings.some((w) =>
+					/failed \(403\): The PAT may lack access/.test(w)
+				)
+			).toBe(true);
+			expect(
+				app.vault.getAbstractFileByPath(`${PROJECT}/materials/papers/a.pdf`)
+			).toBeNull();
 		});
 	});
 
 	describe("repo and token", () => {
 		it("throws when the Dashboard has no repo", async () => {
-			await setDashboard({ defaultBranch: "trunk", github_token_key: "gh", github_pull: ["data"] });
+			await setDashboard({
+				defaultBranch: "trunk",
+				github_token_key: "gh",
+				github_pull: ["data"],
+			});
 
-			await expect(pull.pullFromGitHub(projectFile)).rejects.toThrow(/Missing repo/);
+			await expect(pull.pullFromGitHub(projectFile)).rejects.toThrow(
+				/Missing repo/
+			);
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
 
 		it("throws when the PAT key has no secret, without any request", async () => {
 			standardRoutes();
 
-			await expect(pull.pullFromGitHub(projectFile, "missing-key")).rejects.toThrow(/No PAT found for key/);
+			await expect(
+				pull.pullFromGitHub(projectFile, "missing-key")
+			).rejects.toThrow(/No PAT found for key/);
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
 
@@ -407,12 +577,19 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 			expect(requestedCalls().length).toBeGreaterThan(0);
 			for (const call of requestedCalls()) {
-				expect(getHeader(call.headers, "Authorization")).toBe("Bearer other-token");
+				expect(getHeader(call.headers, "Authorization")).toBe(
+					"Bearer other-token"
+				);
 			}
 		});
 
 		it("pulls without Authorization when there is no key and the repo is public", async () => {
-			await setDashboard({ repo: "octo/notes", defaultBranch: "trunk", public_repo: true, github_pull: ["data"] });
+			await setDashboard({
+				repo: "octo/notes",
+				defaultBranch: "trunk",
+				public_repo: true,
+				github_pull: ["data"],
+			});
 			standardRoutes();
 
 			const result = await pull.pullFromGitHub(projectFile);
@@ -425,7 +602,12 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		});
 
 		it("throws an error about a PAT when there is no key and the repo is not public", async () => {
-			await setDashboard({ repo: "octo/notes", defaultBranch: "trunk", public_repo: false, github_pull: ["data"] });
+			await setDashboard({
+				repo: "octo/notes",
+				defaultBranch: "trunk",
+				public_repo: false,
+				github_pull: ["data"],
+			});
 			standardRoutes();
 
 			await expect(pull.pullFromGitHub(projectFile)).rejects.toThrow(/PAT/);

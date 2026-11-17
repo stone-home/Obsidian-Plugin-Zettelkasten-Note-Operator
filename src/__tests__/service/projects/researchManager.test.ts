@@ -208,7 +208,9 @@ describe("ResearchManager", () => {
 			);
 
 			const content = (app.vault as any)._getContent(stepFile.path);
-			expect(content).toContain("[[Research/StepTestProject/Dashboard|Dashboard]]");
+			expect(content).toContain(
+				"[[Research/StepTestProject/Dashboard|Dashboard]]"
+			);
 			expect(content).toMatch(
 				/\[\[Research\/StepTestProject\/objectives\/STP\d{8} - TestObjective\]\]/
 			);
@@ -373,9 +375,8 @@ describe("ResearchManager", () => {
 			// Create folder structure manually
 			await app.vault.createFolder("Research/Existing");
 
-			const dashboardFile = await manager.importExistingProject(
-				"Research/Existing"
-			);
+			const dashboardFile =
+				await manager.importExistingProject("Research/Existing");
 
 			expect(dashboardFile.path).toBe("Research/Existing/Dashboard.md");
 		});
@@ -414,10 +415,15 @@ describe("ResearchManager", () => {
 
 	describe("updateDashboardProperties", () => {
 		it("should do nothing when file does not exist", async () => {
-			await manager.updateDashboardProperties("Research/Nonexistent/Dashboard.md", {
-				github_token_key: "key",
-			});
-			expect(app.vault.getAbstractFileByPath("Research/Nonexistent/Dashboard.md")).toBeFalsy();
+			await manager.updateDashboardProperties(
+				"Research/Nonexistent/Dashboard.md",
+				{
+					github_token_key: "key",
+				}
+			);
+			expect(
+				app.vault.getAbstractFileByPath("Research/Nonexistent/Dashboard.md")
+			).toBeFalsy();
 		});
 
 		it("should update github_token_key in dashboard frontmatter", async () => {
@@ -473,7 +479,9 @@ describe("ResearchManager", () => {
 			await manager.updateDashboardProperties("Research/NoFm/Dashboard.md", {
 				repo: "x/y",
 			});
-			const content = (app.vault as any)._getContent("Research/NoFm/Dashboard.md");
+			const content = (app.vault as any)._getContent(
+				"Research/NoFm/Dashboard.md"
+			);
 			expect(content).toBe("no frontmatter here\njust content");
 		});
 	});

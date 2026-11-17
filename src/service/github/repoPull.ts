@@ -60,10 +60,14 @@ export function validatePullRule(rule: GithubPullRule): string | null {
  * Files to pull from one folder listing: plain files only (submodules have no download_url,
  * folders are not descended into) whose name matches the rule's pattern.
  */
-export function selectPullFiles(entries: GitHubContentEntry[], rule: GithubPullRule): GitHubContentEntry[] {
+export function selectPullFiles(
+	entries: GitHubContentEntry[],
+	rule: GithubPullRule
+): GitHubContentEntry[] {
 	const pattern = new RegExp(rule.filePattern);
 	return entries.filter(
-		(entry) => entry.type === "file" && !!entry.download_url && pattern.test(entry.name),
+		(entry) =>
+			entry.type === "file" && !!entry.download_url && pattern.test(entry.name)
 	);
 }
 
@@ -71,8 +75,17 @@ export function selectPullFiles(entries: GitHubContentEntry[], rule: GithubPullR
  * Vault path for a pulled file, or null when the target would leave the project folder
  * or the file name cannot be used in Obsidian.
  */
-export function resolvePullTarget(projectFolder: string, target: string, fileName: string): string | null {
-	if (!fileName || INVALID_NAME_CHARS.test(fileName) || fileName === "." || fileName === "..") {
+export function resolvePullTarget(
+	projectFolder: string,
+	target: string,
+	fileName: string
+): string | null {
+	if (
+		!fileName ||
+		INVALID_NAME_CHARS.test(fileName) ||
+		fileName === "." ||
+		fileName === ".."
+	) {
 		return null;
 	}
 	if (hasParentSegment(target)) {

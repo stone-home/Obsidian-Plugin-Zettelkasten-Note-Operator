@@ -1,16 +1,17 @@
-import { format } from 'date-fns';
-import { App, Component, Notice, normalizePath } from 'obsidian';
+import { format } from "date-fns";
+import { App, Component, Notice, normalizePath } from "obsidian";
 import {
 	ObsidianNoteFactory as LibFactory,
 	ZettelNoteModel,
 	NoteType,
 	NoteTypeMap,
-	NoteTemplateConfig, INoteFrontmatter,
-} from 'markdown-note-orm';
-import { INoteOption, ZettelkastenSettings } from '../types';
-import { Logger } from '../logger';
-import { Dashboard } from '../modals/dashboard';
-import { confirmAction } from '../modals/confirmModal';
+	NoteTemplateConfig,
+	INoteFrontmatter,
+} from "markdown-note-orm";
+import { INoteOption, ZettelkastenSettings } from "../types";
+import { Logger } from "../logger";
+import { Dashboard } from "../modals/dashboard";
+import { confirmAction } from "../modals/confirmModal";
 
 /**
  * Resolves built-in prefix placeholders ($date, $datetime, $year, $month, $day) to actual values.
@@ -20,19 +21,20 @@ import { confirmAction } from '../modals/confirmModal';
 export function resolvePrefix(prefix: string, dateFormat: string): string {
 	const now = new Date();
 	switch (prefix) {
-		case '$date':
+		case "$date":
 			// Use dateFormat (YYYY-MM-DD → yyyy-MM-dd for date-fns); default to yyyy-MM-dd
 			const fmt =
-				dateFormat?.replace(/YYYY/g, 'yyyy').replace(/DD/g, 'dd').trim() || 'yyyy-MM-dd';
+				dateFormat?.replace(/YYYY/g, "yyyy").replace(/DD/g, "dd").trim() ||
+				"yyyy-MM-dd";
 			return format(now, fmt);
-		case '$datetime':
-			return format(now, 'yyyyMMdd-HHmm');
-		case '$year':
-			return format(now, 'yyyy');
-		case '$month':
-			return format(now, 'MM');
-		case '$day':
-			return format(now, 'dd');
+		case "$datetime":
+			return format(now, "yyyyMMdd-HHmm");
+		case "$year":
+			return format(now, "yyyy");
+		case "$month":
+			return format(now, "MM");
+		case "$day":
+			return format(now, "dd");
 		default:
 			return prefix;
 	}
@@ -40,7 +42,7 @@ export function resolvePrefix(prefix: string, dateFormat: string): string {
 
 export class NoteFactory extends Component {
 	private app: App;
-	private logger = Logger.createLogger('NoteFactory');
+	private logger = Logger.createLogger("NoteFactory");
 	private settings!: ZettelkastenSettings;
 
 	/** Asks whether an existing note may be overwritten. Replaceable (tests, scripts). */
@@ -51,44 +53,39 @@ export class NoteFactory extends Component {
 		this.app = app;
 		this.confirmOverwrite = (path: string) =>
 			confirmAction(this.app, {
-				title: 'Overwrite note?',
+				title: "Overwrite note?",
 				message: `"${path}" already exists. Overwrite it?`,
-				confirmText: 'Overwrite',
+				confirmText: "Overwrite",
 			});
 	}
 
 	public async initialize(settings: ZettelkastenSettings): Promise<void> {
 		this.settings = settings;
-		this.logger.info('NoteFactory initialized');
+		this.logger.info("NoteFactory initialized");
 	}
 
 	public async loadActiveNote(): Promise<ZettelNoteModel | undefined> {
 		try {
 			const activeFile = this.app.workspace.getActiveFile();
-			if (!activeFile || activeFile.extension !== 'md') {
+			if (!activeFile || activeFile.extension !== "md") {
 				return undefined;
 			}
 			return await this.loadNote(activeFile.path);
 		} catch (error) {
-			this.logger.error('Failed to load active note', error);
+			this.logger.error("Failed to load active note", error);
 			return undefined;
 		}
 	}
 
 	public openCreationModal(): void {
-		new Dashboard(
-			this.app,
-			this.settings,
-			this,
-			async (option, title) => {
-				try {
-					await this.createNoteFromOption(option, title);
-				} catch (error) {
-					this.logger.error('Failed to create note', error);
-					new Notice(`Error creating note: ${error}`);
-				}
+		new Dashboard(this.app, this.settings, this, async (option, title) => {
+			try {
+				await this.createNoteFromOption(option, title);
+			} catch (error) {
+				this.logger.error("Failed to create note", error);
+				new Notice(`Error creating note: ${error}`);
 			}
-		).open();
+		}).open();
 	}
 
 	/**
@@ -102,7 +99,10 @@ export class NoteFactory extends Component {
 	): Promise<ZettelNoteModel | null> {
 		let finalTitle = title;
 		if (option.extraInfo?.prefix) {
-			const resolved = resolvePrefix(option.extraInfo.prefix, this.settings.dateFormat);
+			const resolved = resolvePrefix(
+				option.extraInfo.prefix,
+				this.settings.dateFormat
+			);
 			finalTitle = `${resolved} - ${title}`;
 		}
 		const targetFolder = option.specificFolder;
@@ -151,7 +151,10 @@ export class NoteFactory extends Component {
 		);
 		if (noteExtraParams) {
 			// Check if batchUpdate exists (it might be on .properties or the note itself depending on lib version)
-			if (note.properties && typeof (note.properties as any).batchUpdate === 'function') {
+			if (
+				note.properties &&
+				typeof (note.properties as any).batchUpdate === "function"
+			) {
 				(note.properties as any).batchUpdate(noteExtraParams);
 			} else {
 				// Fallback: Manual assignment

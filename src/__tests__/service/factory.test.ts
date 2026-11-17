@@ -3,7 +3,11 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+} from "../../__mocks__/testHelpers";
 import { NoteFactory, resolvePrefix } from "../../service/factory";
 
 describe("NoteFactory", () => {
@@ -46,25 +50,17 @@ describe("NoteFactory", () => {
 		});
 
 		it("should apply noteExtraParams via batchUpdate when available", async () => {
-			await factory.createZettel(
-				"permanent",
-				"batch-note",
-				"notes",
-				undefined,
-				{ key: "value" }
-			);
+			await factory.createZettel("permanent", "batch-note", "notes", undefined, {
+				key: "value",
+			});
 			const created = app.vault.getAbstractFileByPath("notes/batch-note.md");
 			expect(created).toBeTruthy();
 		});
 
 		it("should apply noteExtraParams via Object.assign when no batchUpdate", async () => {
-			await factory.createZettel(
-				"atom",
-				"assign-note",
-				"notes",
-				undefined,
-				{ custom: "prop" }
-			);
+			await factory.createZettel("atom", "assign-note", "notes", undefined, {
+				custom: "prop",
+			});
 			const file = app.vault.getAbstractFileByPath("notes/assign-note.md");
 			expect(file).toBeTruthy();
 		});

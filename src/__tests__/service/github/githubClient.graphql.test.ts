@@ -8,7 +8,12 @@
  */
 
 import { requestUrl } from "../../../__mocks__/obsidian";
-import { getHeader, mockGitHubApi, requestedCalls, type GitHubRequest } from "../../../__mocks__/testHelpers";
+import {
+	getHeader,
+	mockGitHubApi,
+	requestedCalls,
+	type GitHubRequest,
+} from "../../../__mocks__/testHelpers";
 import { GitHubClient } from "../../../service/github/githubClient";
 
 interface GraphQLCapable {
@@ -17,7 +22,8 @@ interface GraphQLCapable {
 
 const client = (token: string) => new GitHubClient(token) as unknown as GraphQLCapable;
 
-const QUERY = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }";
+const QUERY =
+	"query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }";
 
 describe("GitHubClient.graphql (R2)", () => {
 	it("POSTs { query, variables } as JSON to the GraphQL endpoint with the PAT", async () => {
@@ -37,7 +43,10 @@ describe("GitHubClient.graphql (R2)", () => {
 		expect(call.method).toBe("POST");
 		expect(getHeader(call.headers, "Authorization")).toBe("Bearer tok-123");
 		expect(typeof call.body).toBe("string");
-		expect(JSON.parse(call.body as string)).toEqual({ query: QUERY, variables: { owner: "octo", name: "notes" } });
+		expect(JSON.parse(call.body as string)).toEqual({
+			query: QUERY,
+			variables: { owner: "octo", name: "notes" },
+		});
 		expect(seen).toHaveLength(1);
 	});
 
@@ -45,13 +54,19 @@ describe("GitHubClient.graphql (R2)", () => {
 		const data = { repository: { ref: { target: { oid: "abc" } } } };
 		mockGitHubApi({ "/graphql": { json: { data } } });
 
-		await expect(client("tok").graphql(QUERY, { owner: "o", name: "r" })).resolves.toEqual(data);
+		await expect(
+			client("tok").graphql(QUERY, { owner: "o", name: "r" })
+		).resolves.toEqual(data);
 	});
 
 	it("resolves to json.data when errors is an empty array", async () => {
-		mockGitHubApi({ "/graphql": { json: { data: { viewer: { login: "me" } }, errors: [] } } });
+		mockGitHubApi({
+			"/graphql": { json: { data: { viewer: { login: "me" } }, errors: [] } },
+		});
 
-		await expect(client("tok").graphql("{ viewer { login } }", {})).resolves.toEqual({ viewer: { login: "me" } });
+		await expect(
+			client("tok").graphql("{ viewer { login } }", {})
+		).resolves.toEqual({ viewer: { login: "me" } });
 	});
 
 	it("throws with the first error's message when a 200 response carries errors", async () => {
@@ -60,7 +75,10 @@ describe("GitHubClient.graphql (R2)", () => {
 				json: {
 					data: { createCommitOnBranch: null },
 					errors: [
-						{ type: "STALE_DATA", message: 'Expected branch to point to "abc" but it did not' },
+						{
+							type: "STALE_DATA",
+							message: 'Expected branch to point to "abc" but it did not',
+						},
 						{ type: "OTHER", message: "second error" },
 					],
 				},
@@ -77,20 +95,30 @@ describe("GitHubClient.graphql (R2)", () => {
 			"/graphql": {
 				json: {
 					data: { repository: null },
-					errors: [{ type: "NOT_FOUND", message: "Could not resolve to a Repository with the name 'o/r'." }],
+					errors: [
+						{
+							type: "NOT_FOUND",
+							message:
+								"Could not resolve to a Repository with the name 'o/r'.",
+						},
+					],
 				},
 			},
 		});
 
-		await expect(client("tok").graphql(QUERY, { owner: "o", name: "r" })).rejects.toThrow(
-			/Could not resolve to a Repository with the name 'o\/r'\./
-		);
+		await expect(
+			client("tok").graphql(QUERY, { owner: "o", name: "r" })
+		).rejects.toThrow(/Could not resolve to a Repository with the name 'o\/r'\./);
 	});
 
 	it("lets HTTP errors propagate with their status", async () => {
-		mockGitHubApi({ "/graphql": { status: 401, json: { message: "Bad credentials" } } });
+		mockGitHubApi({
+			"/graphql": { status: 401, json: { message: "Bad credentials" } },
+		});
 
-		const err = await client("bad").graphql(QUERY, { owner: "o", name: "r" }).catch((e) => e);
+		const err = await client("bad")
+			.graphql(QUERY, { owner: "o", name: "r" })
+			.catch((e) => e);
 
 		expect(err).toBeInstanceOf(Error);
 		expect((err as { status?: number }).status).toBe(401);

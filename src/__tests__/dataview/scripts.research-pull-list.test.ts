@@ -29,15 +29,36 @@ const PROJECT_PATH = "Research/P/Dashboard.md";
 const ADD_BUTTON = /^\+?\s*add\b/i;
 
 const RULES = [
-	{ id: "r1", label: "Papers", sourceDir: "lit/papers", filePattern: "\\.pdf$", target: "materials/papers" },
-	{ id: "r2", sourceDir: "data/raw", filePattern: "\\.csv$", target: "materials/data" },
-	{ id: "r3", label: "Figures", sourceDir: "figs", filePattern: "\\.png$", target: "materials/figs" },
+	{
+		id: "r1",
+		label: "Papers",
+		sourceDir: "lit/papers",
+		filePattern: "\\.pdf$",
+		target: "materials/papers",
+	},
+	{
+		id: "r2",
+		sourceDir: "data/raw",
+		filePattern: "\\.csv$",
+		target: "materials/data",
+	},
+	{
+		id: "r3",
+		label: "Figures",
+		sourceDir: "figs",
+		filePattern: "\\.png$",
+		target: "materials/figs",
+	},
 ];
 
 function makeZk() {
 	return {
 		getGithubTokenKeys: jest.fn(async () => ["gh"]),
-		getSettings: jest.fn(() => ({ createNoteOptions: [], dataviewDebugPanels: false, githubPullRules: RULES })),
+		getSettings: jest.fn(() => ({
+			createNoteOptions: [],
+			dataviewDebugPanels: false,
+			githubPullRules: RULES,
+		})),
 		createResearchObjective: jest.fn(async () => undefined),
 		createResearchStep: jest.fn(async () => undefined),
 		createResearchExperiment: jest.fn(async () => undefined),
@@ -47,8 +68,17 @@ function makeZk() {
 		getLastPushRequestDebug: jest.fn(() => null),
 		pushToGitHub: jest.fn(async () => undefined),
 		getPullRules: jest.fn(() => RULES),
-		setResearchPullRules: jest.fn(async (_projectPath: string, _ids: string[]) => undefined),
-		pullFromGitHub: jest.fn(async (_projectPath: string, _tokenKey?: string) => ({ added: 0, updated: 0, skipped: 0, failed: 0, unknownRules: [], warnings: [] })),
+		setResearchPullRules: jest.fn(
+			async (_projectPath: string, _ids: string[]) => undefined
+		),
+		pullFromGitHub: jest.fn(async (_projectPath: string, _tokenKey?: string) => ({
+			added: 0,
+			updated: 0,
+			skipped: 0,
+			failed: 0,
+			unknownRules: [],
+			warnings: [],
+		})),
 	};
 }
 
@@ -64,29 +94,46 @@ async function render(githubPull: string[] | undefined) {
 			...(githubPull === undefined ? {} : { github_pull: githubPull }),
 		},
 	});
-	await runDataviewScript(getDefaultScriptContent("zk-research-quick-actions")!, dv, {}, { ZettelkastenOperator: zk });
+	await runDataviewScript(
+		getDefaultScriptContent("zk-research-quick-actions")!,
+		dv,
+		{},
+		{ ZettelkastenOperator: zk }
+	);
 	await flushAsync();
 	return { zk, root: dv.container as FakeElement };
 }
 
-const isButton = (el: FakeElement) => el.tag === "button" || el.attrs?.role === "button";
-const subtreeSize = (el: FakeElement): number => 1 + (el.children ?? []).reduce((n, c) => n + subtreeSize(c), 0);
+const isButton = (el: FakeElement) =>
+	el.tag === "button" || el.attrs?.role === "button";
+const subtreeSize = (el: FakeElement): number =>
+	1 + (el.children ?? []).reduce((n, c) => n + subtreeSize(c), 0);
 
 /** The select whose options mention one of the given rule labels. */
-function findRuleSelect(root: FakeElement, anyOfTexts: string[]): FakeElement | undefined {
+function findRuleSelect(
+	root: FakeElement,
+	anyOfTexts: string[]
+): FakeElement | undefined {
 	return findFakeElements(root, (el) => el.tag === "select").find((sel) =>
-		findFakeElements(sel.children, (c) => c.tag === "option").some((o) => anyOfTexts.some((t) => collectText(o).includes(t)))
+		findFakeElements(sel.children, (c) => c.tag === "option").some((o) =>
+			anyOfTexts.some((t) => collectText(o).includes(t))
+		)
 	);
 }
 
 const optionTexts = (select: FakeElement) =>
-	findFakeElements(select.children, (c) => c.tag === "option").map((o) => collectText(o));
+	findFakeElements(select.children, (c) => c.tag === "option").map((o) =>
+		collectText(o)
+	);
 
 /** Nearest ancestor of `el` (or el's subtree root) that contains a button whose text matches. */
 function buttonNear(el: FakeElement, text: RegExp): FakeElement | undefined {
 	let node: FakeElement | undefined = el;
 	while (node) {
-		const match = findFakeElements(node, (c) => isButton(c) && text.test(collectText(c).trim()));
+		const match = findFakeElements(
+			node,
+			(c) => isButton(c) && text.test(collectText(c).trim())
+		);
 		if (match.length) return match[0];
 		node = node.parentElement as FakeElement | undefined;
 	}
@@ -94,11 +141,19 @@ function buttonNear(el: FakeElement, text: RegExp): FakeElement | undefined {
 }
 
 /** Smallest element whose text contains `needle` and that has (or is) a button; returns that button. */
-function removeButtonFor(root: FakeElement, needle: string | RegExp): FakeElement | undefined {
-	const has = (t: string) => (typeof needle === "string" ? t.includes(needle) : needle.test(t));
+function removeButtonFor(
+	root: FakeElement,
+	needle: string | RegExp
+): FakeElement | undefined {
+	const has = (t: string) =>
+		typeof needle === "string" ? t.includes(needle) : needle.test(t);
 	const rows = findFakeElements(
 		root,
-		(el) => el.tag !== "select" && el.tag !== "option" && has(collectText(el)) && findFakeElements(el, isButton).length > 0
+		(el) =>
+			el.tag !== "select" &&
+			el.tag !== "option" &&
+			has(collectText(el)) &&
+			findFakeElements(el, isButton).length > 0
 	).sort((a, b) => subtreeSize(a) - subtreeSize(b));
 	const row = rows[0];
 	if (!row) return undefined;
@@ -107,7 +162,8 @@ function removeButtonFor(root: FakeElement, needle: string | RegExp): FakeElemen
 		return !ADD_BUTTON.test(text) && !/^pull from github$/i.test(text);
 	});
 	if (buttons.length <= 1) return buttons[0];
-	const label = (b: FakeElement) => `${collectText(b)} ${b.attrs?.["aria-label"] ?? ""} ${b.title ?? ""}`;
+	const label = (b: FakeElement) =>
+		`${collectText(b)} ${b.attrs?.["aria-label"] ?? ""} ${b.title ?? ""}`;
 	return buttons.find((b) => /remove|delete|×|✕|✖|x/i.test(label(b))) ?? buttons[0];
 }
 
@@ -157,7 +213,11 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		await clickFakeElement(add!);
 		await flushAsync();
 
-		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, ["r1", "ghost", "r3"]);
+		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, [
+			"r1",
+			"ghost",
+			"r3",
+		]);
 	});
 
 	it("Add works for a rule without a label", async () => {
@@ -169,7 +229,10 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		await clickFakeElement(buttonNear(select!, ADD_BUTTON)!);
 		await flushAsync();
 
-		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, ["r1", "r2"]);
+		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, [
+			"r1",
+			"r2",
+		]);
 	});
 
 	it("offers every rule and adds the first id when the Dashboard has no github_pull yet", async () => {
@@ -214,7 +277,10 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 	it("Pull from GitHub calls zk.pullFromGitHub with the Dashboard path", async () => {
 		const { zk, root } = await render(["r1"]);
 
-		const pullButton = findFakeElements(root, (el) => isButton(el) && /pull from github/i.test(collectText(el)))[0];
+		const pullButton = findFakeElements(
+			root,
+			(el) => isButton(el) && /pull from github/i.test(collectText(el))
+		)[0];
 		expect(pullButton).toBeDefined();
 		await clickFakeElement(pullButton);
 		await flushAsync();

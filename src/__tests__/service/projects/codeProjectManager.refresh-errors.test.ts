@@ -24,11 +24,15 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 	let projectFile: TFile;
 	let getSecret: jest.Mock;
 
-	const setDashboardCache = (fm: Record<string, any>) => setFrontmatterCache(app.metadataCache, projectFile.path, fm);
+	const setDashboardCache = (fm: Record<string, any>) =>
+		setFrontmatterCache(app.metadataCache, projectFile.path, fm);
 
 	beforeEach(async () => {
 		app = createMockApp();
-		manager = new CodeProjectManager(app as any, createMockSettings({ projectRootPath: "Projects" }));
+		manager = new CodeProjectManager(
+			app as any,
+			createMockSettings({ projectRootPath: "Projects" })
+		);
 		projectFile = (await manager.createProject("ErrProj")) as unknown as TFile;
 		getSecret = jest.fn(async (key: string) => (key === "gh_key" ? "tok" : null));
 		(app as any).secretStorage = { getSecret };
@@ -41,16 +45,18 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 	it("throws when the repo field is missing, without any request", async () => {
 		setDashboardCache({ defaultBranch: "main" });
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(/Missing repo field \(owner\/name\)/);
+		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+			/Missing repo field \(owner\/name\)/
+		);
 		expect(requestUrl).not.toHaveBeenCalled();
 	});
 
 	it("throws when a PAT key is given but SecretStorage has no secret, without any request", async () => {
 		setDashboardCache({ repo: "owner/repo", defaultBranch: "main" });
 
-		await expect(manager.refreshProject(projectFile as any, "missing_key")).rejects.toThrow(
-			/No PAT found for key "missing_key"/
-		);
+		await expect(
+			manager.refreshProject(projectFile as any, "missing_key")
+		).rejects.toThrow(/No PAT found for key "missing_key"/);
 		expect(requestUrl).not.toHaveBeenCalled();
 	});
 
@@ -64,30 +70,54 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 	});
 
 	it("explains a 401 from GitHub", async () => {
-		setDashboardCache({ repo: "owner/repo", defaultBranch: "main", github_token_key: "gh_key" });
-		mockGitHubApi({ [RELEASES]: { status: 401, json: { message: "Bad credentials" } } });
+		setDashboardCache({
+			repo: "owner/repo",
+			defaultBranch: "main",
+			github_token_key: "gh_key",
+		});
+		mockGitHubApi({
+			[RELEASES]: { status: 401, json: { message: "Bad credentials" } },
+		});
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(/\(401\): GitHub rejected the PAT/);
+		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+			/\(401\): GitHub rejected the PAT/
+		);
 	});
 
 	it("reports a failed compare after the releases were synced", async () => {
-		setDashboardCache({ repo: "owner/repo", defaultBranch: "main", github_token_key: "gh_key" });
+		setDashboardCache({
+			repo: "owner/repo",
+			defaultBranch: "main",
+			github_token_key: "gh_key",
+		});
 		mockGitHubApi({
 			[RELEASES]: { json: [createMockRelease({ tag_name: "v2.0.0" })] },
-			"/repos/owner/repo/compare/v2.0.0...main": { status: 404, json: { message: "Not Found" } },
+			"/repos/owner/repo/compare/v2.0.0...main": {
+				status: 404,
+				json: { message: "Not Found" },
+			},
 		});
 
 		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
 			/Synced 1 releases, but comparing v2\.0\.0\.\.\.main failed \(404\): The tag or the branch was not found/
 		);
-		expect(app.vault.getAbstractFileByPath("Projects/ErrProj/releases/v2.0.0.md")).toBeTruthy();
+		expect(
+			app.vault.getAbstractFileByPath("Projects/ErrProj/releases/v2.0.0.md")
+		).toBeTruthy();
 	});
 
 	it("resolves to a summary with the number of releases and unreleased commits", async () => {
-		setDashboardCache({ repo: "owner/repo", defaultBranch: "main", github_token_key: "gh_key" });
+		setDashboardCache({
+			repo: "owner/repo",
+			defaultBranch: "main",
+			github_token_key: "gh_key",
+		});
 		mockGitHubApi({
 			[RELEASES]: {
-				json: [createMockRelease({ tag_name: "v1.1.0" }), createMockRelease({ tag_name: "v1.0.0" })],
+				json: [
+					createMockRelease({ tag_name: "v1.1.0" }),
+					createMockRelease({ tag_name: "v1.0.0" }),
+				],
 			},
 			"/repos/owner/repo/compare/v1.1.0...main": {
 				json: {

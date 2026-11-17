@@ -1,11 +1,4 @@
-import {
-	App,
-	Modal,
-	Notice,
-	TFile,
-	TFolder,
-	FuzzySuggestModal,
-} from "obsidian";
+import { App, Modal, Notice, TFile, TFolder, FuzzySuggestModal } from "obsidian";
 import { ZettelkastenSettings } from "../types";
 import { ResearchManager } from "../service/projects/researchManager";
 
@@ -13,7 +6,11 @@ class TextPromptModal extends Modal {
 	private titleText: string;
 	private onSubmit: (value: string) => Promise<void>;
 
-	constructor(app: App, titleText: string, onSubmit: (value: string) => Promise<void>) {
+	constructor(
+		app: App,
+		titleText: string,
+		onSubmit: (value: string) => Promise<void>
+	) {
 		super(app);
 		this.titleText = titleText;
 		this.onSubmit = onSubmit;
@@ -86,7 +83,9 @@ class FolderPickerModal extends FuzzySuggestModal<TFolder> {
 		const allFiles = this.app.vault.getAllLoadedFiles();
 		return allFiles.filter((f): f is TFolder => {
 			if (!(f instanceof TFolder)) return false;
-			const normalizedRoot = this.rootPath ? this.rootPath.replace(/\/$/, "") : "";
+			const normalizedRoot = this.rootPath
+				? this.rootPath.replace(/\/$/, "")
+				: "";
 			if (!normalizedRoot) return true;
 			return f.path === normalizedRoot || f.path.startsWith(normalizedRoot + "/");
 		});
@@ -168,16 +167,22 @@ export class ResearchProjectsModal extends Modal {
 		const importBtn = actionRow.createEl("button", { text: "📁" });
 		importBtn.addClass("zk-icon-button");
 		importBtn.onclick = () => {
-			new FolderPickerModal(this.app, this.settings.researchRootPath, async (folder) => {
-				try {
-					const file = await this.manager.importExistingProject(folder.path);
-					await this.manager.openFile(file);
-					await this.refresh();
-					this.close();
-				} catch {
-					new Notice("Failed to load existing project.");
+			new FolderPickerModal(
+				this.app,
+				this.settings.researchRootPath,
+				async (folder) => {
+					try {
+						const file = await this.manager.importExistingProject(
+							folder.path
+						);
+						await this.manager.openFile(file);
+						await this.refresh();
+						this.close();
+					} catch {
+						new Notice("Failed to load existing project.");
+					}
 				}
-			}).open();
+			).open();
 		};
 
 		if (!this.selectedProject) {
@@ -229,14 +234,17 @@ export class ResearchProjectsModal extends Modal {
 			this.close();
 		};
 
-		const objectiveBtn = grid.createEl("button", { text: "Objective", cls: "zk-card" });
+		const objectiveBtn = grid.createEl("button", {
+			text: "Objective",
+			cls: "zk-card",
+		});
 		objectiveBtn.onclick = () => {
 			new TextPromptModal(this.app, "Objective Title", async (value) => {
 				if (!value) return;
 				try {
 					const file = await this.manager.createObjective(
 						this.selectedProject as TFile,
-						value,
+						value
 					);
 					await this.manager.openFile(file);
 					await this.refresh();
@@ -248,7 +256,9 @@ export class ResearchProjectsModal extends Modal {
 
 		const stepBtn = grid.createEl("button", { text: "Step", cls: "zk-card" });
 		stepBtn.onclick = () => {
-			const objectives = this.manager.listObjectives(this.selectedProject as TFile);
+			const objectives = this.manager.listObjectives(
+				this.selectedProject as TFile
+			);
 			if (objectives.length === 0) {
 				new Notice("No objectives found.");
 				return;
@@ -260,7 +270,7 @@ export class ResearchProjectsModal extends Modal {
 						const file = await this.manager.createStep(
 							this.selectedProject as TFile,
 							objectiveFile,
-							value,
+							value
 						);
 						await this.manager.openFile(file);
 						await this.refresh();
@@ -278,7 +288,7 @@ export class ResearchProjectsModal extends Modal {
 				try {
 					const file = await this.manager.createExperiment(
 						this.selectedProject as TFile,
-						value,
+						value
 					);
 					await this.manager.openFile(file);
 					await this.refresh();
@@ -294,4 +304,3 @@ export class ResearchProjectsModal extends Modal {
 		this.modalEl.removeClass("zettelkasten-modal-container");
 	}
 }
-

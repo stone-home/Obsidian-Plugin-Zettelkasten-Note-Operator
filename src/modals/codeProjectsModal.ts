@@ -17,7 +17,11 @@ class TextPromptModal extends Modal {
 	private titleText: string;
 	private onSubmit: (value: string) => Promise<void>;
 
-	constructor(app: App, titleText: string, onSubmit: (value: string) => Promise<void>) {
+	constructor(
+		app: App,
+		titleText: string,
+		onSubmit: (value: string) => Promise<void>
+	) {
 		super(app);
 		this.titleText = titleText;
 		this.onSubmit = onSubmit;
@@ -66,7 +70,9 @@ class FolderPickerModal extends FuzzySuggestModal<TFolder> {
 		const allFiles = this.app.vault.getAllLoadedFiles();
 		return allFiles.filter((f): f is TFolder => {
 			if (!(f instanceof TFolder)) return false;
-			const normalizedRoot = this.rootPath ? this.rootPath.replace(/\/$/, "") : "";
+			const normalizedRoot = this.rootPath
+				? this.rootPath.replace(/\/$/, "")
+				: "";
 			if (!normalizedRoot) return true;
 			return f.path === normalizedRoot || f.path.startsWith(normalizedRoot + "/");
 		});
@@ -167,16 +173,22 @@ export class CodeProjectsModal extends Modal {
 		const importBtn = actionRow.createEl("button", { text: "📁" });
 		importBtn.addClass("zk-icon-button");
 		importBtn.onclick = () => {
-			new FolderPickerModal(this.app, this.settings.projectRootPath, async (folder) => {
-				try {
-					const file = await this.manager.importExistingProject(folder.path);
-					await this.manager.openFile(file);
-					await this.refresh();
-					this.close();
-				} catch {
-					new Notice("Failed to load existing project.");
+			new FolderPickerModal(
+				this.app,
+				this.settings.projectRootPath,
+				async (folder) => {
+					try {
+						const file = await this.manager.importExistingProject(
+							folder.path
+						);
+						await this.manager.openFile(file);
+						await this.refresh();
+						this.close();
+					} catch {
+						new Notice("Failed to load existing project.");
+					}
 				}
-			}).open();
+			).open();
 		};
 
 		if (!this.selectedProject) {
@@ -247,14 +259,24 @@ export class CodeProjectsModal extends Modal {
 				this.getFrontmatter(this.selectedProject as TFile).github_token_key;
 			try {
 				// Shows its own summary Notice on success.
-				await this.manager.refreshProject(this.selectedProject as TFile, tokenKey, {
-					confirmLegacyCleanup: (count) => askLegacyCommitCleanup(this.app, count),
-				});
+				await this.manager.refreshProject(
+					this.selectedProject as TFile,
+					tokenKey,
+					{
+						confirmLegacyCleanup: (count) =>
+							askLegacyCommitCleanup(this.app, count),
+					}
+				);
 			} catch (err) {
-				new Notice("Refresh failed: " + (err instanceof Error ? err.message : String(err)));
+				new Notice(
+					"Refresh failed: " +
+						(err instanceof Error ? err.message : String(err))
+				);
 				return;
 			}
-			this.freshFrontmatter = await this.readFrontmatterFromVault(this.selectedProject as TFile);
+			this.freshFrontmatter = await this.readFrontmatterFromVault(
+				this.selectedProject as TFile
+			);
 			await this.refresh();
 		};
 	}
@@ -309,4 +331,3 @@ export class CodeProjectsModal extends Modal {
 		this.modalEl.removeClass("zettelkasten-modal-container");
 	}
 }
-

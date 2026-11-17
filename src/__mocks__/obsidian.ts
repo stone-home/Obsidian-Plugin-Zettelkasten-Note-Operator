@@ -138,7 +138,8 @@ const YAML_RESERVED = /^(true|false|null|yes|no|on|off|~)$/i;
 function yamlScalar(value: any): string {
 	if (value === null || value === undefined) return "null";
 	if (typeof value === "boolean") return value ? "true" : "false";
-	if (typeof value === "number") return Number.isFinite(value) ? String(value) : JSON.stringify(String(value));
+	if (typeof value === "number")
+		return Number.isFinite(value) ? String(value) : JSON.stringify(String(value));
 	if (value instanceof Date) return JSON.stringify(value.toISOString());
 	if (Array.isArray(value)) return JSON.stringify(value);
 	if (typeof value === "object") return JSON.stringify(value);
@@ -162,7 +163,12 @@ export function stringifyYaml(obj: any): string {
 	const lines: string[] = [];
 	const emitArrayItems = (arr: any[], indent: string) => {
 		for (const item of arr) {
-			if (item !== null && typeof item === "object" && !Array.isArray(item) && !(item instanceof Date)) {
+			if (
+				item !== null &&
+				typeof item === "object" &&
+				!Array.isArray(item) &&
+				!(item instanceof Date)
+			) {
 				const entries = Object.entries(item).filter(([, v]) => v !== undefined);
 				if (entries.length === 0) {
 					lines.push(`${indent}- {}`);
@@ -189,13 +195,20 @@ export function stringifyYaml(obj: any): string {
 					lines.push(`${yamlKey(key)}:`);
 					emitArrayItems(value, "  ");
 				}
-			} else if (value !== null && typeof value === "object" && !(value instanceof Date)) {
-				const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+			} else if (
+				value !== null &&
+				typeof value === "object" &&
+				!(value instanceof Date)
+			) {
+				const entries = Object.entries(value).filter(
+					([, v]) => v !== undefined
+				);
 				if (entries.length === 0) {
 					lines.push(`${yamlKey(key)}: {}`);
 				} else {
 					lines.push(`${yamlKey(key)}:`);
-					for (const [k, v] of entries) lines.push(`  ${yamlKey(k)}: ${yamlScalar(v)}`);
+					for (const [k, v] of entries)
+						lines.push(`  ${yamlKey(k)}: ${yamlScalar(v)}`);
 				}
 			} else {
 				lines.push(`${yamlKey(key)}: ${yamlScalar(value)}`);
@@ -224,7 +237,10 @@ function parseYamlScalar(raw: string): any {
 	if (s.startsWith("'") && s.endsWith("'") && s.length >= 2) {
 		return s.slice(1, -1).replace(/''/g, "'");
 	}
-	if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("{") && s.endsWith("}"))) {
+	if (
+		(s.startsWith("[") && s.endsWith("]")) ||
+		(s.startsWith("{") && s.endsWith("}"))
+	) {
 		try {
 			return JSON.parse(s);
 		} catch {
@@ -275,7 +291,10 @@ export function parseYaml(text: string): any {
 		}
 		// Block value: list or nested map (indented lines), or empty.
 		const block: string[] = [];
-		while (i < lines.length && (/^\s+\S/.test(lines[i]) || lines[i].trim() === "")) {
+		while (
+			i < lines.length &&
+			(/^\s+\S/.test(lines[i]) || lines[i].trim() === "")
+		) {
 			if (lines[i].trim() !== "") block.push(lines[i]);
 			i++;
 		}
@@ -292,7 +311,11 @@ export function parseYaml(text: string): any {
 					const body = itemMatch[2];
 					const inner = splitYamlKeyValue(body);
 					const looksLikeMapItem =
-						inner !== null && !body.startsWith('"') && !body.startsWith("'") && !body.startsWith("[") && !/^https?:/.test(body);
+						inner !== null &&
+						!body.startsWith('"') &&
+						!body.startsWith("'") &&
+						!body.startsWith("[") &&
+						!/^https?:/.test(body);
 					if (looksLikeMapItem && inner) {
 						current = { [inner[0]]: parseYamlScalar(inner[1]) };
 						arr.push(current);
@@ -319,8 +342,14 @@ export function parseYaml(text: string): any {
 }
 
 /** Splits "---\n<yaml>\n---\n<body>" into parsed frontmatter and body (test helper, not an Obsidian API). */
-export function _splitFrontmatter(content: string): { frontmatter: Record<string, any>; body: string; hasFrontmatter: boolean } {
-	const match = String(content ?? "").match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
+export function _splitFrontmatter(content: string): {
+	frontmatter: Record<string, any>;
+	body: string;
+	hasFrontmatter: boolean;
+} {
+	const match = String(content ?? "").match(
+		/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/
+	);
 	if (!match) return { frontmatter: {}, body: content ?? "", hasFrontmatter: false };
 	return {
 		frontmatter: parseYaml(match[1] ?? ""),
@@ -437,7 +466,10 @@ export class Vault extends Events {
 		if (bin) return bin;
 		const content = this.files.get(file.path)?.content ?? "";
 		const bytes = new TextEncoder().encode(content);
-		return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+		return bytes.buffer.slice(
+			bytes.byteOffset,
+			bytes.byteOffset + bytes.byteLength
+		) as ArrayBuffer;
 	}
 
 	async trash(file: TAbstractFile, system: boolean): Promise<void> {
@@ -528,8 +560,7 @@ export class WorkspaceLeaf {
 
 // ==================== MetadataCache ====================
 export class MetadataCache extends Events {
-	private cache: Map<string, { frontmatter?: Record<string, any> }> =
-		new Map();
+	private cache: Map<string, { frontmatter?: Record<string, any> }> = new Map();
 
 	getFileCache(file: TFile): { frontmatter?: Record<string, any> } | null {
 		return this.cache.get(file.path) || null;
@@ -589,9 +620,15 @@ export class FileManager {
 		const content: string | undefined = vault._getContent(file.path);
 		const { frontmatter: fileFm, body } = _splitFrontmatter(content ?? "");
 		const cacheEntry = this.app.metadataCache.getFileCache(file);
-		const fm: Record<string, any> = { ...fileFm, ...(cacheEntry?.frontmatter ?? {}) };
+		const fm: Record<string, any> = {
+			...fileFm,
+			...(cacheEntry?.frontmatter ?? {}),
+		};
 		fn(fm);
-		(this.app.metadataCache as any)._setCache(file.path, { ...(cacheEntry ?? {}), frontmatter: fm });
+		(this.app.metadataCache as any)._setCache(file.path, {
+			...(cacheEntry ?? {}),
+			frontmatter: fm,
+		});
 		if (content !== undefined) {
 			const stored = vault.getAbstractFileByPath(file.path) as TFile;
 			await vault.modify(stored, `---\n${stringifyYaml(fm)}---\n${body}`);
@@ -631,11 +668,7 @@ export class Plugin extends Component {
 
 	async saveData(data: any): Promise<void> {}
 
-	addRibbonIcon(
-		icon: string,
-		title: string,
-		callback: () => any
-	): HTMLElement {
+	addRibbonIcon(icon: string, title: string, callback: () => any): HTMLElement {
 		return document.createElement("div");
 	}
 

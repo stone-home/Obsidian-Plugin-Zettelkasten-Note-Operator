@@ -35,9 +35,11 @@ const BUILTIN_IDS = [
 ];
 const GANTT = "zk-research-gantt";
 const OBJECTIVES = "zk-research-objectives";
-const OLD_DEFAULT = "/**\n * @id zk-research-gantt\n * @name Research Gantt\n */\n\ndv.paragraph('old default');";
+const OLD_DEFAULT =
+	"/**\n * @id zk-research-gantt\n * @name Research Gantt\n */\n\ndv.paragraph('old default');";
 
-const hashContent = (content: string): string => (managerModule as any).hashContent(content);
+const hashContent = (content: string): string =>
+	(managerModule as any).hashContent(content);
 const pathOf = (id: string) => `${FOLDER}/${id}.js`;
 
 /** Holds the persisted state like plugin data would; save clones so later mutation cannot leak. */
@@ -76,7 +78,9 @@ describe("hashContent (D3)", () => {
 	});
 
 	it("gives the same hash for CRLF and LF line endings", () => {
-		expect(hashContent("line 1\r\nline 2\r\n")).toBe(hashContent("line 1\nline 2\n"));
+		expect(hashContent("line 1\r\nline 2\r\n")).toBe(
+			hashContent("line 1\nline 2\n")
+		);
 	});
 });
 
@@ -139,15 +143,27 @@ describe("DataviewJSManager default script state (D3)", () => {
 		const store = makeStore({});
 		await makeManager(app, store).onload();
 		// The plugin last wrote an older default, the user edited it, and a new default ships now.
-		(app.vault as any)._setContent(pathOf(GANTT), "// my own gantt\ndv.paragraph('mine');");
-		store.current()[GANTT] = { written: hashContent(OLD_DEFAULT), seen: hashContent(OLD_DEFAULT) };
+		(app.vault as any)._setContent(
+			pathOf(GANTT),
+			"// my own gantt\ndv.paragraph('mine');"
+		);
+		store.current()[GANTT] = {
+			written: hashContent(OLD_DEFAULT),
+			seen: hashContent(OLD_DEFAULT),
+		};
 		const modifySpy = jest.spyOn(app.vault, "modify");
 		const notify = jest.fn();
 
 		await makeManager(app, store, { notify }).onload();
 
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe("// my own gantt\ndv.paragraph('mine');");
-		expect(modifySpy.mock.calls.filter(([file]) => (file as any).path === pathOf(GANTT))).toHaveLength(0);
+		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(
+			"// my own gantt\ndv.paragraph('mine');"
+		);
+		expect(
+			modifySpy.mock.calls.filter(
+				([file]) => (file as any).path === pathOf(GANTT)
+			)
+		).toHaveLength(0);
 		expect(notify).toHaveBeenCalledTimes(1);
 		expect(String(notify.mock.calls[0][0])).toContain(GANTT);
 		expect(store.current()[GANTT].written).toBe(hashContent(OLD_DEFAULT));
@@ -157,7 +173,10 @@ describe("DataviewJSManager default script state (D3)", () => {
 		const store = makeStore({});
 		await makeManager(app, store).onload();
 		(app.vault as any)._setContent(pathOf(GANTT), "// my own gantt");
-		store.current()[GANTT] = { written: hashContent(OLD_DEFAULT), seen: hashContent(OLD_DEFAULT) };
+		store.current()[GANTT] = {
+			written: hashContent(OLD_DEFAULT),
+			seen: hashContent(OLD_DEFAULT),
+		};
 		const firstNotify = jest.fn();
 		await makeManager(app, store, { notify: firstNotify }).onload();
 		expect(firstNotify).toHaveBeenCalledTimes(1);
@@ -174,21 +193,33 @@ describe("DataviewJSManager default script state (D3)", () => {
 		await makeManager(app, store).onload();
 		for (const id of [GANTT, OBJECTIVES]) {
 			(app.vault as any)._setContent(pathOf(id), `// edited ${id}`);
-			store.current()[id] = { written: hashContent(`old ${id}`), seen: hashContent(`old ${id}`) };
+			store.current()[id] = {
+				written: hashContent(`old ${id}`),
+				seen: hashContent(`old ${id}`),
+			};
 		}
 		const notify = jest.fn();
 
 		await makeManager(app, store, { notify }).onload();
 
 		expect(notify).toHaveBeenCalledTimes(1);
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(`// edited ${GANTT}`);
-		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe(`// edited ${OBJECTIVES}`);
+		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(
+			`// edited ${GANTT}`
+		);
+		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe(
+			`// edited ${OBJECTIVES}`
+		);
 	});
 
 	it("file still equal to an older default: upgrades it and records the new hashes", async () => {
 		await app.vault.createFolder(FOLDER);
 		await app.vault.create(pathOf(GANTT), OLD_DEFAULT);
-		const store = makeStore({ [GANTT]: { written: hashContent(OLD_DEFAULT), seen: hashContent(OLD_DEFAULT) } });
+		const store = makeStore({
+			[GANTT]: {
+				written: hashContent(OLD_DEFAULT),
+				seen: hashContent(OLD_DEFAULT),
+			},
+		});
 
 		await makeManager(app, store, { overwrite: () => true }).onload();
 
@@ -208,7 +239,11 @@ describe("DataviewJSManager default script state (D3)", () => {
 
 		const newDefault = getDefaultScriptContent(GANTT)!;
 		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(newDefault);
-		expect(modifySpy.mock.calls.filter(([file]) => (file as any).path === pathOf(GANTT))).toHaveLength(1);
+		expect(
+			modifySpy.mock.calls.filter(
+				([file]) => (file as any).path === pathOf(GANTT)
+			)
+		).toHaveLength(1);
 		expect(store.current()[GANTT]).toBeDefined();
 		expect(store.current()[GANTT].written).toBe(hashContent(newDefault));
 
@@ -221,14 +256,21 @@ describe("DataviewJSManager default script state (D3)", () => {
 		await app.vault.createFolder(FOLDER);
 		await app.vault.create(pathOf(GANTT), OLD_DEFAULT);
 		await app.vault.create(pathOf(OBJECTIVES), "// legacy objectives");
-		const store = makeStore({ [GANTT]: { written: hashContent(OLD_DEFAULT), seen: hashContent(OLD_DEFAULT) } });
+		const store = makeStore({
+			[GANTT]: {
+				written: hashContent(OLD_DEFAULT),
+				seen: hashContent(OLD_DEFAULT),
+			},
+		});
 		const modifySpy = jest.spyOn(app.vault, "modify");
 
 		await makeManager(app, store, { overwrite: () => false }).onload();
 
 		expect(modifySpy).not.toHaveBeenCalled();
 		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(OLD_DEFAULT);
-		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe("// legacy objectives");
+		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe(
+			"// legacy objectives"
+		);
 		for (const id of BUILTIN_IDS) {
 			expect(app.vault.getAbstractFileByPath(pathOf(id))).toBeTruthy();
 		}

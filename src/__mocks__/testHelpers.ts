@@ -158,13 +158,15 @@ export function resetRequestUrlMock(): void {
 /**
  * Creates mock GitHub release data.
  */
-export function createMockRelease(overrides: Partial<{
-	tag_name: string;
-	name: string;
-	body: string;
-	html_url: string;
-	published_at: string;
-}> = {}): Record<string, any> {
+export function createMockRelease(
+	overrides: Partial<{
+		tag_name: string;
+		name: string;
+		body: string;
+		html_url: string;
+		published_at: string;
+	}> = {}
+): Record<string, any> {
 	return {
 		tag_name: "v1.0.0",
 		name: "Release v1.0.0",
@@ -178,12 +180,14 @@ export function createMockRelease(overrides: Partial<{
 /**
  * Creates mock GitHub commit data.
  */
-export function createMockCommit(overrides: Partial<{
-	sha: string;
-	message: string;
-	html_url: string;
-	date: string;
-}> = {}): Record<string, any> {
+export function createMockCommit(
+	overrides: Partial<{
+		sha: string;
+		message: string;
+		html_url: string;
+		date: string;
+	}> = {}
+): Record<string, any> {
 	const sha = overrides.sha ?? "abc1234567890";
 	return {
 		sha,
@@ -316,7 +320,12 @@ export function rawFrontmatter(content: string | undefined): string {
 // ==================== GitHub API routing ====================
 
 /** A canned answer. `arrayBuffer` is the raw body (e.g. a raw file download); `text` defaults to the JSON text or the decoded bytes. */
-export type GitHubRoute = { status?: number; json?: any; arrayBuffer?: ArrayBuffer; text?: string };
+export type GitHubRoute = {
+	status?: number;
+	json?: any;
+	arrayBuffer?: ArrayBuffer;
+	text?: string;
+};
 
 /** What a function route sees about the request. */
 export interface GitHubRequest {
@@ -329,7 +338,9 @@ export interface GitHubRequest {
 	query: URLSearchParams;
 }
 
-export type GitHubRouteHandler = GitHubRoute | ((req: GitHubRequest) => GitHubRoute | Promise<GitHubRoute>);
+export type GitHubRouteHandler =
+	| GitHubRoute
+	| ((req: GitHubRequest) => GitHubRoute | Promise<GitHubRoute>);
 
 /** Copies bytes into a fresh, exactly sized ArrayBuffer. */
 export function toArrayBuffer(bytes: ArrayBuffer | Uint8Array | string): ArrayBuffer {
@@ -345,9 +356,14 @@ export function toArrayBuffer(bytes: ArrayBuffer | Uint8Array | string): ArrayBu
 }
 
 /** Case-insensitive header lookup. */
-export function getHeader(headers: Record<string, string> | undefined, name: string): string | undefined {
+export function getHeader(
+	headers: Record<string, string> | undefined,
+	name: string
+): string | undefined {
 	if (!headers) return undefined;
-	const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
+	const key = Object.keys(headers).find(
+		(k) => k.toLowerCase() === name.toLowerCase()
+	);
 	return key === undefined ? undefined : headers[key];
 }
 
@@ -361,7 +377,13 @@ export function getHeader(headers: Record<string, string> | undefined, name: str
  */
 export function mockGitHubApi(routes: Record<string, GitHubRouteHandler>): void {
 	(requestUrl as jest.Mock).mockImplementation(
-		async (param: { url: string; method?: string; headers?: Record<string, string>; body?: string | ArrayBuffer; throw?: boolean }) => {
+		async (param: {
+			url: string;
+			method?: string;
+			headers?: Record<string, string>;
+			body?: string | ArrayBuffer;
+			throw?: boolean;
+		}) => {
 			const url = new URL(param.url);
 			const path = decodeURIComponent(url.pathname);
 			const page = Number(url.searchParams.get("page") ?? "1");
@@ -384,12 +406,17 @@ export function mockGitHubApi(routes: Record<string, GitHubRouteHandler>): void 
 			let json = route.json;
 			if (page > 1 && status < 400) {
 				if (Array.isArray(json)) json = [];
-				else if (json && Array.isArray(json.commits)) json = { ...json, commits: [] };
+				else if (json && Array.isArray(json.commits))
+					json = { ...json, commits: [] };
 			}
-			const arrayBuffer = route.arrayBuffer ?? toArrayBuffer(route.text ?? JSON.stringify(json ?? null));
+			const arrayBuffer =
+				route.arrayBuffer ??
+				toArrayBuffer(route.text ?? JSON.stringify(json ?? null));
 			const text =
 				route.text ??
-				(route.arrayBuffer !== undefined ? new TextDecoder().decode(route.arrayBuffer) : JSON.stringify(json ?? null));
+				(route.arrayBuffer !== undefined
+					? new TextDecoder().decode(route.arrayBuffer)
+					: JSON.stringify(json ?? null));
 			const response = {
 				status,
 				headers: {},
@@ -398,7 +425,10 @@ export function mockGitHubApi(routes: Record<string, GitHubRouteHandler>): void 
 				arrayBuffer,
 			};
 			if (status >= 400 && param.throw !== false) {
-				throw Object.assign(new Error(`Request failed, status ${status}`), response);
+				throw Object.assign(
+					new Error(`Request failed, status ${status}`),
+					response
+				);
 			}
 			return response;
 		}
@@ -406,10 +436,18 @@ export function mockGitHubApi(routes: Record<string, GitHubRouteHandler>): void 
 }
 
 /** Route that answers only when the request asks for `?ref=<ref>`; any other ref gets GitHub's 404. */
-export function routeForRef(ref: string, route: GitHubRouteHandler): (req: GitHubRequest) => GitHubRoute | Promise<GitHubRoute> {
+export function routeForRef(
+	ref: string,
+	route: GitHubRouteHandler
+): (req: GitHubRequest) => GitHubRoute | Promise<GitHubRoute> {
 	return (req) => {
 		if (req.query.get("ref") !== ref) {
-			return { status: 404, json: { message: `No commit found for the ref ${req.query.get("ref")}` } };
+			return {
+				status: 404,
+				json: {
+					message: `No commit found for the ref ${req.query.get("ref")}`,
+				},
+			};
 		}
 		return typeof route === "function" ? route(req) : route;
 	};
@@ -419,11 +457,15 @@ export function routeForRef(ref: string, route: GitHubRouteHandler): (req: GitHu
  * Route for one file of the contents API: with `Accept: application/vnd.github.raw+json`
  * it returns the raw bytes; otherwise the JSON metadata (base64 `content`), like GitHub.
  */
-export function githubFileRoute(bytes: ArrayBuffer | Uint8Array | string, path: string): (req: GitHubRequest) => GitHubRoute {
+export function githubFileRoute(
+	bytes: ArrayBuffer | Uint8Array | string,
+	path: string
+): (req: GitHubRequest) => GitHubRoute {
 	const buffer = toArrayBuffer(bytes);
 	return (req) => {
 		const accept = getHeader(req.headers, "Accept") ?? "";
-		if (accept.includes("application/vnd.github.raw")) return { arrayBuffer: toArrayBuffer(buffer) };
+		if (accept.includes("application/vnd.github.raw"))
+			return { arrayBuffer: toArrayBuffer(buffer) };
 		return {
 			json: {
 				type: "file",
@@ -476,7 +518,10 @@ export function clearNotices(): void {
 /** git blob id: SHA-1 of "blob <len>\0" + bytes, computed with Node's crypto. */
 export function gitBlobShaForTest(bytes: ArrayBuffer | Uint8Array | string): string {
 	const data = Buffer.from(toArrayBuffer(bytes));
-	return createHash("sha1").update(Buffer.from(`blob ${data.byteLength}\0`)).update(data).digest("hex");
+	return createHash("sha1")
+		.update(Buffer.from(`blob ${data.byteLength}\0`))
+		.update(data)
+		.digest("hex");
 }
 
 // ==================== Vault helpers for folder trees ====================
@@ -535,21 +580,28 @@ export function enforceVaultFolderRules(vault: Vault): {
 	const checkNewFile = (p: string) => {
 		if (exists(p)) throw new Error("File already exists.");
 		const parent = parentOf(p);
-		if (parent && !exists(parent)) throw new Error(`ENOENT: no such file or directory, open '${p}'`);
+		if (parent && !exists(parent))
+			throw new Error(`ENOENT: no such file or directory, open '${p}'`);
 	};
 	return {
-		createFolder: jest.spyOn(vault, "createFolder").mockImplementation(async (p: string) => {
-			if (exists(p)) throw new Error("Folder already exists.");
-			await originalCreateFolder(p);
-		}),
-		createBinary: jest.spyOn(vault, "createBinary").mockImplementation(async (p: string, data: ArrayBuffer) => {
-			checkNewFile(p);
-			return originalCreateBinary(p, data);
-		}),
-		create: jest.spyOn(vault, "create").mockImplementation(async (p: string, data: string) => {
-			checkNewFile(p);
-			return originalCreate(p, data);
-		}),
+		createFolder: jest
+			.spyOn(vault, "createFolder")
+			.mockImplementation(async (p: string) => {
+				if (exists(p)) throw new Error("Folder already exists.");
+				await originalCreateFolder(p);
+			}),
+		createBinary: jest
+			.spyOn(vault, "createBinary")
+			.mockImplementation(async (p: string, data: ArrayBuffer) => {
+				checkNewFile(p);
+				return originalCreateBinary(p, data);
+			}),
+		create: jest
+			.spyOn(vault, "create")
+			.mockImplementation(async (p: string, data: string) => {
+				checkNewFile(p);
+				return originalCreate(p, data);
+			}),
 	};
 }
 
@@ -562,7 +614,10 @@ export async function flushAsync(rounds: number = 10): Promise<void> {
 
 // ==================== Fake GitHub GraphQL API ====================
 
-type GqlToken = { kind: "punct" | "name" | "int" | "float" | "string" | "eof"; value: string };
+type GqlToken = {
+	kind: "punct" | "name" | "int" | "float" | "string" | "eof";
+	value: string;
+};
 type GqlValue =
 	| { kind: "var"; name: string }
 	| { kind: "lit"; value: any }
@@ -570,8 +625,20 @@ type GqlValue =
 	| { kind: "obj"; fields: Record<string, GqlValue> };
 type GqlDirective = { name: string; args: Record<string, GqlValue> };
 type GqlSelection =
-	| { kind: "field"; alias?: string; name: string; args: Record<string, GqlValue>; directives: GqlDirective[]; selections?: GqlSelection[] }
-	| { kind: "inline"; typeCondition?: string; directives: GqlDirective[]; selections: GqlSelection[] }
+	| {
+			kind: "field";
+			alias?: string;
+			name: string;
+			args: Record<string, GqlValue>;
+			directives: GqlDirective[];
+			selections?: GqlSelection[];
+	  }
+	| {
+			kind: "inline";
+			typeCondition?: string;
+			directives: GqlDirective[];
+			selections: GqlSelection[];
+	  }
 	| { kind: "spread"; name: string; directives: GqlDirective[] };
 type GqlOperation = {
 	operation: "query" | "mutation" | "subscription";
@@ -652,7 +719,8 @@ function gqlParse(src: string): GqlDocument {
 	const isPunct = (v: string) => peek().kind === "punct" && peek().value === v;
 	const expectPunct = (v: string) => {
 		const t = next();
-		if (t.kind !== "punct" || t.value !== v) throw new Error(`Expected "${v}", found "${t.value}"`);
+		if (t.kind !== "punct" || t.value !== v)
+			throw new Error(`Expected "${v}", found "${t.value}"`);
 	};
 	const expectName = () => {
 		const t = next();
@@ -684,7 +752,8 @@ function gqlParse(src: string): GqlDocument {
 			return { kind: "obj", fields };
 		}
 		next();
-		if (t.kind === "int" || t.kind === "float") return { kind: "lit", value: Number(t.value) };
+		if (t.kind === "int" || t.kind === "float")
+			return { kind: "lit", value: Number(t.value) };
 		if (t.kind === "string") return { kind: "lit", value: t.value };
 		if (t.kind === "name") {
 			if (t.value === "true") return { kind: "lit", value: true };
@@ -731,7 +800,11 @@ function gqlParse(src: string): GqlDocument {
 			if (isPunct("...")) {
 				next();
 				if (peek().kind === "name" && peek().value !== "on") {
-					selections.push({ kind: "spread", name: expectName(), directives: parseDirectives() });
+					selections.push({
+						kind: "spread",
+						name: expectName(),
+						directives: parseDirectives(),
+					});
 				} else {
 					let typeCondition: string | undefined;
 					if (peek().kind === "name" && peek().value === "on") {
@@ -739,7 +812,12 @@ function gqlParse(src: string): GqlDocument {
 						typeCondition = expectName();
 					}
 					const directives = parseDirectives();
-					selections.push({ kind: "inline", typeCondition, directives, selections: parseSelectionSet() });
+					selections.push({
+						kind: "inline",
+						typeCondition,
+						directives,
+						selections: parseSelectionSet(),
+					});
 				}
 				continue;
 			}
@@ -753,7 +831,14 @@ function gqlParse(src: string): GqlDocument {
 			const args = parseArgs();
 			const directives = parseDirectives();
 			const sub = isPunct("{") ? parseSelectionSet() : undefined;
-			selections.push({ kind: "field", alias, name, args, directives, selections: sub });
+			selections.push({
+				kind: "field",
+				alias,
+				name,
+				args,
+				directives,
+				selections: sub,
+			});
 		}
 		expectPunct("}");
 		return selections;
@@ -761,22 +846,37 @@ function gqlParse(src: string): GqlDocument {
 	const doc: GqlDocument = { operations: [], fragments: {} };
 	while (peek().kind !== "eof") {
 		if (isPunct("{")) {
-			doc.operations.push({ operation: "query", variableDefs: [], selections: parseSelectionSet() });
+			doc.operations.push({
+				operation: "query",
+				variableDefs: [],
+				selections: parseSelectionSet(),
+			});
 			continue;
 		}
 		const keyword = expectName();
 		if (keyword === "fragment") {
 			const fragName = expectName();
-			if (expectName() !== "on") throw new Error("Expected \"on\" in a fragment");
+			if (expectName() !== "on") throw new Error('Expected "on" in a fragment');
 			const typeCondition = expectName();
 			parseDirectives();
-			doc.fragments[fragName] = { typeCondition, selections: parseSelectionSet() };
+			doc.fragments[fragName] = {
+				typeCondition,
+				selections: parseSelectionSet(),
+			};
 			continue;
 		}
-		if (keyword !== "query" && keyword !== "mutation" && keyword !== "subscription") {
+		if (
+			keyword !== "query" &&
+			keyword !== "mutation" &&
+			keyword !== "subscription"
+		) {
 			throw new Error(`Unexpected "${keyword}"`);
 		}
-		const op: GqlOperation = { operation: keyword, variableDefs: [], selections: [] };
+		const op: GqlOperation = {
+			operation: keyword,
+			variableDefs: [],
+			selections: [],
+		};
 		if (peek().kind === "name") op.name = expectName();
 		if (isPunct("(")) {
 			next();
@@ -812,13 +912,17 @@ function gqlEvalValue(value: GqlValue, vars: Record<string, any>): any {
 			return value.items.map((item) => gqlEvalValue(item, vars));
 		case "obj": {
 			const result: Record<string, any> = {};
-			for (const [k, v] of Object.entries(value.fields)) result[k] = gqlEvalValue(v, vars);
+			for (const [k, v] of Object.entries(value.fields))
+				result[k] = gqlEvalValue(v, vars);
 			return result;
 		}
 	}
 }
 
-function gqlEvalArgs(args: Record<string, GqlValue>, vars: Record<string, any>): Record<string, any> {
+function gqlEvalArgs(
+	args: Record<string, GqlValue>,
+	vars: Record<string, any>
+): Record<string, any> {
 	const result: Record<string, any> = {};
 	for (const [k, v] of Object.entries(args)) result[k] = gqlEvalValue(v, vars);
 	return result;
@@ -842,12 +946,21 @@ class GqlFieldError extends Error {
 }
 
 function gqlMerge(a: any, b: any): any {
-	if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+	if (
+		a &&
+		b &&
+		typeof a === "object" &&
+		typeof b === "object" &&
+		!Array.isArray(a) &&
+		!Array.isArray(b)
+	) {
 		const out = { ...a };
-		for (const [k, v] of Object.entries(b)) out[k] = k in out ? gqlMerge(out[k], v) : v;
+		for (const [k, v] of Object.entries(b))
+			out[k] = k in out ? gqlMerge(out[k], v) : v;
 		return out;
 	}
-	if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) return a.map((x, i) => gqlMerge(x, b[i]));
+	if (Array.isArray(a) && Array.isArray(b) && a.length === b.length)
+		return a.map((x, i) => gqlMerge(x, b[i]));
 	return b === undefined ? a : b;
 }
 
@@ -859,10 +972,18 @@ interface GqlContext {
 }
 
 function gqlTypeMatches(obj: any, typeName: string): boolean {
-	return obj?.__typename === typeName || (Array.isArray(obj?.__interfaces) && obj.__interfaces.includes(typeName));
+	return (
+		obj?.__typename === typeName ||
+		(Array.isArray(obj?.__interfaces) && obj.__interfaces.includes(typeName))
+	);
 }
 
-function gqlExecute(selections: GqlSelection[], obj: any, ctx: GqlContext, path: Array<string | number>): Record<string, any> {
+function gqlExecute(
+	selections: GqlSelection[],
+	obj: any,
+	ctx: GqlContext,
+	path: Array<string | number>
+): Record<string, any> {
 	let out: Record<string, any> = {};
 	for (const sel of selections) {
 		if (!gqlIncluded(sel.directives, ctx.vars)) continue;
@@ -873,28 +994,44 @@ function gqlExecute(selections: GqlSelection[], obj: any, ctx: GqlContext, path:
 				value = obj.__typename ?? null;
 			} else {
 				const raw = obj[sel.name];
-				if (raw === undefined) ctx.unknownFields.push(`${obj.__typename ?? "?"}.${sel.name}`);
+				if (raw === undefined)
+					ctx.unknownFields.push(`${obj.__typename ?? "?"}.${sel.name}`);
 				try {
-					value = typeof raw === "function" ? raw(gqlEvalArgs(sel.args, ctx.vars)) : raw ?? null;
+					value =
+						typeof raw === "function"
+							? raw(gqlEvalArgs(sel.args, ctx.vars))
+							: (raw ?? null);
 				} catch (err) {
 					if (!(err instanceof GqlFieldError)) throw err;
-					ctx.errors.push({ type: err.type, path: [...path, key], message: err.message });
+					ctx.errors.push({
+						type: err.type,
+						path: [...path, key],
+						message: err.message,
+					});
 					value = null;
 				}
 			}
 			if (value !== null && value !== undefined && sel.selections) {
 				const sub = sel.selections;
 				value = Array.isArray(value)
-					? value.map((item, i) => (item == null ? null : gqlExecute(sub, item, ctx, [...path, key, i])))
+					? value.map((item, i) =>
+							item == null
+								? null
+								: gqlExecute(sub, item, ctx, [...path, key, i])
+						)
 					: gqlExecute(sub, value, ctx, [...path, key]);
 			}
-			out[key] = key in out ? gqlMerge(out[key], value) : value ?? null;
+			out[key] = key in out ? gqlMerge(out[key], value) : (value ?? null);
 		} else {
 			const frag =
 				sel.kind === "inline"
 					? { typeCondition: sel.typeCondition, selections: sel.selections }
 					: ctx.doc.fragments[sel.name];
-			if (!frag) throw new GqlFieldError("PARSE", `Fragment ${(sel as any).name} is not defined`);
+			if (!frag)
+				throw new GqlFieldError(
+					"PARSE",
+					`Fragment ${(sel as any).name} is not defined`
+				);
 			if (!frag.typeCondition || gqlTypeMatches(obj, frag.typeCondition)) {
 				out = gqlMerge(out, gqlExecute(frag.selections, obj, ctx, path));
 			}
@@ -937,7 +1074,10 @@ export interface FakeGitHubGraphQL {
 	/** Runs before each createCommitOnBranch is checked (n counts mutations from 1); e.g. move a branch head. */
 	beforeCommit?: (input: any, n: number) => void;
 	/** Return an error to make createCommitOnBranch number n fail with it. */
-	commitError?: (input: any, n: number) => { type?: string; message: string } | undefined;
+	commitError?: (
+		input: any,
+		n: number
+	) => { type?: string; message: string } | undefined;
 }
 
 /** The message the fake returns when expectedHeadOid is not the branch head. */
@@ -954,19 +1094,30 @@ export function staleHeadMessage(expectedHeadOid: string): string {
  * Mutation.createCommitOnBranch(input) with expectedHeadOid checking (STALE_DATA).
  * Requests without Authorization get 401, like GitHub.
  */
-export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHubGraphQL {
+export function createFakeGitHubGraphQL(
+	initial: FakeGitHubRepoState
+): FakeGitHubGraphQL {
 	const state: FakeGitHubRepoState = {
 		owner: initial.owner,
 		name: initial.name,
 		branches: Object.fromEntries(
-			Object.entries(initial.branches).map(([b, v]) => [b, { oid: v.oid, files: { ...v.files } }])
+			Object.entries(initial.branches).map(([b, v]) => [
+				b,
+				{ oid: v.oid, files: { ...v.files } },
+			])
 		),
 	};
 	const nameWithOwner = () => `${state.owner}/${state.name}`;
 	const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
 	const cleanPath = (p: string) => String(p ?? "").replace(/^\/+|\/+$/g, "");
 
-	type Entry = { name: string; path: string; type: "blob" | "tree"; oid: string; mode: number };
+	type Entry = {
+		name: string;
+		path: string;
+		type: "blob" | "tree";
+		oid: string;
+		mode: number;
+	};
 	const entriesAt = (files: Record<string, string>, dir: string): Entry[] | null => {
 		const prefix = dir ? `${dir}/` : "";
 		const map = new Map<string, Entry>();
@@ -980,11 +1131,20 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 				map.set(rest, { name: rest, path: p, type: "blob", oid, mode: 33188 });
 			} else {
 				const name = rest.slice(0, slash);
-				if (!map.has(name)) map.set(name, { name, path: prefix + name, type: "tree", oid: "", mode: 16384 });
+				if (!map.has(name))
+					map.set(name, {
+						name,
+						path: prefix + name,
+						type: "tree",
+						oid: "",
+						mode: 16384,
+					});
 			}
 		}
 		if (!exists) return null;
-		const list = [...map.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+		const list = [...map.values()].sort((a, b) =>
+			a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+		);
 		for (const e of list) if (e.type === "tree") e.oid = treeOid(files, e.path);
 		return list;
 	};
@@ -1023,7 +1183,10 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 		oid: e.oid,
 		type: e.type,
 		mode: e.mode,
-		extension: e.type === "blob" && e.name.includes(".") ? `.${e.name.split(".").pop()}` : "",
+		extension:
+			e.type === "blob" && e.name.includes(".")
+				? `.${e.name.split(".").pop()}`
+				: "",
 		isGenerated: false,
 		size: 0,
 		lineCount: null,
@@ -1033,10 +1196,22 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 		const p = cleanPath(rawPath);
 		if (!p) return null;
 		if (files[p] !== undefined) {
-			return makeEntry(files, { name: p.split("/").pop()!, path: p, type: "blob", oid: files[p], mode: 33188 });
+			return makeEntry(files, {
+				name: p.split("/").pop()!,
+				path: p,
+				type: "blob",
+				oid: files[p],
+				mode: 33188,
+			});
 		}
 		if (entriesAt(files, p) === null) return null;
-		return makeEntry(files, { name: p.split("/").pop()!, path: p, type: "tree", oid: treeOid(files, p), mode: 16384 });
+		return makeEntry(files, {
+			name: p.split("/").pop()!,
+			path: p,
+			type: "tree",
+			oid: treeOid(files, p),
+			mode: 16384,
+		});
 	};
 	const makeCommit = (branch: string): any => {
 		const b = state.branches[branch];
@@ -1059,7 +1234,10 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 	};
 	const branchOf = (qualifiedName: string): string | null => {
 		const name = String(qualifiedName ?? "");
-		if (name.startsWith("refs/heads/") && state.branches[name.slice("refs/heads/".length)]) {
+		if (
+			name.startsWith("refs/heads/") &&
+			state.branches[name.slice("refs/heads/".length)]
+		) {
 			return name.slice("refs/heads/".length);
 		}
 		return state.branches[name] ? name : null;
@@ -1076,7 +1254,10 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 		if (rev === "HEAD") return Object.keys(state.branches)[0] ?? null;
 		const byName = branchOf(rev);
 		if (byName) return byName;
-		return Object.keys(state.branches).find((b) => state.branches[b].oid === rev) ?? null;
+		return (
+			Object.keys(state.branches).find((b) => state.branches[b].oid === rev) ??
+			null
+		);
 	};
 	const repository = {
 		__typename: "Repository",
@@ -1124,28 +1305,49 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 	const queryRoot = {
 		__typename: "Query",
 		repository: ({ owner, name }: { owner: string; name: string }) => {
-			if (String(owner).toLowerCase() !== state.owner.toLowerCase() || String(name).toLowerCase() !== state.name.toLowerCase()) {
-				throw new GqlFieldError("NOT_FOUND", `Could not resolve to a Repository with the name '${owner}/${name}'.`);
+			if (
+				String(owner).toLowerCase() !== state.owner.toLowerCase() ||
+				String(name).toLowerCase() !== state.name.toLowerCase()
+			) {
+				throw new GqlFieldError(
+					"NOT_FOUND",
+					`Could not resolve to a Repository with the name '${owner}/${name}'.`
+				);
 			}
 			return repository;
 		},
 		viewer: { __typename: "User", login: "fake-user" },
-		rateLimit: { __typename: "RateLimit", limit: 5000, remaining: 4999, cost: 1, resetAt: "2026-11-13T01:00:00Z" },
+		rateLimit: {
+			__typename: "RateLimit",
+			limit: 5000,
+			remaining: 4999,
+			cost: 1,
+			resetAt: "2026-11-13T01:00:00Z",
+		},
 	};
 	const mutationRoot = {
 		__typename: "Mutation",
 		createCommitOnBranch: ({ input }: { input: any }) => {
-			if (currentOp) currentOp.commitInput = JSON.parse(JSON.stringify(input ?? null));
+			if (currentOp)
+				currentOp.commitInput = JSON.parse(JSON.stringify(input ?? null));
 			commitCount++;
 			if (!input || typeof input !== "object") {
-				throw new GqlFieldError("INVALID_INPUT", "Argument 'input' on Field 'createCommitOnBranch' has an invalid value.");
+				throw new GqlFieldError(
+					"INVALID_INPUT",
+					"Argument 'input' on Field 'createCommitOnBranch' has an invalid value."
+				);
 			}
 			const target = input.branch ?? {};
 			let branch: string | null = null;
 			if (typeof target.id === "string") {
-				branch = Object.keys(state.branches).find((b) => `REF_${b}` === target.id) ?? null;
+				branch =
+					Object.keys(state.branches).find((b) => `REF_${b}` === target.id) ??
+					null;
 			} else {
-				if (String(target.repositoryNameWithOwner ?? "").toLowerCase() !== nameWithOwner().toLowerCase()) {
+				if (
+					String(target.repositoryNameWithOwner ?? "").toLowerCase() !==
+					nameWithOwner().toLowerCase()
+				) {
 					throw new GqlFieldError(
 						"NOT_FOUND",
 						`Could not resolve to a Repository with the name '${target.repositoryNameWithOwner}'.`
@@ -1153,19 +1355,36 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 				}
 				branch = branchOf(String(target.branchName ?? ""));
 			}
-			if (!branch) throw new GqlFieldError("NOT_FOUND", `A ref named "${target.branchName}" does not exist.`);
+			if (!branch)
+				throw new GqlFieldError(
+					"NOT_FOUND",
+					`A ref named "${target.branchName}" does not exist.`
+				);
 			if (typeof input.expectedHeadOid !== "string" || !input.expectedHeadOid) {
-				throw new GqlFieldError("INVALID_INPUT", "Expected value of type \"GitObjectID!\" for expectedHeadOid.");
+				throw new GqlFieldError(
+					"INVALID_INPUT",
+					'Expected value of type "GitObjectID!" for expectedHeadOid.'
+				);
 			}
-			if (typeof input.message?.headline !== "string" || input.message.headline.trim() === "") {
-				throw new GqlFieldError("INVALID_INPUT", "A commit message headline is required.");
+			if (
+				typeof input.message?.headline !== "string" ||
+				input.message.headline.trim() === ""
+			) {
+				throw new GqlFieldError(
+					"INVALID_INPUT",
+					"A commit message headline is required."
+				);
 			}
 			fake.beforeCommit?.(input, commitCount);
 			const custom = fake.commitError?.(input, commitCount);
-			if (custom) throw new GqlFieldError(custom.type ?? "UNPROCESSABLE", custom.message);
+			if (custom)
+				throw new GqlFieldError(custom.type ?? "UNPROCESSABLE", custom.message);
 			const b = state.branches[branch];
 			if (input.expectedHeadOid !== b.oid) {
-				throw new GqlFieldError("STALE_DATA", staleHeadMessage(input.expectedHeadOid));
+				throw new GqlFieldError(
+					"STALE_DATA",
+					staleHeadMessage(input.expectedHeadOid)
+				);
 			}
 			const additions: any[] = input.fileChanges?.additions ?? [];
 			const deletions: any[] = input.fileChanges?.deletions ?? [];
@@ -1174,12 +1393,17 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 				const contents = String(add?.contents ?? "");
 				const bytes = Buffer.from(contents, "base64");
 				if (bytes.toString("base64") !== contents.replace(/\s/g, "")) {
-					throw new GqlFieldError("INVALID_INPUT", `contents of ${add?.path} is not valid base64.`);
+					throw new GqlFieldError(
+						"INVALID_INPUT",
+						`contents of ${add?.path} is not valid base64.`
+					);
 				}
 				files[cleanPath(add.path)] = gitBlobShaForTest(bytes);
 			}
 			for (const del of deletions) delete files[cleanPath(del?.path)];
-			b.oid = sha1(`commit ${b.oid} ${commitCount} ${JSON.stringify(Object.keys(files).sort())}`);
+			b.oid = sha1(
+				`commit ${b.oid} ${commitCount} ${JSON.stringify(Object.keys(files).sort())}`
+			);
 			b.files = files;
 			return {
 				__typename: "CreateCommitOnBranchPayload",
@@ -1191,30 +1415,54 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 	};
 
 	fake.route = (req: GitHubRequest): GitHubRoute => {
-		if (req.method !== "POST") return { status: 404, json: { message: "Not Found" } };
+		if (req.method !== "POST")
+			return { status: 404, json: { message: "Not Found" } };
 		if (!getHeader(req.headers, "Authorization")) {
-			return { status: 401, json: { message: "This endpoint requires you to be authenticated." } };
+			return {
+				status: 401,
+				json: { message: "This endpoint requires you to be authenticated." },
+			};
 		}
 		let body: any;
 		try {
-			body = JSON.parse(typeof req.body === "string" ? req.body : new TextDecoder().decode(req.body as ArrayBuffer));
+			body = JSON.parse(
+				typeof req.body === "string"
+					? req.body
+					: new TextDecoder().decode(req.body as ArrayBuffer)
+			);
 		} catch {
 			return { status: 400, json: { message: "Problems parsing JSON" } };
 		}
 		if (typeof body?.query !== "string") {
-			return { json: { errors: [{ message: "A query attribute must be specified and must be a string." }] } };
+			return {
+				json: {
+					errors: [
+						{
+							message:
+								"A query attribute must be specified and must be a string.",
+						},
+					],
+				},
+			};
 		}
 		let doc: GqlDocument;
 		try {
 			doc = gqlParse(body.query);
 		} catch (err) {
-			return { json: { errors: [{ message: `Parse error: ${(err as Error).message}` }] } };
+			return {
+				json: {
+					errors: [{ message: `Parse error: ${(err as Error).message}` }],
+				},
+			};
 		}
-		const op = body.operationName ? doc.operations.find((o) => o.name === body.operationName) : doc.operations[0];
+		const op = body.operationName
+			? doc.operations.find((o) => o.name === body.operationName)
+			: doc.operations[0];
 		if (!op) return { json: { errors: [{ message: "No operation found" }] } };
 		const variables: Record<string, any> = { ...(body.variables ?? {}) };
 		for (const def of op.variableDefs) {
-			if (variables[def.name] === undefined && def.defaultValue) variables[def.name] = gqlEvalValue(def.defaultValue, {});
+			if (variables[def.name] === undefined && def.defaultValue)
+				variables[def.name] = gqlEvalValue(def.defaultValue, {});
 		}
 		const record: FakeGraphQLOperation = {
 			kind: op.operation,
@@ -1225,8 +1473,18 @@ export function createFakeGitHubGraphQL(initial: FakeGitHubRepoState): FakeGitHu
 		};
 		fake.operations.push(record);
 		currentOp = record;
-		const ctx: GqlContext = { vars: variables, doc, errors: [], unknownFields: fake.unknownFields };
-		const data = gqlExecute(op.selections, op.operation === "mutation" ? mutationRoot : queryRoot, ctx, []);
+		const ctx: GqlContext = {
+			vars: variables,
+			doc,
+			errors: [],
+			unknownFields: fake.unknownFields,
+		};
+		const data = gqlExecute(
+			op.selections,
+			op.operation === "mutation" ? mutationRoot : queryRoot,
+			ctx,
+			[]
+		);
 		currentOp = null;
 		const json = ctx.errors.length ? { data, errors: ctx.errors } : { data };
 		record.response = json;
@@ -1263,7 +1521,8 @@ type FakeElementOptions =
 
 /** Value of an <option>: its value property, else its value attribute, else its text (like the DOM). */
 function fakeOptionValue(option: FakeElement): string {
-	if (option.value !== undefined && option.value !== null) return String(option.value);
+	if (option.value !== undefined && option.value !== null)
+		return String(option.value);
 	if (option.attrs?.value !== undefined) return String(option.attrs.value);
 	return collectText(option);
 }
@@ -1274,7 +1533,10 @@ function fakeOptionValue(option: FakeElement): string {
  * Event listeners are recorded (see fireFakeEvent / clickFakeElement); a "select"
  * has DOM-like options / value / selectedIndex over its <option> children.
  */
-export function createFakeElement(tag: string = "div", options?: FakeElementOptions): FakeElement {
+export function createFakeElement(
+	tag: string = "div",
+	options?: FakeElementOptions
+): FakeElement {
 	const el: FakeElement = {
 		tag,
 		cls: "",
@@ -1300,18 +1562,24 @@ export function createFakeElement(tag: string = "div", options?: FakeElementOpti
 	};
 	if (tag === "select") {
 		let selected: number | undefined;
-		const optionEls = (): FakeElement[] => findFakeElements(el.children, (c) => c.tag === "option");
+		const optionEls = (): FakeElement[] =>
+			findFakeElements(el.children, (c) => c.tag === "option");
 		const currentIndex = (): number => {
 			const opts = optionEls();
 			if (selected !== undefined && selected < opts.length) return selected;
 			let preselected = -1;
 			opts.forEach((o, i) => {
-				if (o.selected === true || o.attrs?.selected !== undefined) preselected = i;
+				if (o.selected === true || o.attrs?.selected !== undefined)
+					preselected = i;
 			});
 			if (preselected >= 0) return preselected;
 			return opts.length ? 0 : -1;
 		};
-		Object.defineProperty(el, "options", { get: optionEls, enumerable: false, configurable: true });
+		Object.defineProperty(el, "options", {
+			get: optionEls,
+			enumerable: false,
+			configurable: true,
+		});
 		Object.defineProperty(el, "selectedIndex", {
 			get: currentIndex,
 			set: (i: number) => {
@@ -1327,7 +1595,9 @@ export function createFakeElement(tag: string = "div", options?: FakeElementOpti
 				return i >= 0 && opts[i] ? fakeOptionValue(opts[i]) : "";
 			},
 			set: (v: string) => {
-				selected = optionEls().findIndex((o) => fakeOptionValue(o) === String(v));
+				selected = optionEls().findIndex(
+					(o) => fakeOptionValue(o) === String(v)
+				);
 			},
 			enumerable: false,
 			configurable: true,
@@ -1346,14 +1616,20 @@ export function createFakeElement(tag: string = "div", options?: FakeElementOpti
 	const addChild = (child: FakeElement) => {
 		el.children.push(child);
 		if (child && typeof child === "object") {
-			Object.defineProperty(child, "parentElement", { value: el, enumerable: false, configurable: true, writable: true });
+			Object.defineProperty(child, "parentElement", {
+				value: el,
+				enumerable: false,
+				configurable: true,
+				writable: true,
+			});
 		}
 		return child;
 	};
 	Object.assign(el, {
 		createDiv: (o?: any) => addChild(createFakeElement("div", o)),
 		createSpan: (o?: any) => addChild(createFakeElement("span", o)),
-		createEl: (childTag: string, o?: any) => addChild(createFakeElement(childTag, o)),
+		createEl: (childTag: string, o?: any) =>
+			addChild(createFakeElement(childTag, o)),
 		appendChild: (child: FakeElement) => addChild(child),
 		setText: (t: string) => {
 			el.texts = [String(t)];
@@ -1381,7 +1657,9 @@ export function createFakeElement(tag: string = "div", options?: FakeElementOpti
 			(el.listeners[type] = el.listeners[type] ?? []).push(fn);
 		},
 		removeEventListener: (type: string, fn: (...args: any[]) => any) => {
-			el.listeners[type] = (el.listeners[type] ?? []).filter((f: any) => f !== fn);
+			el.listeners[type] = (el.listeners[type] ?? []).filter(
+				(f: any) => f !== fn
+			);
 		},
 		remove: () => {
 			const parent = el.parentElement as FakeElement | undefined;
@@ -1402,13 +1680,22 @@ export function createFakeElement(tag: string = "div", options?: FakeElementOpti
 
 /** All text recorded on an element and its descendants, newline separated. */
 export function collectText(el: FakeElement): string {
-	const texts = Array.isArray(el?.texts) ? el.texts : el?.textContent ? [String(el.textContent)] : [];
+	const texts = Array.isArray(el?.texts)
+		? el.texts
+		: el?.textContent
+			? [String(el.textContent)]
+			: [];
 	const children = Array.isArray(el?.children) ? el.children : [];
-	return [...texts, ...children.map((c) => collectText(c))].filter((t) => t !== "").join("\n");
+	return [...texts, ...children.map((c) => collectText(c))]
+		.filter((t) => t !== "")
+		.join("\n");
 }
 
 /** Depth-first list of the given element(s) and all descendants that match. */
-export function findFakeElements(root: FakeElement | FakeElement[], predicate: (el: FakeElement) => boolean): FakeElement[] {
+export function findFakeElements(
+	root: FakeElement | FakeElement[],
+	predicate: (el: FakeElement) => boolean
+): FakeElement[] {
 	const found: FakeElement[] = [];
 	const visit = (el: FakeElement) => {
 		if (!el || typeof el !== "object") return;
@@ -1423,7 +1710,11 @@ export function findFakeElements(root: FakeElement | FakeElement[], predicate: (
  * Dispatches an event to a fake element: calls its `on<type>` property and every
  * listener added with addEventListener, then awaits what they return.
  */
-export async function fireFakeEvent(el: FakeElement, type: string, init: Record<string, any> = {}): Promise<void> {
+export async function fireFakeEvent(
+	el: FakeElement,
+	type: string,
+	init: Record<string, any> = {}
+): Promise<void> {
 	const event: Record<string, any> = {
 		type,
 		target: el,
@@ -1439,7 +1730,8 @@ export async function fireFakeEvent(el: FakeElement, type: string, init: Record<
 	const results: any[] = [];
 	const handler = el["on" + type];
 	if (typeof handler === "function") results.push(handler.call(el, event));
-	for (const fn of [...((el.listeners ?? {})[type] ?? [])]) results.push(fn.call(el, event));
+	for (const fn of [...((el.listeners ?? {})[type] ?? [])])
+		results.push(fn.call(el, event));
 	await Promise.all(results.map((r) => Promise.resolve(r)));
 }
 
@@ -1464,7 +1756,11 @@ export function fakeDataArray<T = any>(items: T[]): any {
 			fakeDataArray(
 				a.flatMap((x) => {
 					const r = f(x);
-					return Array.isArray(r) ? r : r && typeof r.array === "function" ? r.array() : [r];
+					return Array.isArray(r)
+						? r
+						: r && typeof r.array === "function"
+							? r.array()
+							: [r];
 				})
 			),
 		sort: (f?: (x: T) => any, dir?: string) => {
@@ -1482,7 +1778,12 @@ export function fakeDataArray<T = any>(items: T[]): any {
 		last: () => a[a.length - 1],
 		limit: (n: number) => fakeDataArray(a.slice(0, n)),
 		slice: (s?: number, e?: number) => fakeDataArray(a.slice(s, e)),
-		concat: (other: any) => fakeDataArray(a.concat(Array.isArray(other) ? other : other?.array ? other.array() : [])),
+		concat: (other: any) =>
+			fakeDataArray(
+				a.concat(
+					Array.isArray(other) ? other : other?.array ? other.array() : []
+				)
+			),
 		some: (f: (x: T) => boolean) => a.some(f),
 		every: (f: (x: T) => boolean) => a.every(f),
 		none: (f: (x: T) => boolean) => !a.some(f),
@@ -1511,7 +1812,11 @@ export function fakeLink(path: string, display?: string): any {
 }
 
 /** Dataview page stand-in: frontmatter fields plus `file` (path, name, folder, link, mtime...). */
-export function createFakePage(path: string, fields: Record<string, any> = {}, file: Record<string, any> = {}): any {
+export function createFakePage(
+	path: string,
+	fields: Record<string, any> = {},
+	file: Record<string, any> = {}
+): any {
 	const name = (path.split("/").pop() || "").replace(/\.md$/i, "");
 	const folder = path.split("/").slice(0, -1).join("/");
 	return {
@@ -1558,7 +1863,8 @@ export function createFakeDv(options: {
 	const out: FakeDvOutput = { tables: [], paragraphs: [], texts: [], elements: [] };
 	const strip = (p: string) => String(p ?? "").replace(/\.md$/i, "");
 	const current =
-		pages.find((p) => p.file.path === options.currentPath) ?? createFakePage(options.currentPath, options.currentFields ?? {});
+		pages.find((p) => p.file.path === options.currentPath) ??
+		createFakePage(options.currentPath, options.currentFields ?? {});
 	const dv: any = {
 		app: options.app ?? {},
 		container: createFakeElement("div"),
@@ -1569,15 +1875,19 @@ export function createFakeDv(options: {
 			const m = q.match(/^"(.*)"$/);
 			if (!m) return fakeDataArray([]);
 			const folder = m[1].replace(/\/+$/, "");
-			return fakeDataArray(pages.filter((p) => p.file.path.startsWith(folder + "/")));
+			return fakeDataArray(
+				pages.filter((p) => p.file.path.startsWith(folder + "/"))
+			);
 		},
 		page: (path: any) => {
 			const target = strip(typeof path === "string" ? path : path?.path);
 			if (options.page) return options.page(target);
 			return pages.find((p) => strip(p.file.path) === target);
 		},
-		array: (arr: any) => fakeDataArray(Array.isArray(arr) ? arr : arr?.array ? arr.array() : [arr]),
-		fileLink: (path: string, _embed?: boolean, display?: string) => fakeLink(path, display),
+		array: (arr: any) =>
+			fakeDataArray(Array.isArray(arr) ? arr : arr?.array ? arr.array() : [arr]),
+		fileLink: (path: string, _embed?: boolean, display?: string) =>
+			fakeLink(path, display),
 		table: (headers: any[], rows: any) => {
 			out.tables.push({ headers: [...headers], rows: toPlainRows(rows) });
 		},
@@ -1591,12 +1901,19 @@ export function createFakeDv(options: {
 		header: (_level: number, text: any) => {
 			out.texts.push(String(text));
 		},
-		el: (_tag: string, text: any, elOptions?: { cls?: string; attr?: Record<string, string> }) => {
+		el: (
+			_tag: string,
+			text: any,
+			elOptions?: { cls?: string; attr?: Record<string, string> }
+		) => {
 			out.texts.push(String(text));
 			const element = createFakeElement(_tag, {
 				cls: elOptions?.cls,
 				attr: elOptions?.attr,
-				text: text === undefined || text === null || text === "" ? undefined : String(text),
+				text:
+					text === undefined || text === null || text === ""
+						? undefined
+						: String(text),
 			});
 			out.elements.push(element);
 			dv.container.appendChild(element);
@@ -1612,11 +1929,21 @@ const AsyncFunctionCtor = Object.getPrototypeOf(async function () {}).constructo
  * Runs script text (as stored in a script file: leading /** ... *\/ header is
  * stripped, like DataviewJSManager.executeScript does) against a fake dv.
  */
-export async function runDataviewScript(scriptText: string, dv: any, input: Record<string, any> = {}, win: any = {}): Promise<void> {
+export async function runDataviewScript(
+	scriptText: string,
+	dv: any,
+	input: Record<string, any> = {},
+	win: any = {}
+): Promise<void> {
 	const code = scriptText.replace(/\/\*\*[\s\S]*?\*\//, "");
 	// Inner scope: the script may declare its own `app`/`window` (as Obsidian scripts often do with `const app = dv.app`).
 	const wrapped = `return (async () => {\n${code}\n})();`;
-	await new AsyncFunctionCtor("dv", "input", "window", "app", wrapped)(dv, input, win, dv.app);
+	await new AsyncFunctionCtor("dv", "input", "window", "app", wrapped)(
+		dv,
+		input,
+		win,
+		dv.app
+	);
 }
 
 export default {

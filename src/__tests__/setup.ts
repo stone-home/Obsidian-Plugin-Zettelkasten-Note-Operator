@@ -33,7 +33,14 @@ if (typeof document === "undefined") {
 			},
 			createEl: function (
 				tag: string,
-				options?: { cls?: string; text?: string; type?: string; value?: string; placeholder?: string; attr?: Record<string, string> }
+				options?: {
+					cls?: string;
+					text?: string;
+					type?: string;
+					value?: string;
+					placeholder?: string;
+					attr?: Record<string, string>;
+				}
 			) {
 				const el = (global as any).document.createElement(tag);
 				if (options?.cls) el.className = options.cls;

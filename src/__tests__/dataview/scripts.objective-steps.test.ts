@@ -27,8 +27,12 @@ const basename = (p: string) => sansMd(p.split("/").pop() || "");
  * Like Obsidian: takes a bare linkpath (no #subpath, no |alias) and resolves it
  * by full path, path suffix or basename, with or without ".md".
  */
-function getFirstLinkpathDest(linkpath: string, _sourcePath: string): { path: string; basename: string; extension: string } | null {
-	if (typeof linkpath !== "string" || linkpath === "" || /[#|]/.test(linkpath)) return null;
+function getFirstLinkpathDest(
+	linkpath: string,
+	_sourcePath: string
+): { path: string; basename: string; extension: string } | null {
+	if (typeof linkpath !== "string" || linkpath === "" || /[#|]/.test(linkpath))
+		return null;
 	const target = sansMd(linkpath);
 	const hit =
 		VAULT_FILES.find((f) => sansMd(f) === target) ??
@@ -38,7 +42,10 @@ function getFirstLinkpathDest(linkpath: string, _sourcePath: string): { path: st
 }
 
 const step = (name: string, objective?: any) =>
-	createFakePage(`${P}/steps/${name}.md`, objective === undefined ? { status: "todo" } : { objective, status: "todo" });
+	createFakePage(
+		`${P}/steps/${name}.md`,
+		objective === undefined ? { status: "todo" } : { objective, status: "todo" }
+	);
 
 const STEPS = [
 	step("s1 link to Foo", fakeLink(FOO, "TP - Foo")),
@@ -50,13 +57,28 @@ const STEPS = [
 	step("s7 no objective"),
 	step("s8 wikilink Foo Bar with heading", "[[TP - Foo Bar#Foo]]"),
 ];
-const FOO_STEPS = ["s1 link to Foo", "s3 wikilink Foo", "s5 wikilink Foo with heading and alias", "s6 full path with md"];
-const FOO_BAR_STEPS = ["s2 link to Foo Bar", "s4 wikilink Foo Bar with alias", "s8 wikilink Foo Bar with heading"];
+const FOO_STEPS = [
+	"s1 link to Foo",
+	"s3 wikilink Foo",
+	"s5 wikilink Foo with heading and alias",
+	"s6 full path with md",
+];
+const FOO_BAR_STEPS = [
+	"s2 link to Foo Bar",
+	"s4 wikilink Foo Bar with alias",
+	"s8 wikilink Foo Bar with heading",
+];
 
-const PAGES = [createFakePage(FOO, { status: "active" }), createFakePage(FOO_BAR, { status: "active" }), createFakePage(DASHBOARD), ...STEPS];
+const PAGES = [
+	createFakePage(FOO, { status: "active" }),
+	createFakePage(FOO_BAR, { status: "active" }),
+	createFakePage(DASHBOARD),
+	...STEPS,
+];
 
 function cellName(cell: any): string {
-	if (cell && typeof cell === "object" && typeof cell.path === "string") return basename(cell.path);
+	if (cell && typeof cell === "object" && typeof cell.path === "string")
+		return basename(cell.path);
 	const s = String(cell);
 	const m = s.match(/^\[\[([^|\]#]+)/);
 	return m ? basename(m[1]) : s;
@@ -68,7 +90,11 @@ async function run(currentPath: string, input: Record<string, any> = {}) {
 		pages: PAGES,
 		app: { metadataCache: { getFirstLinkpathDest } },
 	});
-	await runDataviewScript(getDefaultScriptContent("zk-research-objective-steps")!, dv, input);
+	await runDataviewScript(
+		getDefaultScriptContent("zk-research-objective-steps")!,
+		dv,
+		input
+	);
 	return out;
 }
 

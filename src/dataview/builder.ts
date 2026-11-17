@@ -34,7 +34,7 @@ export class DataviewScriptBuilder {
 		type: IDataviewParameter["type"],
 		required = false,
 		defaultValue?: any,
-		description?: string,
+		description?: string
 	): this {
 		if (!this.script.parameters) this.script.parameters = [];
 		this.script.parameters.push({
@@ -71,7 +71,7 @@ export class DataviewScriptBuilder {
 				category: this.script.category,
 				parameters: this.script.parameters,
 				tags: this.script.tags,
-			},
+			}
 		);
 	}
 }

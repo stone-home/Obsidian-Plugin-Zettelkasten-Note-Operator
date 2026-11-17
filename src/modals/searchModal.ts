@@ -30,11 +30,7 @@ export class SearchModal extends Modal {
 	private selectedResult: ISearchResult | null = null;
 	private createOpenInputValue = "";
 
-	constructor(
-		app: App,
-		settings: ZettelkastenSettings,
-		factory: NoteFactory,
-	) {
+	constructor(app: App, settings: ZettelkastenSettings, factory: NoteFactory) {
 		super(app);
 		this.settings = settings;
 		this.factory = factory;
@@ -62,16 +58,21 @@ export class SearchModal extends Modal {
 
 	private getAllNotes(targetDir: string): ISearchResult[] {
 		const normalizedDir = targetDir ? targetDir.trim().replace(/\/$/, "") : "";
-		return this.app.vault.getMarkdownFiles()
+		return this.app.vault
+			.getMarkdownFiles()
 			.filter((note) => {
 				if (!normalizedDir) return true;
-				return note.path === normalizedDir + ".md" || note.path.startsWith(normalizedDir + "/");
+				return (
+					note.path === normalizedDir + ".md" ||
+					note.path.startsWith(normalizedDir + "/")
+				);
 			})
 			.map((note) => {
 				const cache = this.app.metadataCache.getFileCache(note);
 				const fm = cache?.frontmatter;
-				let tags: string[] = (cache?.tags?.map((t) => t.tag) || [])
-					.map((t) => t.toLowerCase());
+				let tags: string[] = (cache?.tags?.map((t) => t.tag) || []).map((t) =>
+					t.toLowerCase()
+				);
 				if (fm && Array.isArray(fm.tags)) {
 					tags.push(...fm.tags.map((t: string) => String(t).toLowerCase()));
 				}
@@ -92,7 +93,7 @@ export class SearchModal extends Modal {
 			filtered = filtered.filter(
 				(r) =>
 					r.name.toLowerCase().includes(q) ||
-					r.basename.toLowerCase().includes(q),
+					r.basename.toLowerCase().includes(q)
 			);
 		}
 		if (this.tagFilterEnabled && this.tagFilter.trim()) {
@@ -104,8 +105,8 @@ export class SearchModal extends Modal {
 			if (filterTags.length > 0) {
 				filtered = filtered.filter((r) =>
 					filterTags.some((tag) =>
-						r.tags.some((t) => t.includes(tag) || tag.includes(t)),
-					),
+						r.tags.some((t) => t.includes(tag) || tag.includes(t))
+					)
 				);
 			}
 		}
@@ -114,7 +115,9 @@ export class SearchModal extends Modal {
 	}
 
 	private displayResults(): void {
-		const area = this.contentEl.querySelector(".search-results-area") as HTMLElement;
+		const area = this.contentEl.querySelector(
+			".search-results-area"
+		) as HTMLElement;
 		if (!area) return;
 		area.empty();
 		if (this.searchResults.length === 0) {
@@ -127,16 +130,13 @@ export class SearchModal extends Modal {
 		this.searchResults.forEach((result) => {
 			const row = area.createDiv("search-result-item");
 			row.createEl("div", { text: result.name });
-			if (
-				this.selectedResult &&
-				this.selectedResult.path === result.path
-			) {
+			if (this.selectedResult && this.selectedResult.path === result.path) {
 				row.addClass("selected");
 			}
 			row.onclick = () => {
-				this.contentEl.querySelectorAll(".search-result-item.selected").forEach((el) =>
-					el.removeClass("selected"),
-				);
+				this.contentEl
+					.querySelectorAll(".search-result-item.selected")
+					.forEach((el) => el.removeClass("selected"));
 				row.addClass("selected");
 				this.selectedResult = result;
 			};
@@ -161,7 +161,8 @@ export class SearchModal extends Modal {
 		await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
 			if (!fm.sources) (fm as Record<string, unknown>).sources = [];
 			const sources = (fm as Record<string, unknown>).sources as string[];
-			if (!Array.isArray(sources)) (fm as Record<string, unknown>).sources = [sources].filter(Boolean);
+			if (!Array.isArray(sources))
+				(fm as Record<string, unknown>).sources = [sources].filter(Boolean);
 			const arr = (fm as Record<string, unknown>).sources as string[];
 			if (!arr.includes(link)) arr.push(link);
 		});
@@ -171,7 +172,9 @@ export class SearchModal extends Modal {
 	private renderTargetFolder(container: HTMLElement): void {
 		const row = container.createDiv("search-field-row");
 		row.createEl("label", { text: "Target folder" });
-		const display = row.createEl("span", { text: this.targetDirectory || "(root)" });
+		const display = row.createEl("span", {
+			text: this.targetDirectory || "(root)",
+		});
 		display.addClass("search-folder-display");
 		const changeBtn = row.createEl("button", { text: "Change" });
 		changeBtn.addClass("search-action-btn");
@@ -245,12 +248,9 @@ export class SearchModal extends Modal {
 		openBtn.addClass("search-action-btn");
 		openBtn.onclick = () => {
 			if (this.selectedResult) {
-				this.app.workspace.openLinkText(
-					this.selectedResult.path,
-					"",
-					true,
-					{ state: { mode: "source" } },
-				);
+				this.app.workspace.openLinkText(this.selectedResult.path, "", true, {
+					state: { mode: "source" },
+				});
 				this.close();
 			} else {
 				new Notice("Select a result first.");
@@ -344,9 +344,9 @@ class FolderPickerModal extends FuzzySuggestModal<TFolder> {
 	}
 
 	getItems(): TFolder[] {
-		return this.app.vault.getAllLoadedFiles().filter(
-			(f): f is TFolder => f instanceof TFolder,
-		);
+		return this.app.vault
+			.getAllLoadedFiles()
+			.filter((f): f is TFolder => f instanceof TFolder);
 	}
 
 	getItemText(item: TFolder): string {

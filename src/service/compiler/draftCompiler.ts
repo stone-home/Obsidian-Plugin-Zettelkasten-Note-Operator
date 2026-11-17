@@ -50,7 +50,7 @@ export class DraftCompiler {
 
 		// Use repo as repoRoot if set, otherwise default to project materials folder
 		const repoRoot = fm.repo ? fm.repo : projectFolder;
-		
+
 		return {
 			repoRoot: projectFolder,
 			materialsDir: "materials",
@@ -119,7 +119,7 @@ export class DraftCompiler {
 	async updateManifest(
 		cfg: CompileConfig,
 		sectionId: string,
-		newPath: string,
+		newPath: string
 	): Promise<void> {
 		const manifestPath = `${cfg.repoRoot}/${cfg.manifestPath}`;
 		const manifestFile = this.app.vault.getAbstractFileByPath(manifestPath);
@@ -247,7 +247,7 @@ export class DraftCompiler {
 	private async getNextVersion(
 		cfg: CompileConfig,
 		sectionBase: string,
-		date: string,
+		date: string
 	): Promise<number> {
 		const materialsFolder = `${cfg.repoRoot}/${cfg.materialsDir}`;
 		const folder = this.app.vault.getAbstractFileByPath(materialsFolder);

@@ -110,15 +110,10 @@ describe("CodeProjectManager", () => {
 		});
 
 		it("should create requirement with correct frontmatter", async () => {
-			const reqFile = await manager.createRequirement(
-				projectFile,
-				"NewFeature"
-			);
+			const reqFile = await manager.createRequirement(projectFile, "NewFeature");
 
 			expect(reqFile).toBeInstanceOf(TFile);
-			expect(reqFile.path).toBe(
-				"Projects/ReqTest/requirements/NewFeature.md"
-			);
+			expect(reqFile.path).toBe("Projects/ReqTest/requirements/NewFeature.md");
 
 			const content = (app.vault as any)._getContent(reqFile.path);
 			const fm = extractFrontmatter(content);
@@ -303,9 +298,7 @@ describe("CodeProjectManager", () => {
 		it("should compare commits after latest release", async () => {
 			const mockReleases = [createMockRelease({ tag_name: "v1.0.0" })];
 			const mockCompare = {
-				commits: [
-					createMockCommit({ sha: "abc1234", message: "New feature" }),
-				],
+				commits: [createMockCommit({ sha: "abc1234", message: "New feature" })],
 			};
 
 			// First call returns releases, second returns compare
@@ -356,9 +349,8 @@ describe("CodeProjectManager", () => {
 		it("should create dashboard for existing folder", async () => {
 			await app.vault.createFolder("Projects/Existing");
 
-			const dashboardFile = await manager.importExistingProject(
-				"Projects/Existing"
-			);
+			const dashboardFile =
+				await manager.importExistingProject("Projects/Existing");
 
 			expect(dashboardFile.path).toBe("Projects/Existing/Dashboard.md");
 		});

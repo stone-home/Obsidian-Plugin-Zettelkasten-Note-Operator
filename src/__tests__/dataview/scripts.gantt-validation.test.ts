@@ -23,7 +23,11 @@ function isValidIsoDate(s: string): boolean {
 	if (!m) return false;
 	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
 	const date = new Date(Date.UTC(y, mo - 1, d));
-	return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+	return (
+		date.getUTCFullYear() === y &&
+		date.getUTCMonth() === mo - 1 &&
+		date.getUTCDate() === d
+	);
 }
 
 /** Luxon-DateTime-like value, as Dataview gives for date frontmatter and file.mtime. */
@@ -47,7 +51,14 @@ function dt(iso: string): any {
 	};
 }
 
-const invalidDateTime = () => ({ isLuxonDateTime: true, isValid: false, invalidReason: "unit out of range", toISODate: () => null, toMillis: () => NaN, valueOf: () => NaN });
+const invalidDateTime = () => ({
+	isLuxonDateTime: true,
+	isValid: false,
+	invalidReason: "unit out of range",
+	toISODate: () => null,
+	toMillis: () => NaN,
+	valueOf: () => NaN,
+});
 
 const fakeLuxon = {
 	DateTime: {
@@ -57,12 +68,21 @@ const fakeLuxon = {
 	},
 };
 
-const draft = (name: string, fields: Record<string, any>, mtime = "2026-11-12T10:00:00Z") =>
-	createFakePage(`${P}/drafts/${name}.md`, fields, { mtime: dt(mtime) });
-const experiment = (name: string, fields: Record<string, any>, mtime = "2026-11-25T10:00:00Z") =>
-	createFakePage(`${P}/experiments/${name}.md`, fields, { mtime: dt(mtime) });
-const objective = (name: string, fields: Record<string, any>, mtime = "2026-11-25T10:00:00Z") =>
-	createFakePage(`${P}/objectives/${name}.md`, fields, { mtime: dt(mtime) });
+const draft = (
+	name: string,
+	fields: Record<string, any>,
+	mtime = "2026-11-12T10:00:00Z"
+) => createFakePage(`${P}/drafts/${name}.md`, fields, { mtime: dt(mtime) });
+const experiment = (
+	name: string,
+	fields: Record<string, any>,
+	mtime = "2026-11-25T10:00:00Z"
+) => createFakePage(`${P}/experiments/${name}.md`, fields, { mtime: dt(mtime) });
+const objective = (
+	name: string,
+	fields: Record<string, any>,
+	mtime = "2026-11-25T10:00:00Z"
+) => createFakePage(`${P}/objectives/${name}.md`, fields, { mtime: dt(mtime) });
 
 async function runGantt(pages: any[]) {
 	const { dv, out } = createFakeDv({
@@ -75,17 +95,25 @@ async function runGantt(pages: any[]) {
 		if (v && v.isLuxonDateTime) return v.isValid ? v : null;
 		return typeof v === "string" && isValidIsoDate(v) ? dt(v) : null;
 	};
-	await runDataviewScript(getDefaultScriptContent("zk-research-gantt")!, dv, {}, {
-		ZettelkastenOperator: { getGanttStatusColors: () => ({}) },
-	});
+	await runDataviewScript(
+		getDefaultScriptContent("zk-research-gantt")!,
+		dv,
+		{},
+		{
+			ZettelkastenOperator: { getGanttStatusColors: () => ({}) },
+		}
+	);
 	const plantuml = out.paragraphs.find((p) => p.includes("@startgantt")) ?? "";
 	const lines = plantuml.split("\n");
-	const problemTable = out.tables.find((t) => JSON.stringify(t.headers) === JSON.stringify(PROBLEM_HEADERS));
+	const problemTable = out.tables.find(
+		(t) => JSON.stringify(t.headers) === JSON.stringify(PROBLEM_HEADERS)
+	);
 	return { out, lines, problemTable };
 }
 
 function mentions(cell: any, needle: string): boolean {
-	if (cell && typeof cell === "object" && typeof cell.path === "string") return cell.path.includes(needle);
+	if (cell && typeof cell === "object" && typeof cell.path === "string")
+		return cell.path.includes(needle);
 	return String(cell).includes(needle);
 }
 
@@ -98,7 +126,9 @@ beforeAll(async () => {
 
 describe("zk-research-gantt date validation (D7)", () => {
 	it("draws a draft with a start and no end as a one-day task, not ending at file.mtime", async () => {
-		const { lines, problemTable } = await runGantt([draft("TP - Intro", { start: dt("2026-12-01"), status: "draft" })]);
+		const { lines, problemTable } = await runGantt([
+			draft("TP - Intro", { start: dt("2026-12-01"), status: "draft" }),
+		]);
 
 		expect(lines).toContain("[Draft Intro] starts 2026-12-01 and ends 2026-12-01");
 		expect(problemTable).toBeUndefined();
@@ -119,7 +149,9 @@ describe("zk-research-gantt date validation (D7)", () => {
 	});
 
 	it("does not draw an experiment with start 'tbd' and lists it with field 'start'", async () => {
-		const { lines, problemTable } = await runGantt([experiment("TP - Ablation", { start: "tbd" })]);
+		const { lines, problemTable } = await runGantt([
+			experiment("TP - Ablation", { start: "tbd" }),
+		]);
 
 		expect(lines.some((l) => l.includes("Ablation]"))).toBe(false);
 		const row = problemRowFor(problemTable, "Ablation");
@@ -146,7 +178,10 @@ describe("zk-research-gantt date validation (D7)", () => {
 
 	it("starts the project at the earliest valid date", async () => {
 		const { lines } = await runGantt([
-			objective("TP - Baseline", { start: dt("2026-11-20"), end: dt("2026-11-30") }),
+			objective("TP - Baseline", {
+				start: dt("2026-11-20"),
+				end: dt("2026-11-30"),
+			}),
 			objective("TP - Leap", { start: "2026-02-30", end: dt("2026-12-31") }),
 			experiment("TP - Ablation", { start: "tbd" }),
 		]);

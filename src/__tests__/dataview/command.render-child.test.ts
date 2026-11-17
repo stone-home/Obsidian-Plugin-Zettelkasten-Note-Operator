@@ -5,7 +5,11 @@
  */
 
 import { App, Component, MarkdownRenderChild } from "../../__mocks__/obsidian";
-import { createMockApp, createMockSettings, clearVault } from "../../__mocks__/testHelpers";
+import {
+	createMockApp,
+	createMockSettings,
+	clearVault,
+} from "../../__mocks__/testHelpers";
 import { DataviewCommand } from "../../dataview/command";
 import { DataviewJSManager } from "../../dataview/manager";
 
@@ -46,7 +50,11 @@ describe("DataviewCommand render child (D8)", () => {
 	it("registers a MarkdownRenderChild for the block synchronously and passes it to executeScript", async () => {
 		const { exec, handler } = await setup(app);
 		const el = { isConnected: true };
-		const ctx = { sourcePath: "Note.md", getSectionInfo: () => ({ lineStart: 3 }), addChild: jest.fn() };
+		const ctx = {
+			sourcePath: "Note.md",
+			getSectionInfo: () => ({ lineStart: 3 }),
+			addChild: jest.fn(),
+		};
 
 		handler("my-script\nn: 1", el, ctx);
 
@@ -98,14 +106,31 @@ describe("DataviewJSManager.executeScript component (D8)", () => {
 	it("hands the given component to Dataview's executeJs", async () => {
 		const component = new Component();
 
-		await (manager as any).executeScript("zk-research-objectives", el, {}, { sourcePath: "P/Dashboard.md" }, component);
+		await (manager as any).executeScript(
+			"zk-research-objectives",
+			el,
+			{},
+			{ sourcePath: "P/Dashboard.md" },
+			component
+		);
 
 		expect(executeJs).toHaveBeenCalledTimes(1);
-		expect(executeJs).toHaveBeenCalledWith(expect.any(String), el, component, "P/Dashboard.md");
+		expect(executeJs).toHaveBeenCalledWith(
+			expect.any(String),
+			el,
+			component,
+			"P/Dashboard.md"
+		);
 	});
 
 	it("falls back to the manager itself when no component is given", async () => {
-		await (manager as any).executeScript("zk-research-objectives", el, {}, { sourcePath: "P/Dashboard.md" }, undefined);
+		await (manager as any).executeScript(
+			"zk-research-objectives",
+			el,
+			{},
+			{ sourcePath: "P/Dashboard.md" },
+			undefined
+		);
 
 		expect(executeJs).toHaveBeenCalledTimes(1);
 		expect(executeJs.mock.calls[0][2]).toBe(manager);

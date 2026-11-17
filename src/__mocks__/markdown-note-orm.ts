@@ -51,10 +51,14 @@ export function getOrmMergeMode(): OrmMergeMode {
 	return ormMergeMode;
 }
 
-const hasOwn = (obj: object, key: string) => Object.prototype.hasOwnProperty.call(obj, key);
+const hasOwn = (obj: object, key: string) =>
+	Object.prototype.hasOwnProperty.call(obj, key);
 
 /** Applies `source` onto `target` according to the current merge mode. */
-function mergeProperties(target: Record<string, any>, source: Record<string, any>): void {
+function mergeProperties(
+	target: Record<string, any>,
+	source: Record<string, any>
+): void {
 	if (ormMergeMode === "override") {
 		Object.assign(target, source);
 		return;
@@ -73,7 +77,12 @@ function mergeProperties(target: Record<string, any>, source: Record<string, any
 /** Adds non-enumerable get/set/has/remove/batchUpdate so they never end up in serialized frontmatter. */
 function attachPropertyMethods<T extends Record<string, any>>(props: T): T {
 	const define = (name: string, value: (...args: any[]) => any) =>
-		Object.defineProperty(props, name, { value, enumerable: false, configurable: true, writable: true });
+		Object.defineProperty(props, name, {
+			value,
+			enumerable: false,
+			configurable: true,
+			writable: true,
+		});
 	define("get", (key: string) => (props as any)[key]);
 	define("set", (key: string, value: any) => {
 		(props as any)[key] = value;
@@ -83,7 +92,9 @@ function attachPropertyMethods<T extends Record<string, any>>(props: T): T {
 		delete (props as any)[key];
 	});
 	// Supports the factory's batchUpdate branch in tests.
-	define("batchUpdate", (params: Record<string, any>) => mergeProperties(props, params));
+	define("batchUpdate", (params: Record<string, any>) =>
+		mergeProperties(props, params)
+	);
 	return props;
 }
 
@@ -167,8 +178,18 @@ const COMMON_DEFAULTS = (): INoteFrontmatter => ({
 
 const REAL_TYPE_DEFAULTS: Record<NoteType, () => INoteFrontmatter> = {
 	fleeting: () => ({ ...COMMON_DEFAULTS(), type: "fleeting", url: "" }),
-	literature: () => ({ ...COMMON_DEFAULTS(), type: "literature", url: "", cssclasses: [] }),
-	permanent: () => ({ ...COMMON_DEFAULTS(), type: "permanent", url: "", cssclasses: [] }),
+	literature: () => ({
+		...COMMON_DEFAULTS(),
+		type: "literature",
+		url: "",
+		cssclasses: [],
+	}),
+	permanent: () => ({
+		...COMMON_DEFAULTS(),
+		type: "permanent",
+		url: "",
+		cssclasses: [],
+	}),
 	atom: () => ({ ...COMMON_DEFAULTS(), type: "atom", url: "" }),
 };
 
@@ -192,7 +213,11 @@ export class ObsidianNoteFactory {
 						create: new Date().toISOString().slice(0, 10),
 					}
 				: { type, title };
-		const note = new ZettelNoteModel<NoteTypeMap[K]>(app, path, initial as NoteTypeMap[K]);
+		const note = new ZettelNoteModel<NoteTypeMap[K]>(
+			app,
+			path,
+			initial as NoteTypeMap[K]
+		);
 
 		if (config) {
 			note.applyConfigTemplate(config);
@@ -201,10 +226,7 @@ export class ObsidianNoteFactory {
 		return note;
 	}
 
-	static async loadAndPatch(
-		app: App,
-		path: string
-	): Promise<ZettelNoteModel> {
+	static async loadAndPatch(app: App, path: string): Promise<ZettelNoteModel> {
 		const file = app.vault.getAbstractFileByPath(path) as TFile;
 		if (!file) {
 			throw new Error(`File not found: ${path}`);
