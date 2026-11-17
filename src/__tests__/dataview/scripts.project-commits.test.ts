@@ -4,6 +4,7 @@
  */
 
 import {
+	asObsidianApp,
 	createMockApp,
 	createFakeDv,
 	createFakePage,
@@ -34,7 +35,14 @@ const COMMITS = [
 	},
 ];
 
-async function run(pageResult: any) {
+/** The built-in default content of a script; fails the test when there is none. */
+function defaultContentOf(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No default content for ${id}`);
+	return content;
+}
+
+async function run(pageResult: unknown) {
 	const requested: string[] = [];
 	const { dv, out } = createFakeDv({
 		currentPath: `${PROJECT}/Dashboard.md`,
@@ -51,12 +59,15 @@ async function run(pageResult: any) {
 			return path === `${PROJECT}/Unreleased Commits` ? pageResult : undefined;
 		},
 	});
-	await runDataviewScript(getDefaultScriptContent("zk-project-commits")!, dv);
+	await runDataviewScript(defaultContentOf("zk-project-commits"), dv);
 	return { out, requested };
 }
 
 beforeAll(async () => {
-	await new DataviewJSManager(createMockApp() as any, "dataview-scripts").onload();
+	await new DataviewJSManager(
+		asObsidianApp(createMockApp()),
+		"dataview-scripts"
+	).onload();
 });
 
 describe("zk-project-commits (C1)", () => {

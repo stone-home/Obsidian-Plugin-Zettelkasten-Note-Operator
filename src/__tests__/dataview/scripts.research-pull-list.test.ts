@@ -12,6 +12,7 @@
  */
 
 import {
+	asObsidianApp,
 	clickFakeElement,
 	collectText,
 	createFakeDv,
@@ -82,6 +83,19 @@ function makeZk() {
 	};
 }
 
+/** The built-in default content of a script; fails the test when there is none. */
+function defaultContentOf(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No default content for ${id}`);
+	return content;
+}
+
+/** The value the test just checked with toBeDefined(); fails the test when it is missing. */
+function defined<T>(value: T | undefined, what: string): T {
+	if (value === undefined) throw new Error(`${what} was not found`);
+	return value;
+}
+
 async function render(githubPull: string[] | undefined) {
 	const zk = makeZk();
 	const { dv } = createFakeDv({
@@ -95,13 +109,13 @@ async function render(githubPull: string[] | undefined) {
 		},
 	});
 	await runDataviewScript(
-		getDefaultScriptContent("zk-research-quick-actions")!,
+		defaultContentOf("zk-research-quick-actions"),
 		dv,
 		{},
 		{ ZettelkastenOperator: zk }
 	);
 	await flushAsync();
-	return { zk, root: dv.container as FakeElement };
+	return { zk, root: dv.container };
 }
 
 const isButton = (el: FakeElement) =>
@@ -135,7 +149,7 @@ function buttonNear(el: FakeElement, text: RegExp): FakeElement | undefined {
 			(c) => isButton(c) && text.test(collectText(c).trim())
 		);
 		if (match.length) return match[0];
-		node = node.parentElement as FakeElement | undefined;
+		node = node.parentElement;
 	}
 	return undefined;
 }
@@ -181,7 +195,10 @@ async function chooseOption(select: FakeElement, text: string): Promise<void> {
 }
 
 beforeAll(async () => {
-	await new DataviewJSManager(createMockApp() as any, "dataview-scripts").onload();
+	await new DataviewJSManager(
+		asObsidianApp(createMockApp()),
+		"dataview-scripts"
+	).onload();
 });
 
 describe("zk-research-quick-actions Pull group (B6)", () => {
@@ -196,7 +213,7 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 
 		const select = findRuleSelect(root, ["Figures", "data/raw → materials/data"]);
 		expect(select).toBeDefined();
-		const texts = optionTexts(select!);
+		const texts = optionTexts(defined(select, "rule select"));
 		expect(texts.some((t) => t.includes("Figures"))).toBe(true);
 		expect(texts.some((t) => t.includes("data/raw → materials/data"))).toBe(true);
 		expect(texts.some((t) => t.includes("Papers"))).toBe(false);
@@ -207,10 +224,11 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		const select = findRuleSelect(root, ["Figures"]);
 		expect(select).toBeDefined();
 
-		await chooseOption(select!, "Figures");
-		const add = buttonNear(select!, ADD_BUTTON);
+		const ruleSelect = defined(select, "rule select");
+		await chooseOption(ruleSelect, "Figures");
+		const add = buttonNear(ruleSelect, ADD_BUTTON);
 		expect(add).toBeDefined();
-		await clickFakeElement(add!);
+		await clickFakeElement(defined(add, "Add button"));
 		await flushAsync();
 
 		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, [
@@ -225,8 +243,11 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		const select = findRuleSelect(root, ["data/raw → materials/data"]);
 		expect(select).toBeDefined();
 
-		await chooseOption(select!, "data/raw → materials/data");
-		await clickFakeElement(buttonNear(select!, ADD_BUTTON)!);
+		const ruleSelect = defined(select, "rule select");
+		await chooseOption(ruleSelect, "data/raw → materials/data");
+		await clickFakeElement(
+			defined(buttonNear(ruleSelect, ADD_BUTTON), "Add button")
+		);
 		await flushAsync();
 
 		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, [
@@ -239,13 +260,16 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		const { zk, root } = await render(undefined);
 		const select = findRuleSelect(root, ["Papers"]);
 		expect(select).toBeDefined();
-		const texts = optionTexts(select!);
+		const texts = optionTexts(defined(select, "rule select"));
 		expect(texts.some((t) => t.includes("Papers"))).toBe(true);
 		expect(texts.some((t) => t.includes("Figures"))).toBe(true);
 		expect(texts.some((t) => t.includes("data/raw → materials/data"))).toBe(true);
 
-		await chooseOption(select!, "Papers");
-		await clickFakeElement(buttonNear(select!, ADD_BUTTON)!);
+		const ruleSelect = defined(select, "rule select");
+		await chooseOption(ruleSelect, "Papers");
+		await clickFakeElement(
+			defined(buttonNear(ruleSelect, ADD_BUTTON), "Add button")
+		);
 		await flushAsync();
 
 		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, ["r1"]);
@@ -256,7 +280,7 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 
 		const removePapers = removeButtonFor(root, "Papers");
 		expect(removePapers).toBeDefined();
-		await clickFakeElement(removePapers!);
+		await clickFakeElement(defined(removePapers, "remove button for Papers"));
 		await flushAsync();
 
 		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, ["r3"]);
@@ -268,7 +292,9 @@ describe("zk-research-quick-actions Pull group (B6)", () => {
 		expect(collectText(root)).toMatch(/rule not found/i);
 		const removeGhost = removeButtonFor(root, /rule not found/i);
 		expect(removeGhost).toBeDefined();
-		await clickFakeElement(removeGhost!);
+		await clickFakeElement(
+			defined(removeGhost, "remove button for the unknown id")
+		);
 		await flushAsync();
 
 		expect(zk.setResearchPullRules).toHaveBeenCalledWith(PROJECT_PATH, ["r1"]);

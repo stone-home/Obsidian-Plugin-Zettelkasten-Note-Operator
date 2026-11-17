@@ -8,9 +8,13 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, clearVault } from "../../__mocks__/testHelpers";
+import { asObsidianApp, createMockApp, clearVault } from "../../__mocks__/testHelpers";
 import * as managerModule from "../../dataview/manager";
-import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
+import {
+	DataviewJSManager,
+	getDefaultScriptContent,
+	type DataviewJSManagerOptions,
+} from "../../dataview/manager";
 
 type ScriptState = Record<string, { written: string; seen: string }>;
 
@@ -38,18 +42,28 @@ const OBJECTIVES = "zk-research-objectives";
 const OLD_DEFAULT =
 	"/**\n * @id zk-research-gantt\n * @name Research Gantt\n */\n\ndv.paragraph('old default');";
 
-const hashContent = (content: string): string =>
-	(managerModule as any).hashContent(content);
+const hashContent = (content: string): string => managerModule.hashContent(content);
 const pathOf = (id: string) => `${FOLDER}/${id}.js`;
+
+/** The built-in default content of a script; fails the test when there is none. */
+function defaultContentOf(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No default content for ${id}`);
+	return content;
+}
+
+/** Deep copy of a state (each entry is a flat object of strings). */
+const cloneState = (state: ScriptState): ScriptState =>
+	Object.fromEntries(Object.entries(state).map(([id, entry]) => [id, { ...entry }]));
 
 /** Holds the persisted state like plugin data would; save clones so later mutation cannot leak. */
 function makeStore(initial: ScriptState = {}) {
-	let state: ScriptState = JSON.parse(JSON.stringify(initial));
+	let state: ScriptState = cloneState(initial);
 	const save = jest.fn((next: ScriptState) => {
-		state = JSON.parse(JSON.stringify(next));
+		state = cloneState(next);
 	});
 	return {
-		get: () => JSON.parse(JSON.stringify(state)) as ScriptState,
+		get: () => cloneState(state),
 		current: () => state,
 		save,
 	};
@@ -60,18 +74,18 @@ function makeManager(
 	store: ReturnType<typeof makeStore>,
 	extra: { overwrite?: () => boolean; notify?: jest.Mock } = {}
 ) {
-	const options: Record<string, any> = {
+	const options: DataviewJSManagerOptions = {
 		getDefaultScriptState: store.get,
 		saveDefaultScriptState: store.save,
 		notify: extra.notify ?? jest.fn(),
 	};
 	if (extra.overwrite) options.getOverwriteDefaultsOnLoad = extra.overwrite;
-	return new DataviewJSManager(app as any, FOLDER, options as any);
+	return new DataviewJSManager(asObsidianApp(app), FOLDER, options);
 }
 
 describe("hashContent (D3)", () => {
 	it("is exported and deterministic", () => {
-		expect(typeof (managerModule as any).hashContent).toBe("function");
+		expect(typeof managerModule.hashContent).toBe("function");
 		expect(typeof hashContent("abc")).toBe("string");
 		expect(hashContent("abc")).toBe(hashContent("abc"));
 		expect(hashContent("abc")).not.toBe(hashContent("abd"));
@@ -106,9 +120,11 @@ describe("DataviewJSManager default script state (D3)", () => {
 		const saved = store.current();
 		expect(Object.keys(saved).sort()).toEqual([...BUILTIN_IDS].sort());
 		for (const id of BUILTIN_IDS) {
-			const fileContent = (app.vault as any)._getContent(pathOf(id));
+			const fileContent = app.vault._getContent(pathOf(id));
+			if (fileContent === undefined)
+				throw new Error(`${pathOf(id)} was not created`);
 			expect(saved[id].written).toBe(hashContent(fileContent));
-			expect(saved[id].seen).toBe(hashContent(getDefaultScriptContent(id)!));
+			expect(saved[id].seen).toBe(hashContent(defaultContentOf(id)));
 		}
 	});
 
@@ -143,10 +159,7 @@ describe("DataviewJSManager default script state (D3)", () => {
 		const store = makeStore({});
 		await makeManager(app, store).onload();
 		// The plugin last wrote an older default, the user edited it, and a new default ships now.
-		(app.vault as any)._setContent(
-			pathOf(GANTT),
-			"// my own gantt\ndv.paragraph('mine');"
-		);
+		app.vault._setContent(pathOf(GANTT), "// my own gantt\ndv.paragraph('mine');");
 		store.current()[GANTT] = {
 			written: hashContent(OLD_DEFAULT),
 			seen: hashContent(OLD_DEFAULT),
@@ -156,13 +169,11 @@ describe("DataviewJSManager default script state (D3)", () => {
 
 		await makeManager(app, store, { notify }).onload();
 
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(
+		expect(app.vault._getContent(pathOf(GANTT))).toBe(
 			"// my own gantt\ndv.paragraph('mine');"
 		);
 		expect(
-			modifySpy.mock.calls.filter(
-				([file]) => (file as any).path === pathOf(GANTT)
-			)
+			modifySpy.mock.calls.filter(([file]) => file.path === pathOf(GANTT))
 		).toHaveLength(0);
 		expect(notify).toHaveBeenCalledTimes(1);
 		expect(String(notify.mock.calls[0][0])).toContain(GANTT);
@@ -172,7 +183,7 @@ describe("DataviewJSManager default script state (D3)", () => {
 	it("does not notify again on a later onload for the same un-applied default", async () => {
 		const store = makeStore({});
 		await makeManager(app, store).onload();
-		(app.vault as any)._setContent(pathOf(GANTT), "// my own gantt");
+		app.vault._setContent(pathOf(GANTT), "// my own gantt");
 		store.current()[GANTT] = {
 			written: hashContent(OLD_DEFAULT),
 			seen: hashContent(OLD_DEFAULT),
@@ -185,14 +196,14 @@ describe("DataviewJSManager default script state (D3)", () => {
 		await makeManager(app, store, { notify: secondNotify }).onload();
 
 		expect(secondNotify).not.toHaveBeenCalled();
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe("// my own gantt");
+		expect(app.vault._getContent(pathOf(GANTT))).toBe("// my own gantt");
 	});
 
 	it("notifies at most once per onload when several scripts are user-edited", async () => {
 		const store = makeStore({});
 		await makeManager(app, store).onload();
 		for (const id of [GANTT, OBJECTIVES]) {
-			(app.vault as any)._setContent(pathOf(id), `// edited ${id}`);
+			app.vault._setContent(pathOf(id), `// edited ${id}`);
 			store.current()[id] = {
 				written: hashContent(`old ${id}`),
 				seen: hashContent(`old ${id}`),
@@ -203,10 +214,8 @@ describe("DataviewJSManager default script state (D3)", () => {
 		await makeManager(app, store, { notify }).onload();
 
 		expect(notify).toHaveBeenCalledTimes(1);
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(
-			`// edited ${GANTT}`
-		);
-		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe(
+		expect(app.vault._getContent(pathOf(GANTT))).toBe(`// edited ${GANTT}`);
+		expect(app.vault._getContent(pathOf(OBJECTIVES))).toBe(
 			`// edited ${OBJECTIVES}`
 		);
 	});
@@ -223,8 +232,8 @@ describe("DataviewJSManager default script state (D3)", () => {
 
 		await makeManager(app, store, { overwrite: () => true }).onload();
 
-		const newDefault = getDefaultScriptContent(GANTT)!;
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(newDefault);
+		const newDefault = defaultContentOf(GANTT);
+		expect(app.vault._getContent(pathOf(GANTT))).toBe(newDefault);
 		expect(store.current()[GANTT].written).toBe(hashContent(newDefault));
 		expect(store.current()[GANTT].seen).toBe(hashContent(newDefault));
 	});
@@ -237,12 +246,10 @@ describe("DataviewJSManager default script state (D3)", () => {
 
 		await makeManager(app, store, { overwrite: () => true }).onload();
 
-		const newDefault = getDefaultScriptContent(GANTT)!;
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(newDefault);
+		const newDefault = defaultContentOf(GANTT);
+		expect(app.vault._getContent(pathOf(GANTT))).toBe(newDefault);
 		expect(
-			modifySpy.mock.calls.filter(
-				([file]) => (file as any).path === pathOf(GANTT)
-			)
+			modifySpy.mock.calls.filter(([file]) => file.path === pathOf(GANTT))
 		).toHaveLength(1);
 		expect(store.current()[GANTT]).toBeDefined();
 		expect(store.current()[GANTT].written).toBe(hashContent(newDefault));
@@ -267,10 +274,8 @@ describe("DataviewJSManager default script state (D3)", () => {
 		await makeManager(app, store, { overwrite: () => false }).onload();
 
 		expect(modifySpy).not.toHaveBeenCalled();
-		expect((app.vault as any)._getContent(pathOf(GANTT))).toBe(OLD_DEFAULT);
-		expect((app.vault as any)._getContent(pathOf(OBJECTIVES))).toBe(
-			"// legacy objectives"
-		);
+		expect(app.vault._getContent(pathOf(GANTT))).toBe(OLD_DEFAULT);
+		expect(app.vault._getContent(pathOf(OBJECTIVES))).toBe("// legacy objectives");
 		for (const id of BUILTIN_IDS) {
 			expect(app.vault.getAbstractFileByPath(pathOf(id))).toBeTruthy();
 		}

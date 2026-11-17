@@ -15,21 +15,14 @@ const config: Config = {
 		"!src/**/*.test.ts",
 		"!src/__mocks__/**",
 		"!src/__tests__/**",
-		"!src/main.ts",
-		"!src/settings.ts",
-		"!src/modals/**",
-		"!src/service/compiler/**",
-		"!src/service/factory.ts",
-		"!src/service/projects/researchManager.ts",
-		"!src/styles/**",
-		// factory/researchManager excluded so coverage threshold 85% is met; both are still tested
 	],
+	// Ratchet: measured coverage rounded down; raise these as tests are added, never lower them.
 	coverageThreshold: {
 		global: {
 			branches: 55,
-			functions: 85,
-			lines: 85,
-			statements: 85,
+			functions: 48,
+			lines: 57,
+			statements: 57,
 		},
 	},
 	transform: {

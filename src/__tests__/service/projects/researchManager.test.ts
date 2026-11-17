@@ -2,13 +2,14 @@
  * Tests for ResearchManager
  */
 
+import type { TFile as ObsidianTFile } from "obsidian";
 import { App, TFile } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	extractFrontmatter,
-	createResearchDashboardContent,
 } from "../../../__mocks__/testHelpers";
 import { ResearchManager } from "../../../service/projects/researchManager";
 import type { ZettelkastenSettings } from "../../../types";
@@ -24,7 +25,7 @@ describe("ResearchManager", () => {
 			researchRootPath: "Research",
 			dataviewCodeBlockType: "zettelkasten-query",
 		});
-		manager = new ResearchManager(app, settings);
+		manager = new ResearchManager(asObsidianApp(app), settings);
 	});
 
 	afterEach(() => {
@@ -65,10 +66,8 @@ describe("ResearchManager", () => {
 		it("should create dashboard with correct frontmatter", async () => {
 			await manager.createProject("MyResearch");
 
-			const content = (app.vault as any)._getContent(
-				"Research/MyResearch/Dashboard.md"
-			);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent("Research/MyResearch/Dashboard.md");
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.type).toBe("permanent");
 			expect(fm.project_id).toBe("myresearch");
@@ -105,7 +104,10 @@ describe("ResearchManager", () => {
 			const customSettings = createMockSettings({
 				researchRootPath: "My/Research/Folder",
 			});
-			const customManager = new ResearchManager(app, customSettings);
+			const customManager = new ResearchManager(
+				asObsidianApp(app),
+				customSettings
+			);
 
 			const projectFile = await customManager.createProject("Test");
 
@@ -116,7 +118,7 @@ describe("ResearchManager", () => {
 	// ==================== createObjective ====================
 
 	describe("createObjective", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("TestProject");
@@ -133,8 +135,8 @@ describe("ResearchManager", () => {
 				/^Research\/TestProject\/objectives\/TP\d{8} - FirstObjective\.md$/
 			);
 
-			const content = (app.vault as any)._getContent(objectiveFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(objectiveFile.path);
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.title).toBe("FirstObjective");
 			expect(fm.status).toBe("planned");
@@ -146,7 +148,7 @@ describe("ResearchManager", () => {
 				"LinkedObjective"
 			);
 
-			const content = (app.vault as any)._getContent(objectiveFile.path);
+			const content = app.vault._getContent(objectiveFile.path);
 			expect(content).toContain("[[Research/TestProject/Dashboard|Dashboard]]");
 		});
 
@@ -173,8 +175,8 @@ describe("ResearchManager", () => {
 	// ==================== createStep ====================
 
 	describe("createStep", () => {
-		let projectFile: TFile;
-		let objectiveFile: TFile;
+		let projectFile: ObsidianTFile;
+		let objectiveFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("StepTestProject");
@@ -193,8 +195,8 @@ describe("ResearchManager", () => {
 				/^Research\/StepTestProject\/steps\/STP\d{8} - FirstStep\.md$/
 			);
 
-			const content = (app.vault as any)._getContent(stepFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(stepFile.path);
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.title).toBe("FirstStep");
 			expect(fm.status).toBe("todo");
@@ -207,7 +209,7 @@ describe("ResearchManager", () => {
 				"LinkedStep"
 			);
 
-			const content = (app.vault as any)._getContent(stepFile.path);
+			const content = app.vault._getContent(stepFile.path);
 			expect(content).toContain(
 				"[[Research/StepTestProject/Dashboard|Dashboard]]"
 			);
@@ -228,7 +230,7 @@ describe("ResearchManager", () => {
 	// ==================== createExperiment ====================
 
 	describe("createExperiment", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("ExperimentProject");
@@ -245,8 +247,8 @@ describe("ResearchManager", () => {
 				/^Research\/ExperimentProject\/experiments\/EP\d{8} - FirstExperiment\.md$/
 			);
 
-			const content = (app.vault as any)._getContent(experimentFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(experimentFile.path);
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.title).toBe("FirstExperiment");
 			expect(fm.status).toBe("planned");
@@ -264,7 +266,7 @@ describe("ResearchManager", () => {
 	// ==================== createRequirement ====================
 
 	describe("createRequirement", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("RequirementProject");
@@ -281,8 +283,8 @@ describe("ResearchManager", () => {
 				"Research/RequirementProject/requirements/FirstRequirement.md"
 			);
 
-			const content = (app.vault as any)._getContent(requirementFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(requirementFile.path);
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.title).toBe("FirstRequirement");
 			expect(fm.status).toBe("proposed");
@@ -340,7 +342,7 @@ describe("ResearchManager", () => {
 	// ==================== listObjectives ====================
 
 	describe("listObjectives", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("ObjectiveListProject");
@@ -431,8 +433,8 @@ describe("ResearchManager", () => {
 			await manager.updateDashboardProperties(projectFile.path, {
 				github_token_key: "my-token-key",
 			});
-			const content = (app.vault as any)._getContent(projectFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(projectFile.path);
+			const fm = extractFrontmatter(content ?? "");
 			expect(fm.github_token_key).toBe("my-token-key");
 		});
 
@@ -441,8 +443,8 @@ describe("ResearchManager", () => {
 			await manager.updateDashboardProperties(projectFile.path, {
 				public_repo: true,
 			});
-			const content = (app.vault as any)._getContent(projectFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(projectFile.path);
+			const fm = extractFrontmatter(content ?? "");
 			expect(fm.public_repo).toBe(true);
 		});
 
@@ -451,8 +453,8 @@ describe("ResearchManager", () => {
 			await manager.updateDashboardProperties(projectFile.path, {
 				repo: "owner/repo",
 			});
-			const content = (app.vault as any)._getContent(projectFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(projectFile.path);
+			const fm = extractFrontmatter(content ?? "");
 			expect(fm.repo).toBe("owner/repo");
 		});
 
@@ -463,8 +465,8 @@ describe("ResearchManager", () => {
 				public_repo: false,
 				repo: "user/research",
 			});
-			const content = (app.vault as any)._getContent(projectFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(projectFile.path);
+			const fm = extractFrontmatter(content ?? "");
 			expect(fm.github_token_key).toBe("key");
 			expect(fm.public_repo).toBe(false);
 			expect(fm.repo).toBe("user/research");
@@ -472,16 +474,14 @@ describe("ResearchManager", () => {
 
 		it("should do nothing when file has no frontmatter block", async () => {
 			await app.vault.createFolder("Research");
-			await (app.vault as any).create(
+			await app.vault.create(
 				"Research/NoFm/Dashboard.md",
 				"no frontmatter here\njust content"
 			);
 			await manager.updateDashboardProperties("Research/NoFm/Dashboard.md", {
 				repo: "x/y",
 			});
-			const content = (app.vault as any)._getContent(
-				"Research/NoFm/Dashboard.md"
-			);
+			const content = app.vault._getContent("Research/NoFm/Dashboard.md");
 			expect(content).toBe("no frontmatter here\njust content");
 		});
 	});

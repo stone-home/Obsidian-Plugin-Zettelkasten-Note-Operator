@@ -6,8 +6,10 @@ import { App, TFile } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
-	createMockFile,
 	clearVault,
+	mockFileOf,
+	asObsidianApp,
+	asObsidianFile,
 } from "../../../__mocks__/testHelpers";
 import { PromptGenerator } from "../../../service/compiler/promptGenerator";
 import type { ZettelkastenSettings } from "../../../types";
@@ -26,7 +28,7 @@ describe("PromptGenerator", () => {
 			aiPromptMaxCharsPerNote: 4000,
 			aiPromptWrapperStyle: "xml",
 		});
-		generator = new PromptGenerator(app, settings);
+		generator = new PromptGenerator(asObsidianApp(app), settings);
 	});
 
 	afterEach(() => {
@@ -100,27 +102,27 @@ describe("PromptGenerator", () => {
 				"This is the draft body with [[SomeNote]].",
 			].join("\n");
 
-			await (app.vault as any).createFolder("Research/Proj");
-			await (app.vault as any).createFolder("Research/Proj/prompts");
+			await app.vault.createFolder("Research/Proj");
+			await app.vault.createFolder("Research/Proj/prompts");
 			await app.vault.create(draftPath, draftContent);
 
-			(app.metadataCache as any)._setCache(draftPath, {
+			app.metadataCache._setCache(draftPath, {
 				frontmatter: {
 					section_title: "Introduction",
 					section_goal: "Explain the problem.",
 				},
 			});
 
-			const draft = app.vault.getAbstractFileByPath(draftPath) as TFile;
+			const draft = mockFileOf(app.vault.getAbstractFileByPath(draftPath));
 			expect(draft).toBeInstanceOf(TFile);
 
-			const outPath = await generator.generatePrompt(draft);
+			const outPath = await generator.generatePrompt(asObsidianFile(draft));
 
 			expect(outPath).toContain("prompts");
 			expect(outPath).toContain("intro_prompt_v");
 			expect(outPath.endsWith(".md")).toBe(true);
 
-			const created = app.vault.getAbstractFileByPath(outPath) as TFile;
+			const created = mockFileOf(app.vault.getAbstractFileByPath(outPath));
 			expect(created).toBeTruthy();
 			const content = await app.vault.read(created);
 			expect(content).toContain("# AI Writing Prompt for Section: Introduction");
@@ -145,14 +147,14 @@ describe("PromptGenerator", () => {
 				"Point one.",
 			].join("\n");
 
-			await (app.vault as any).createFolder("Research/P2");
-			await (app.vault as any).createFolder("Research/P2/prompts");
+			await app.vault.createFolder("Research/P2");
+			await app.vault.createFolder("Research/P2/prompts");
 			await app.vault.create(draftPath, draftContent);
 
-			const draft = app.vault.getAbstractFileByPath(draftPath) as TFile;
-			const outPath = await generator.generatePrompt(draft);
+			const draft = mockFileOf(app.vault.getAbstractFileByPath(draftPath));
+			const outPath = await generator.generatePrompt(asObsidianFile(draft));
 			const content = await app.vault.read(
-				app.vault.getAbstractFileByPath(outPath) as TFile
+				mockFileOf(app.vault.getAbstractFileByPath(outPath))
 			);
 
 			const aiPromptIndex = content.indexOf("## AI prompt");

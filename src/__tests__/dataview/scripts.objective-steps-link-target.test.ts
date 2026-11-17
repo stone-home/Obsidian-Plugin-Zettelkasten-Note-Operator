@@ -1,10 +1,17 @@
 /**
- * Independent verification of D1 (objective steps matched by link target).
- * Extra forms of objectivePath, a step pointing at a same-named objective of another project,
- * and the "Objective not found" message.
+ * The zk-research-objective-steps script matches steps to the objective by resolved link target, accepting every form of objectivePath and reporting an objective it cannot resolve.
  */
 
-import { createMockApp, createFakeDv, createFakePage, fakeLink, runDataviewScript } from "../../__mocks__/testHelpers";
+import {
+	asObsidianApp,
+	createMockApp,
+	createFakeDv,
+	createFakePage,
+	fakeLink,
+	readPath,
+	runDataviewScript,
+	type FakeDvOutput,
+} from "../../__mocks__/testHelpers";
 import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
 
 const P = "Research/P";
@@ -27,7 +34,8 @@ function getFirstLinkpathDest(linkpath: string, sourcePath: string) {
 	return best ? { path: best } : null;
 }
 
-const step = (name: string, objective: any) => createFakePage(`${P}/steps/${name}.md`, { objective, status: "todo" });
+const step = (name: string, objective: unknown) =>
+	createFakePage(`${P}/steps/${name}.md`, { objective, status: "todo" });
 
 const PAGES = [
 	createFakePage(FOO),
@@ -39,19 +47,38 @@ const PAGES = [
 	step("s5", "![[TP - Foo]]"),
 ];
 
-async function run(input: Record<string, any>) {
-	const { dv, out } = createFakeDv({ currentPath: FOO, pages: PAGES, app: { metadataCache: { getFirstLinkpathDest } } });
-	await runDataviewScript(getDefaultScriptContent("zk-research-objective-steps")!, dv, input);
+/** The built-in script text; fails the test when the id has no default. */
+function defaultScript(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No built-in script "${id}"`);
+	return content;
+}
+
+async function run(input: Record<string, unknown>) {
+	const { dv, out } = createFakeDv({
+		currentPath: FOO,
+		pages: PAGES,
+		app: { metadataCache: { getFirstLinkpathDest } },
+	});
+	await runDataviewScript(defaultScript("zk-research-objective-steps"), dv, input);
 	return out;
 }
 
-const names = (out: any) => out.tables[0].rows.map((r: any[]) => r[0].path.split("/").pop().replace(/\.md$/, "")).sort();
+const names = (out: FakeDvOutput) =>
+	out.tables[0].rows
+		.map((r) =>
+			String(readPath(r[0], "path")).split("/").pop()?.replace(/\.md$/, "")
+		)
+		.sort();
 
 beforeAll(async () => {
-	await new DataviewJSManager(createMockApp() as any, "dataview-scripts").onload();
+	await new DataviewJSManager(
+		asObsidianApp(createMockApp()),
+		"dataview-scripts"
+	).onload();
 });
 
-describe("verify D1: zk-research-objective-steps", () => {
+describe("zk-research-objective-steps link target matching", () => {
 	it.each([
 		["plain name", "TP - Foo"],
 		["name with .md", "TP - Foo.md"],

@@ -16,7 +16,7 @@ const nodeBlobSha = (bytes: Uint8Array) =>
 		.digest("hex");
 
 /** Deterministic pseudo-random bytes (all 256 values occur, so not valid UTF-8). */
-function pseudoRandomBytes(length: number, seed: number = 1): Uint8Array {
+function pseudoRandomBytes(length: number, seed: number = 1): Uint8Array<ArrayBuffer> {
 	const out = new Uint8Array(length);
 	let x = seed >>> 0;
 	for (let i = 0; i < length; i++) {

@@ -6,12 +6,16 @@
 
 import { App } from "../../__mocks__/obsidian";
 import {
+	asObsidianApp,
+	callPrivate,
 	createMockApp,
 	createMockSettings,
 	createFakeElement,
 	collectText,
+	setPrivateMember,
 } from "../../__mocks__/testHelpers";
 import { Dashboard } from "../../modals/dashboard";
+import { NoteFactory } from "../../service/factory";
 
 function fakeNote(type: string | undefined, title = "Some Note") {
 	return {
@@ -22,9 +26,18 @@ function fakeNote(type: string | undefined, title = "Some Note") {
 	};
 }
 
+/** A Dashboard whose factory reports `note` as the active note (a stand-in, not a loaded model). */
 function makeDashboard(app: App, note: ReturnType<typeof fakeNote> | undefined) {
-	const factory = { loadActiveNote: jest.fn().mockResolvedValue(note) };
-	return new Dashboard(app as any, createMockSettings(), factory as any, jest.fn());
+	const dashboard = new Dashboard(
+		asObsidianApp(app),
+		createMockSettings(),
+		new NoteFactory(asObsidianApp(app)),
+		jest.fn()
+	);
+	setPrivateMember(dashboard, "factory", {
+		loadActiveNote: jest.fn().mockResolvedValue(note),
+	});
+	return dashboard;
 }
 
 describe("Dashboard.renderUpgradeSection (A2)", () => {
@@ -39,7 +52,7 @@ describe("Dashboard.renderUpgradeSection (A2)", () => {
 		const container = createFakeElement("div");
 
 		await expect(
-			(dashboard as any).renderUpgradeSection(container)
+			callPrivate(dashboard, "renderUpgradeSection", container)
 		).resolves.not.toThrow();
 
 		const text = collectText(container);
@@ -51,7 +64,7 @@ describe("Dashboard.renderUpgradeSection (A2)", () => {
 		const dashboard = makeDashboard(app, fakeNote("fleeting", "Idea"));
 		const container = createFakeElement("div");
 
-		await (dashboard as any).renderUpgradeSection(container);
+		await callPrivate(dashboard, "renderUpgradeSection", container);
 
 		const text = collectText(container);
 		expect(text).toContain("Upgrade");

@@ -1,14 +1,11 @@
 /**
- * Independent verification of B6 (pull files from GitHub by configured rules).
- * Gaps over researchManager.pull.test.ts / repoPull.test.ts: backslash ".." in a target,
- * "." / ".." / empty file names, absolute target, symlinks, an existing folder where a file
- * would go, a file where a folder segment would go, write failures, an invalid pattern in one
- * rule, 404 path hint, 403 without PAT mentions the 60/hour limit, notice text for unknown ids
- * and the 1000-entry warning, encoded ref/path, Public with an empty token key.
+ * ResearchManager.pullFromGitHub never writes outside the project, skips symlinks, isolates per-file and per-rule failures, explains 404 and anonymous 403 answers, and encodes the ref and path it requests.
  */
 
-import { App, TFile, stringifyYaml } from "../../__mocks__/obsidian";
+import { App, TFile, stringifyYaml } from "../../../__mocks__/obsidian";
 import {
+	asObsidianApp,
+	asObsidianFile,
 	clearNotices,
 	clearVault,
 	createMockApp,
@@ -17,6 +14,7 @@ import {
 	getHeader,
 	gitBlobShaForTest,
 	githubFileRoute,
+	mockFileOf,
 	mockGitHubApi,
 	noticeMessages,
 	requestedCalls,
@@ -24,17 +22,21 @@ import {
 	setFrontmatterCache,
 	toArrayBuffer,
 	type GitHubRouteHandler,
-} from "../../__mocks__/testHelpers";
-import { ResearchManager } from "../../service/projects/researchManager";
-import { resolvePullTarget, validatePullRule } from "../../service/github/repoPull";
-import type { GithubPullRule } from "../../types";
+} from "../../../__mocks__/testHelpers";
+import { ResearchManager } from "../../../service/projects/researchManager";
+import type { GithubPullRule } from "../../../types";
 
 const PROJECT = "Research/P";
 const DASHBOARD = `${PROJECT}/Dashboard.md`;
 const API = "/repos/octo/notes/contents";
 const TOKEN = "pull-secret-token";
 
-const entry = (dir: string, name: string, content: string, overrides: Record<string, any> = {}) => ({
+const entry = (
+	dir: string,
+	name: string,
+	content: string,
+	overrides: Record<string, unknown> = {}
+) => ({
 	name,
 	path: `${dir}/${name}`,
 	sha: gitBlobShaForTest(content),
@@ -44,50 +46,28 @@ const entry = (dir: string, name: string, content: string, overrides: Record<str
 	...overrides,
 });
 
-describe("verify B6: path helpers", () => {
-	it.each(["..\\P2", "..\\..\\Other", "materials\\..\\..\\Other"])(
-		"resolvePullTarget rejects a target that climbs out with backslashes (%s)",
-		(target) => {
-			const out = resolvePullTarget("Research/P", target, "a.md");
-			// Obsidian's normalizePath turns "\" into "/", so the vault path would contain "/../".
-			expect(out === null || !out.split("/").includes("..")).toBe(true);
-		}
-	);
-
-	it.each(["..\\P2", "materials\\..\\..\\x"])("validatePullRule rejects a backslash .. target (%s)", (target) => {
-		expect(validatePullRule({ id: "x", sourceDir: "d", filePattern: ".*", target })).not.toBeNull();
-	});
-
-	it.each([".", "..", ""])("resolvePullTarget rejects the file name %p", (name) => {
-		expect(resolvePullTarget("Research/P", "materials", name)).toBeNull();
-	});
-
-	it("keeps a sibling folder with the same prefix out (Research/P vs Research/P2)", () => {
-		expect(resolvePullTarget("Research/P", "../P2", "a.md")).toBeNull();
-		expect(resolvePullTarget("Research/P", "materials/../../P2/x", "a.md")).toBeNull();
-	});
-
-	it("an absolute-looking target still lands inside the project folder", () => {
-		const out = resolvePullTarget("Research/P", "/materials", "a.md");
-		expect(out === null || out.startsWith("Research/P/")).toBe(true);
-	});
-});
-
-describe("verify B6: pullFromGitHub", () => {
+describe("ResearchManager.pullFromGitHub edge cases", () => {
 	let app: App;
 	let manager: ResearchManager;
 	let projectFile: TFile;
 	let spies: ReturnType<typeof enforceVaultFolderRules>;
+	let getSecret: jest.Mock<Promise<string | null>, [string]>;
 
-	const setup = async (rules: GithubPullRule[], fm: Record<string, any>) => {
-		manager = new ResearchManager(app as any, createMockSettings({ researchRootPath: "Research", githubPullRules: rules } as any));
+	const setup = async (rules: GithubPullRule[], fm: Record<string, unknown>) => {
+		manager = new ResearchManager(
+			asObsidianApp(app),
+			createMockSettings({
+				researchRootPath: "Research",
+				githubPullRules: rules,
+			})
+		);
 		const content = `---\n${stringifyYaml(fm)}---\n`;
 		const existing = app.vault.getAbstractFileByPath(DASHBOARD);
 		if (existing instanceof TFile) await app.vault.modify(existing, content);
 		else projectFile = await app.vault.create(DASHBOARD, content);
 		setFrontmatterCache(app.metadataCache, DASHBOARD, fm);
 	};
-	const fm = (ids: string[], extra: Record<string, any> = {}) => ({
+	const fm = (ids: string[], extra: Record<string, unknown> = {}) => ({
 		repo: "octo/notes",
 		defaultBranch: "trunk",
 		github_token_key: "gh",
@@ -97,15 +77,26 @@ describe("verify B6: pullFromGitHub", () => {
 	});
 	const dataRoutes = (extra: Record<string, GitHubRouteHandler> = {}) =>
 		mockGitHubApi({
-			[`${API}/data`]: routeForRef("trunk", { json: [entry("data", "x.csv", "1,2\n")] }),
-			[`${API}/data/x.csv`]: routeForRef("trunk", githubFileRoute("1,2\n", "data/x.csv")),
+			[`${API}/data`]: routeForRef("trunk", {
+				json: [entry("data", "x.csv", "1,2\n")],
+			}),
+			[`${API}/data/x.csv`]: routeForRef(
+				"trunk",
+				githubFileRoute("1,2\n", "data/x.csv")
+			),
 			...extra,
 		});
-	const DATA: GithubPullRule = { id: "data", sourceDir: "data", filePattern: "\\.csv$", target: "materials/data" };
+	const DATA: GithubPullRule = {
+		id: "data",
+		sourceDir: "data",
+		filePattern: "\\.csv$",
+		target: "materials/data",
+	};
 
 	beforeEach(async () => {
 		app = createMockApp();
-		(app as any).secretStorage = { getSecret: jest.fn(async (k: string) => (k === "gh" ? TOKEN : null)) };
+		getSecret = jest.fn(async (k: string) => (k === "gh" ? TOKEN : null));
+		app.secretStorage = { getSecret };
 		await app.vault.createFolder("Research");
 		await app.vault.createFolder(PROJECT);
 		await app.vault.createFolder("Research/P2");
@@ -118,10 +109,15 @@ describe("verify B6: pullFromGitHub", () => {
 	});
 
 	it("never writes outside the project folder for a backslash .. target", async () => {
-		await setup([{ id: "evil", sourceDir: "data", filePattern: ".*", target: "..\\P2" }], fm(["evil"]));
+		await setup(
+			[{ id: "evil", sourceDir: "data", filePattern: ".*", target: "..\\P2" }],
+			fm(["evil"])
+		);
 		dataRoutes();
 
-		await manager.pullFromGitHub(projectFile).catch(() => undefined);
+		await manager
+			.pullFromGitHub(asObsidianFile(projectFile))
+			.catch(() => undefined);
 
 		const written = spies.createBinary.mock.calls.map((c) => String(c[0]));
 		for (const p of written) {
@@ -134,11 +130,14 @@ describe("verify B6: pullFromGitHub", () => {
 		await setup([DATA], fm(["data"]));
 		dataRoutes({
 			[`${API}/data`]: routeForRef("trunk", {
-				json: [entry("data", "x.csv", "1,2\n"), entry("data", "link.csv", "../secret", { type: "symlink" })],
+				json: [
+					entry("data", "x.csv", "1,2\n"),
+					entry("data", "link.csv", "../secret", { type: "symlink" }),
+				],
 			}),
 		});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r).toMatchObject({ added: 1, failed: 0 });
 		expect(requestedCalls().some((c) => /link\.csv/.test(c.url))).toBe(false);
@@ -148,13 +147,16 @@ describe("verify B6: pullFromGitHub", () => {
 		await app.vault.createFolder(`${PROJECT}/materials`);
 		await app.vault.createFolder(`${PROJECT}/materials/data`);
 		await app.vault.createFolder(`${PROJECT}/materials/data/x.csv`);
-		await setup([DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }], fm(["data", "two"]));
+		await setup(
+			[DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }],
+			fm(["data", "two"])
+		);
 		dataRoutes({
 			[`${API}/two`]: routeForRef("trunk", { json: [entry("two", "y.md", "y")] }),
 			[`${API}/two/y.md`]: routeForRef("trunk", githubFileRoute("y", "two/y.md")),
 		});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r).toMatchObject({ added: 1, failed: 1 });
 		expect(r.warnings.some((w) => w.includes("x.csv"))).toBe(true);
@@ -162,48 +164,70 @@ describe("verify B6: pullFromGitHub", () => {
 
 	it("isolates a failure when a folder segment of the target is an existing file", async () => {
 		await app.vault.createFolder(`${PROJECT}/materials`);
-		await app.vault.createBinary(`${PROJECT}/materials/data`, toArrayBuffer("I am a file"));
-		await setup([DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }], fm(["data", "two"]));
+		await app.vault.createBinary(
+			`${PROJECT}/materials/data`,
+			toArrayBuffer("I am a file")
+		);
+		await setup(
+			[DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }],
+			fm(["data", "two"])
+		);
 		dataRoutes({
 			[`${API}/two`]: routeForRef("trunk", { json: [entry("two", "y.md", "y")] }),
 			[`${API}/two/y.md`]: routeForRef("trunk", githubFileRoute("y", "two/y.md")),
 		});
 		// The shared mock accepts a file as a parent; real Obsidian/fs refuses (ENOTDIR).
-		const impl = spies.createBinary.getMockImplementation()!;
+		const impl = spies.createBinary.getMockImplementation();
+		if (!impl) throw new Error("createBinary has no implementation to wrap");
 		spies.createBinary.mockImplementation(async (p: string, d: ArrayBuffer) => {
-			const parent = app.vault.getAbstractFileByPath(p.slice(0, p.lastIndexOf("/")));
-			if (parent instanceof TFile) throw new Error(`ENOTDIR: not a directory, open '${p}'`);
+			const parent = app.vault.getAbstractFileByPath(
+				p.slice(0, p.lastIndexOf("/"))
+			);
+			if (parent instanceof TFile)
+				throw new Error(`ENOTDIR: not a directory, open '${p}'`);
 			return impl(p, d);
 		});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r).toMatchObject({ added: 1, failed: 1 });
-		expect(noticeMessages().some((m) => /1 added/.test(m) && /1 failed/.test(m))).toBe(true);
+		expect(
+			noticeMessages().some((m) => /1 added/.test(m) && /1 failed/.test(m))
+		).toBe(true);
 	});
 
 	it("isolates a failure when writing one file throws", async () => {
-		await setup([DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }], fm(["data", "two"]));
+		await setup(
+			[DATA, { id: "two", sourceDir: "two", filePattern: ".*", target: "t" }],
+			fm(["data", "two"])
+		);
 		dataRoutes({
 			[`${API}/two`]: routeForRef("trunk", { json: [entry("two", "y.md", "y")] }),
 			[`${API}/two/y.md`]: routeForRef("trunk", githubFileRoute("y", "two/y.md")),
 		});
-		const impl = spies.createBinary.getMockImplementation()!;
+		const impl = spies.createBinary.getMockImplementation();
+		if (!impl) throw new Error("createBinary has no implementation to wrap");
 		spies.createBinary.mockImplementation(async (p: string, d: ArrayBuffer) => {
 			if (p.endsWith("x.csv")) throw new Error("Disk full");
 			return impl(p, d);
 		});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r).toMatchObject({ added: 1, failed: 1 });
 	});
 
 	it("isolates a rule whose file name pattern is not a valid RegExp (e.g. hand-edited data.json)", async () => {
-		await setup([{ id: "bad", sourceDir: "data", filePattern: "([", target: "b" }, { ...DATA }], fm(["bad", "data"]));
+		await setup(
+			[
+				{ id: "bad", sourceDir: "data", filePattern: "([", target: "b" },
+				{ ...DATA },
+			],
+			fm(["bad", "data"])
+		);
 		dataRoutes();
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r.added).toBe(1);
 		expect(r.failed).toBeGreaterThanOrEqual(1);
@@ -213,17 +237,29 @@ describe("verify B6: pullFromGitHub", () => {
 		await setup([DATA], fm(["data"]));
 		mockGitHubApi({});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r.failed).toBe(1);
-		expect(r.warnings.some((w) => /404/.test(w) && /folder or file was not found/i.test(w))).toBe(true);
+		expect(
+			r.warnings.some(
+				(w) => /404/.test(w) && /folder or file was not found/i.test(w)
+			)
+		).toBe(true);
 	});
 
 	it("a 403 without a PAT mentions the 60 requests per hour limit", async () => {
-		await setup([DATA], fm(["data"], { github_token_key: undefined, public_repo: true }));
-		mockGitHubApi({ [`${API}/data`]: { status: 403, json: { message: "API rate limit exceeded" } } });
+		await setup(
+			[DATA],
+			fm(["data"], { github_token_key: undefined, public_repo: true })
+		);
+		mockGitHubApi({
+			[`${API}/data`]: {
+				status: 403,
+				json: { message: "API rate limit exceeded" },
+			},
+		});
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r.warnings.some((w) => /60/.test(w))).toBe(true);
 		expect(noticeMessages().some((m) => /60/.test(m))).toBe(true);
@@ -233,30 +269,45 @@ describe("verify B6: pullFromGitHub", () => {
 		await setup([DATA], fm(["data"], { public_repo: true }));
 		dataRoutes();
 
-		const r = await manager.pullFromGitHub(projectFile, "");
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile), "");
 
 		expect(r.added).toBe(1);
-		expect((app as any).secretStorage.getSecret).not.toHaveBeenCalled();
-		for (const c of requestedCalls()) expect(getHeader(c.headers, "Authorization")).toBeUndefined();
+		expect(getSecret).not.toHaveBeenCalled();
+		for (const c of requestedCalls())
+			expect(getHeader(c.headers, "Authorization")).toBeUndefined();
 	});
 
 	it("names unknown rule ids and the 1000-entry warning in notices", async () => {
-		const many = Array.from({ length: 1000 }, (_, i) => entry("data", `f${i}.txt`, `t${i}`));
+		const many = Array.from({ length: 1000 }, (_, i) =>
+			entry("data", `f${i}.txt`, `t${i}`)
+		);
 		await setup([DATA], fm(["ghost1", "data"]));
 		dataRoutes({ [`${API}/data`]: routeForRef("trunk", { json: many }) });
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r.unknownRules).toEqual(["ghost1"]);
 		expect(noticeMessages().some((m) => m.includes("ghost1"))).toBe(true);
-		expect(noticeMessages().some((m) => /1000/.test(m) && m.includes("data"))).toBe(true);
+		expect(noticeMessages().some((m) => /1000/.test(m) && m.includes("data"))).toBe(
+			true
+		);
 	});
 
 	it("encodes the ref and each path segment of sourceDir", async () => {
-		await setup([{ id: "sp", sourceDir: "my notes/2026 #1", filePattern: ".*", target: "t" }], fm(["sp"], { defaultBranch: "feat/x" }));
+		await setup(
+			[
+				{
+					id: "sp",
+					sourceDir: "my notes/2026 #1",
+					filePattern: ".*",
+					target: "t",
+				},
+			],
+			fm(["sp"], { defaultBranch: "feat/x" })
+		);
 		mockGitHubApi({});
 
-		await manager.pullFromGitHub(projectFile);
+		await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(requestedCalls()[0].url).toBe(
 			"https://api.github.com/repos/octo/notes/contents/my%20notes/2026%20%231?ref=feat%2Fx"
@@ -267,7 +318,7 @@ describe("verify B6: pullFromGitHub", () => {
 		await setup([DATA], fm(["data"]));
 		mockGitHubApi({ [`${API}/data`]: { json: entry("", "data", "x") } });
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r.failed).toBe(1);
 		expect(r.warnings.some((w) => /not a folder/.test(w))).toBe(true);
@@ -276,14 +327,19 @@ describe("verify B6: pullFromGitHub", () => {
 	it("updates an existing file in place when the repo copy changed (repo wins)", async () => {
 		await app.vault.createFolder(`${PROJECT}/materials`);
 		await app.vault.createFolder(`${PROJECT}/materials/data`);
-		await app.vault.createBinary(`${PROJECT}/materials/data/x.csv`, toArrayBuffer("local edit\n"));
+		await app.vault.createBinary(
+			`${PROJECT}/materials/data/x.csv`,
+			toArrayBuffer("local edit\n")
+		);
 		await setup([DATA], fm(["data"]));
 		dataRoutes();
 
-		const r = await manager.pullFromGitHub(projectFile);
+		const r = await manager.pullFromGitHub(asObsidianFile(projectFile));
 
 		expect(r).toMatchObject({ updated: 1, added: 0 });
-		const f = app.vault.getAbstractFileByPath(`${PROJECT}/materials/data/x.csv`) as TFile;
+		const f = mockFileOf(
+			app.vault.getAbstractFileByPath(`${PROJECT}/materials/data/x.csv`)
+		);
 		expect(Buffer.from(await app.vault.readBinary(f)).toString()).toBe("1,2\n");
 	});
 });

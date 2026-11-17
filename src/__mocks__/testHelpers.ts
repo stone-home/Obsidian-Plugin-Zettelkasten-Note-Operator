@@ -3,18 +3,22 @@
  */
 
 import { createHash } from "crypto";
+import type { App as ObsidianApp, TFile as ObsidianTFile } from "obsidian";
 import {
 	App,
+	FileManager,
 	TAbstractFile,
 	TFile,
 	TFolder,
 	Vault,
 	MetadataCache,
+	Workspace,
 	requestUrl,
 	_splitFrontmatter,
 	_getNotices,
 	_clearNotices,
 } from "./obsidian";
+import type { RequestUrlParam } from "./obsidian";
 import { DEFAULT_SETTINGS } from "../constants";
 import type { ZettelkastenSettings } from "../types";
 
@@ -25,6 +29,135 @@ import type { ZettelkastenSettings } from "../types";
  */
 export function createMockApp(): App {
 	return new App();
+}
+
+// ==================== Typed seams between the mocks and the real typings ====================
+//
+// TypeScript resolves `import ... from "obsidian"` to the real typings, while Jest maps the
+// module to src/__mocks__/obsidian.ts at run time. Code under test therefore receives mock
+// objects typed as real Obsidian classes. The helpers below cross that gap without `any`:
+// asObsidianApp/asObsidianFile are the only casts (mock -> real type); the *Of helpers go the
+// other way by narrowing with instanceof, and the private-member helpers use Reflect.
+
+/**
+ * Gives a mock App the real Obsidian App type, to pass it to production code.
+ * This is the one deliberate cast: the mock implements only what the plugin uses.
+ */
+export function asObsidianApp(app: App): ObsidianApp {
+	return app as unknown as ObsidianApp;
+}
+
+/** Gives a mock TFile the real Obsidian TFile type (same reason as asObsidianApp). */
+export function asObsidianFile(file: TFile): ObsidianTFile {
+	return file as unknown as ObsidianTFile;
+}
+
+/** A fresh mock App seen both ways: `app` for production code, `mock` for test helpers. */
+export function createObsidianApp(): { app: ObsidianApp; mock: App } {
+	const mock = new App();
+	return { app: asObsidianApp(mock), mock };
+}
+
+/** The mock App behind a value typed as the real App (e.g. `plugin.app`); throws if it is not the mock. */
+export function mockAppOf(app: object): App {
+	if (app instanceof App) return app;
+	throw new TypeError(
+		"Expected the obsidian mock App from src/__mocks__/obsidian.ts"
+	);
+}
+
+/** The mock Vault (with _getContent, _setContent, ...) of an App typed either way. */
+export function mockVaultOf(app: { vault: object }): Vault {
+	if (app.vault instanceof Vault) return app.vault;
+	throw new TypeError(
+		"Expected the obsidian mock Vault from src/__mocks__/obsidian.ts"
+	);
+}
+
+/** The mock MetadataCache (with _setCache, _clear) of an App typed either way. */
+export function mockMetadataCacheOf(app: { metadataCache: object }): MetadataCache {
+	if (app.metadataCache instanceof MetadataCache) return app.metadataCache;
+	throw new TypeError(
+		"Expected the obsidian mock MetadataCache from src/__mocks__/obsidian.ts"
+	);
+}
+
+/** The mock FileManager of an App typed either way. */
+export function mockFileManagerOf(app: { fileManager: object }): FileManager {
+	if (app.fileManager instanceof FileManager) return app.fileManager;
+	throw new TypeError(
+		"Expected the obsidian mock FileManager from src/__mocks__/obsidian.ts"
+	);
+}
+
+/** The mock Workspace (with _setActiveFile) of an App typed either way. */
+export function mockWorkspaceOf(app: { workspace: object }): Workspace {
+	if (app.workspace instanceof Workspace) return app.workspace;
+	throw new TypeError(
+		"Expected the obsidian mock Workspace from src/__mocks__/obsidian.ts"
+	);
+}
+
+/** The mock TFile behind a value typed as the real TFile; throws for folders and other values. */
+export function mockFileOf(file: unknown): TFile {
+	if (file instanceof TFile) return file;
+	throw new TypeError("Expected a TFile from the obsidian mock");
+}
+
+/**
+ * Reads a member TypeScript hides from tests (private, protected or undeclared, such as
+ * `plugin.dataviewManager`). Returns `unknown`: narrow it (instanceof, typeof) before use.
+ */
+export function privateMember(target: object, key: string): unknown {
+	return Reflect.get(target, key);
+}
+
+/** Sets a hidden member; throws like a strict-mode assignment when the property is read-only. */
+export function setPrivateMember(target: object, key: string, value: unknown): void {
+	if (!Reflect.set(target, key, value)) {
+		throw new TypeError(`Cannot assign to read only property '${key}'`);
+	}
+}
+
+/** Calls a hidden method with `this` bound to `target`; returns its result as `unknown`. */
+export function callPrivate(target: object, key: string, ...args: unknown[]): unknown {
+	const member: unknown = Reflect.get(target, key);
+	if (typeof member !== "function") {
+		throw new TypeError(`${key} is not a method of the target`);
+	}
+	return Reflect.apply(member, target, args);
+}
+
+/**
+ * Defines a global (e.g. `requestAnimationFrame`, `window`) for one test and returns a
+ * function that restores the previous value, or removes the global if there was none.
+ */
+export function setGlobalForTest(name: string, value: unknown): () => void {
+	const previous = Object.getOwnPropertyDescriptor(globalThis, name);
+	Object.defineProperty(globalThis, name, {
+		value,
+		writable: true,
+		enumerable: true,
+		configurable: true,
+	});
+	return () => {
+		if (previous) Object.defineProperty(globalThis, name, previous);
+		else Reflect.deleteProperty(globalThis, name);
+	};
+}
+
+/**
+ * Reads a nested value from untyped data (a recorded request body, a JSON clone),
+ * e.g. `readPath(op.commitInput, "fileChanges", "additions", 0, "path")`.
+ * Returns undefined as soon as a step is not an object or array.
+ */
+export function readPath(value: unknown, ...keys: Array<string | number>): unknown {
+	let current: unknown = value;
+	for (const key of keys) {
+		if (typeof current !== "object" || current === null) return undefined;
+		current = Reflect.get(current, key);
+	}
+	return current;
 }
 
 // ==================== Mock Settings Factory ====================
@@ -90,7 +223,7 @@ export async function createFolderStructure(
  * Clears all files and folders from the vault.
  */
 export function clearVault(vault: Vault): void {
-	(vault as any)._clear();
+	vault._clear();
 }
 
 // ==================== Metadata Cache Helpers ====================
@@ -101,16 +234,16 @@ export function clearVault(vault: Vault): void {
 export function setFrontmatterCache(
 	metadataCache: MetadataCache,
 	path: string,
-	frontmatter: Record<string, any>
+	frontmatter: Record<string, unknown>
 ): void {
-	(metadataCache as any)._setCache(path, { frontmatter });
+	metadataCache._setCache(path, { frontmatter });
 }
 
 /**
  * Clears the metadata cache.
  */
 export function clearMetadataCache(metadataCache: MetadataCache): void {
-	(metadataCache as any)._clear();
+	metadataCache._clear();
 }
 
 // ==================== Request URL Mock Helpers ====================
@@ -120,10 +253,10 @@ export function clearMetadataCache(metadataCache: MetadataCache): void {
  */
 export function mockRequestUrl(response: {
 	status?: number;
-	json?: any;
+	json?: unknown;
 	text?: string;
 }): void {
-	(requestUrl as jest.Mock).mockResolvedValue({
+	requestUrl.mockResolvedValue({
 		status: response.status ?? 200,
 		headers: {},
 		text: response.text ?? JSON.stringify(response.json ?? {}),
@@ -136,15 +269,15 @@ export function mockRequestUrl(response: {
  * Mocks requestUrl to throw an error.
  */
 export function mockRequestUrlError(error: Error): void {
-	(requestUrl as jest.Mock).mockRejectedValue(error);
+	requestUrl.mockRejectedValue(error);
 }
 
 /**
  * Resets the requestUrl mock.
  */
 export function resetRequestUrlMock(): void {
-	(requestUrl as jest.Mock).mockReset();
-	(requestUrl as jest.Mock).mockResolvedValue({
+	requestUrl.mockReset();
+	requestUrl.mockResolvedValue({
 		status: 200,
 		headers: {},
 		text: "{}",
@@ -155,18 +288,28 @@ export function resetRequestUrlMock(): void {
 
 // ==================== GitHub API Mock Data ====================
 
+/** The fields of a GitHub release object that the plugin reads. */
+export interface MockGitHubRelease {
+	tag_name: string;
+	name: string;
+	body: string;
+	html_url: string;
+	published_at: string;
+}
+
+/** The fields of a GitHub commit object (REST compare/list) that the plugin reads. */
+export interface MockGitHubCommit {
+	sha: string;
+	html_url: string;
+	commit: { message: string; author: { date: string } };
+}
+
 /**
  * Creates mock GitHub release data.
  */
 export function createMockRelease(
-	overrides: Partial<{
-		tag_name: string;
-		name: string;
-		body: string;
-		html_url: string;
-		published_at: string;
-	}> = {}
-): Record<string, any> {
+	overrides: Partial<MockGitHubRelease> = {}
+): MockGitHubRelease {
 	return {
 		tag_name: "v1.0.0",
 		name: "Release v1.0.0",
@@ -187,7 +330,7 @@ export function createMockCommit(
 		html_url: string;
 		date: string;
 	}> = {}
-): Record<string, any> {
+): MockGitHubCommit {
 	const sha = overrides.sha ?? "abc1234567890";
 	return {
 		sha,
@@ -254,11 +397,16 @@ export function createCodeDashboardContent(
 /**
  * Extracts frontmatter from markdown content.
  */
-export function extractFrontmatter(content: string): Record<string, any> {
+/** Values extractFrontmatter produces: a string, "true"/"false" as booleans, or a list of strings. */
+export type SimpleFrontmatterValue = string | boolean | string[];
+
+export function extractFrontmatter(
+	content: string
+): Record<string, SimpleFrontmatterValue> {
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 	if (!match) return {};
 
-	const fm: Record<string, any> = {};
+	const fm: Record<string, SimpleFrontmatterValue> = {};
 	const lines = match[1].split("\n");
 	let currentKey: string | null = null;
 	let currentArray: string[] | null = null;
@@ -295,7 +443,7 @@ export function extractFrontmatter(content: string): Record<string, any> {
  */
 export function expectFrontmatter(
 	content: string,
-	expected: Record<string, any>
+	expected: Record<string, unknown>
 ): void {
 	const fm = extractFrontmatter(content);
 	for (const [key, value] of Object.entries(expected)) {
@@ -307,7 +455,9 @@ export function expectFrontmatter(
  * Parses the frontmatter block of a note with the obsidian mock's YAML parser
  * (understands quoted strings, null, numbers, booleans, [] and lists of flat objects).
  */
-export function parseNoteFrontmatter(content: string | undefined): Record<string, any> {
+export function parseNoteFrontmatter(
+	content: string | undefined
+): Record<string, unknown> {
 	return _splitFrontmatter(content ?? "").frontmatter;
 }
 
@@ -322,7 +472,7 @@ export function rawFrontmatter(content: string | undefined): string {
 /** A canned answer. `arrayBuffer` is the raw body (e.g. a raw file download); `text` defaults to the JSON text or the decoded bytes. */
 export type GitHubRoute = {
 	status?: number;
-	json?: any;
+	json?: unknown;
 	arrayBuffer?: ArrayBuffer;
 	text?: string;
 };
@@ -352,7 +502,12 @@ export function toArrayBuffer(bytes: ArrayBuffer | Uint8Array | string): ArrayBu
 				: new Uint8Array(bytes);
 	const copy = new Uint8Array(view.byteLength);
 	copy.set(view);
-	return copy.buffer as ArrayBuffer;
+	return copy.buffer;
+}
+
+/** A non-null object (arrays included), as `typeof value === "object"` checks it. */
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
 }
 
 /** Case-insensitive header lookup. */
@@ -376,63 +531,55 @@ export function getHeader(
  * passed `throw: false`, in which case it resolves with that status.
  */
 export function mockGitHubApi(routes: Record<string, GitHubRouteHandler>): void {
-	(requestUrl as jest.Mock).mockImplementation(
-		async (param: {
-			url: string;
-			method?: string;
-			headers?: Record<string, string>;
-			body?: string | ArrayBuffer;
-			throw?: boolean;
-		}) => {
-			const url = new URL(param.url);
-			const path = decodeURIComponent(url.pathname);
-			const page = Number(url.searchParams.get("page") ?? "1");
-			const handler = routes[path];
-			const req: GitHubRequest = {
-				url: param.url,
-				method: (param.method ?? "GET").toUpperCase(),
-				headers: param.headers ?? {},
-				body: param.body,
-				path,
-				query: url.searchParams,
-			};
-			const route: GitHubRoute =
-				handler === undefined
-					? { status: 404, json: { message: "Not Found" } }
-					: typeof handler === "function"
-						? await handler(req)
-						: handler;
-			const status = route.status ?? 200;
-			let json = route.json;
-			if (page > 1 && status < 400) {
-				if (Array.isArray(json)) json = [];
-				else if (json && Array.isArray(json.commits))
-					json = { ...json, commits: [] };
-			}
-			const arrayBuffer =
-				route.arrayBuffer ??
-				toArrayBuffer(route.text ?? JSON.stringify(json ?? null));
-			const text =
-				route.text ??
-				(route.arrayBuffer !== undefined
-					? new TextDecoder().decode(route.arrayBuffer)
-					: JSON.stringify(json ?? null));
-			const response = {
-				status,
-				headers: {},
-				json,
-				text,
-				arrayBuffer,
-			};
-			if (status >= 400 && param.throw !== false) {
-				throw Object.assign(
-					new Error(`Request failed, status ${status}`),
-					response
-				);
-			}
-			return response;
+	requestUrl.mockImplementation(async (param: RequestUrlParam) => {
+		const url = new URL(param.url);
+		const path = decodeURIComponent(url.pathname);
+		const page = Number(url.searchParams.get("page") ?? "1");
+		const handler = routes[path];
+		const req: GitHubRequest = {
+			url: param.url,
+			method: (param.method ?? "GET").toUpperCase(),
+			headers: param.headers ?? {},
+			body: param.body,
+			path,
+			query: url.searchParams,
+		};
+		const route: GitHubRoute =
+			handler === undefined
+				? { status: 404, json: { message: "Not Found" } }
+				: typeof handler === "function"
+					? await handler(req)
+					: handler;
+		const status = route.status ?? 200;
+		let json = route.json;
+		if (page > 1 && status < 400) {
+			if (Array.isArray(json)) json = [];
+			else if (isObjectRecord(json) && Array.isArray(json.commits))
+				json = { ...json, commits: [] };
 		}
-	);
+		const arrayBuffer =
+			route.arrayBuffer ??
+			toArrayBuffer(route.text ?? JSON.stringify(json ?? null));
+		const text =
+			route.text ??
+			(route.arrayBuffer !== undefined
+				? new TextDecoder().decode(route.arrayBuffer)
+				: JSON.stringify(json ?? null));
+		const response = {
+			status,
+			headers: {},
+			json,
+			text,
+			arrayBuffer,
+		};
+		if (status >= 400 && param.throw !== false) {
+			throw Object.assign(
+				new Error(`Request failed, status ${status}`),
+				response
+			);
+		}
+		return response;
+	});
 }
 
 /** Route that answers only when the request asks for `?ref=<ref>`; any other ref gets GitHub's 404. */
@@ -482,7 +629,7 @@ export function githubFileRoute(
 
 /** URLs of all requestUrl calls so far. */
 export function requestedUrls(): string[] {
-	return (requestUrl as jest.Mock).mock.calls.map((call: any[]) => call[0]?.url);
+	return requestUrl.mock.calls.map((call) => call[0]?.url);
 }
 
 export interface RecordedRequest {
@@ -494,7 +641,7 @@ export interface RecordedRequest {
 
 /** Every requestUrl call so far (method defaults to GET). */
 export function requestedCalls(): RecordedRequest[] {
-	return (requestUrl as jest.Mock).mock.calls.map((call: any[]) => ({
+	return requestUrl.mock.calls.map((call) => ({
 		url: call[0]?.url,
 		method: String(call[0]?.method ?? "GET").toUpperCase(),
 		headers: call[0]?.headers ?? {},
@@ -532,7 +679,7 @@ export function gitBlobShaForTest(bytes: ArrayBuffer | Uint8Array | string): str
  */
 export function enableFolderChildren(vault: Vault): void {
 	const original = vault.getAbstractFileByPath.bind(vault);
-	(vault as any).getAbstractFileByPath = (path: string): TAbstractFile | null => {
+	vault.getAbstractFileByPath = (path: string): TAbstractFile | null => {
 		const found = original(path);
 		if (!(found instanceof TFolder)) return found;
 		const prefix = path === "/" || path === "" ? "" : `${path}/`;
@@ -546,8 +693,7 @@ export function enableFolderChildren(vault: Vault): void {
 				children.push(file);
 			}
 		}
-		const folders: Set<string> = (vault as any).folders;
-		for (const folder of folders) {
+		for (const folder of vault._folderPaths()) {
 			if (!folder.startsWith(prefix)) continue;
 			const rest = folder.slice(prefix.length);
 			if (rest && !rest.includes("/") && !seenFolders.has(folder)) {
@@ -572,7 +718,7 @@ export function enforceVaultFolderRules(vault: Vault): {
 	createBinary: jest.SpyInstance;
 	create: jest.SpyInstance;
 } {
-	const exists = (p: string) => (vault as any)._existsPath(p, true) as boolean;
+	const exists = (p: string) => vault._existsPath(p, true);
 	const parentOf = (p: string) => p.split("/").slice(0, -1).join("/");
 	const originalCreateFolder = vault.createFolder.bind(vault);
 	const originalCreateBinary = vault.createBinary.bind(vault);
@@ -620,7 +766,7 @@ type GqlToken = {
 };
 type GqlValue =
 	| { kind: "var"; name: string }
-	| { kind: "lit"; value: any }
+	| { kind: "lit"; value: string | number | boolean | null }
 	| { kind: "list"; items: GqlValue[] }
 	| { kind: "obj"; fields: Record<string, GqlValue> };
 type GqlDirective = { name: string; args: Record<string, GqlValue> };
@@ -660,7 +806,7 @@ function gqlTokenize(src: string): GqlToken[] {
 			while (i < src.length && src[i] !== "\n") i++;
 			continue;
 		}
-		if (/[\s,﻿]/.test(ch)) {
+		if (/[\s,\uFEFF]/.test(ch)) {
 			i++;
 			continue;
 		}
@@ -902,7 +1048,32 @@ function gqlParse(src: string): GqlDocument {
 	return doc;
 }
 
-function gqlEvalValue(value: GqlValue, vars: Record<string, any>): any {
+/** `value?.[key]` with JavaScript semantics: undefined for null/undefined, else the (boxed) property. */
+function optionalProp(value: unknown, key: string): unknown {
+	return value === null || value === undefined
+		? undefined
+		: Reflect.get(Object(value), key);
+}
+
+/** `value[key]` with JavaScript semantics: a TypeError for null/undefined, like property access. */
+function prop(value: unknown, key: string): unknown {
+	if (value === null || value === undefined) {
+		throw new TypeError(`Cannot read properties of ${value} (reading '${key}')`);
+	}
+	return Reflect.get(Object(value), key);
+}
+
+/** `[...value]` for untyped data: the items of an iterable, a TypeError when it is not iterable. */
+function spreadUnknown(value: unknown): unknown[] {
+	return [...Object(value)];
+}
+
+/** Orders two raw values with the `<` and `>` operators, as an untyped `sort` callback would. */
+function compareRaw<K>(a: K, b: K): number {
+	return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function gqlEvalValue(value: GqlValue, vars: Record<string, unknown>): unknown {
 	switch (value.kind) {
 		case "var":
 			return vars[value.name] === undefined ? null : vars[value.name];
@@ -911,7 +1082,7 @@ function gqlEvalValue(value: GqlValue, vars: Record<string, any>): any {
 		case "list":
 			return value.items.map((item) => gqlEvalValue(item, vars));
 		case "obj": {
-			const result: Record<string, any> = {};
+			const result: Record<string, unknown> = {};
 			for (const [k, v] of Object.entries(value.fields))
 				result[k] = gqlEvalValue(v, vars);
 			return result;
@@ -921,14 +1092,17 @@ function gqlEvalValue(value: GqlValue, vars: Record<string, any>): any {
 
 function gqlEvalArgs(
 	args: Record<string, GqlValue>,
-	vars: Record<string, any>
-): Record<string, any> {
-	const result: Record<string, any> = {};
+	vars: Record<string, unknown>
+): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
 	for (const [k, v] of Object.entries(args)) result[k] = gqlEvalValue(v, vars);
 	return result;
 }
 
-function gqlIncluded(directives: GqlDirective[], vars: Record<string, any>): boolean {
+function gqlIncluded(
+	directives: GqlDirective[],
+	vars: Record<string, unknown>
+): boolean {
 	for (const d of directives) {
 		const cond = d.args.if ? gqlEvalValue(d.args.if, vars) : undefined;
 		if (d.name === "skip" && cond === true) return false;
@@ -945,19 +1119,23 @@ class GqlFieldError extends Error {
 	}
 }
 
-function gqlMerge(a: any, b: any): any {
+function gqlMergeObjects(
+	a: Record<string, unknown>,
+	b: Record<string, unknown>
+): Record<string, unknown> {
+	const out: Record<string, unknown> = { ...a };
+	for (const [k, v] of Object.entries(b)) out[k] = k in out ? gqlMerge(out[k], v) : v;
+	return out;
+}
+
+function gqlMerge(a: unknown, b: unknown): unknown {
 	if (
-		a &&
-		b &&
-		typeof a === "object" &&
-		typeof b === "object" &&
+		isObjectRecord(a) &&
+		isObjectRecord(b) &&
 		!Array.isArray(a) &&
 		!Array.isArray(b)
 	) {
-		const out = { ...a };
-		for (const [k, v] of Object.entries(b))
-			out[k] = k in out ? gqlMerge(out[k], v) : v;
-		return out;
+		return gqlMergeObjects(a, b);
 	}
 	if (Array.isArray(a) && Array.isArray(b) && a.length === b.length)
 		return a.map((x, i) => gqlMerge(x, b[i]));
@@ -965,37 +1143,40 @@ function gqlMerge(a: any, b: any): any {
 }
 
 interface GqlContext {
-	vars: Record<string, any>;
+	vars: Record<string, unknown>;
 	doc: GqlDocument;
 	errors: Array<{ type?: string; path: Array<string | number>; message: string }>;
 	unknownFields: string[];
 }
 
-function gqlTypeMatches(obj: any, typeName: string): boolean {
+function gqlTypeMatches(obj: unknown, typeName: string): boolean {
+	const interfaces = optionalProp(obj, "__interfaces");
 	return (
-		obj?.__typename === typeName ||
-		(Array.isArray(obj?.__interfaces) && obj.__interfaces.includes(typeName))
+		optionalProp(obj, "__typename") === typeName ||
+		(Array.isArray(interfaces) && interfaces.includes(typeName))
 	);
 }
 
 function gqlExecute(
 	selections: GqlSelection[],
-	obj: any,
+	obj: unknown,
 	ctx: GqlContext,
 	path: Array<string | number>
-): Record<string, any> {
-	let out: Record<string, any> = {};
+): Record<string, unknown> {
+	let out: Record<string, unknown> = {};
 	for (const sel of selections) {
 		if (!gqlIncluded(sel.directives, ctx.vars)) continue;
 		if (sel.kind === "field") {
 			const key = sel.alias ?? sel.name;
-			let value: any;
+			let value: unknown;
 			if (sel.name === "__typename") {
-				value = obj.__typename ?? null;
+				value = prop(obj, "__typename") ?? null;
 			} else {
-				const raw = obj[sel.name];
+				const raw = prop(obj, sel.name);
 				if (raw === undefined)
-					ctx.unknownFields.push(`${obj.__typename ?? "?"}.${sel.name}`);
+					ctx.unknownFields.push(
+						`${prop(obj, "__typename") ?? "?"}.${sel.name}`
+					);
 				try {
 					value =
 						typeof raw === "function"
@@ -1023,17 +1204,21 @@ function gqlExecute(
 			}
 			out[key] = key in out ? gqlMerge(out[key], value) : (value ?? null);
 		} else {
-			const frag =
-				sel.kind === "inline"
-					? { typeCondition: sel.typeCondition, selections: sel.selections }
-					: ctx.doc.fragments[sel.name];
-			if (!frag)
-				throw new GqlFieldError(
-					"PARSE",
-					`Fragment ${(sel as any).name} is not defined`
-				);
+			let frag:
+				| { typeCondition?: string; selections: GqlSelection[] }
+				| undefined;
+			if (sel.kind === "inline") {
+				frag = { typeCondition: sel.typeCondition, selections: sel.selections };
+			} else {
+				frag = ctx.doc.fragments[sel.name];
+				if (!frag)
+					throw new GqlFieldError(
+						"PARSE",
+						`Fragment ${sel.name} is not defined`
+					);
+			}
 			if (!frag.typeCondition || gqlTypeMatches(obj, frag.typeCondition)) {
-				out = gqlMerge(out, gqlExecute(frag.selections, obj, ctx, path));
+				out = gqlMergeObjects(out, gqlExecute(frag.selections, obj, ctx, path));
 			}
 		}
 	}
@@ -1055,11 +1240,15 @@ export interface FakeGitHubRepoState {
 export interface FakeGraphQLOperation {
 	kind: "query" | "mutation" | "subscription";
 	query: string;
-	variables: Record<string, any>;
+	variables: Record<string, unknown>;
 	headers: Record<string, string>;
-	/** createCommitOnBranch's `input` argument after variable substitution (mutations only). */
-	commitInput?: any;
-	response: any;
+	/**
+	 * JSON clone of createCommitOnBranch's `input` argument after variable substitution
+	 * (mutations only). Untyped client data: read it with readPath or commitFileChanges.
+	 */
+	commitInput?: unknown;
+	/** The JSON body the fake answered with ({ data } or { data, errors }). */
+	response: unknown;
 }
 
 export interface FakeGitHubGraphQL {
@@ -1072,12 +1261,106 @@ export interface FakeGitHubGraphQL {
 	/** Route for mockGitHubApi({ "/graphql": fake.route }). */
 	route: (req: GitHubRequest) => GitHubRoute;
 	/** Runs before each createCommitOnBranch is checked (n counts mutations from 1); e.g. move a branch head. */
-	beforeCommit?: (input: any, n: number) => void;
+	beforeCommit?: (input: Record<string, unknown>, n: number) => void;
 	/** Return an error to make createCommitOnBranch number n fail with it. */
 	commitError?: (
-		input: any,
+		input: Record<string, unknown>,
 		n: number
 	) => { type?: string; message: string } | undefined;
+}
+
+/** File changes of one recorded createCommitOnBranch, checked to be the shape GitHub requires. */
+export interface FakeCommitFileChanges {
+	additions: Array<{ path: string; contents: string }>;
+	deletions: Array<{ path: string }>;
+}
+
+/**
+ * The fileChanges a createCommitOnBranch operation sent (missing lists count as empty).
+ * Throws a TypeError when an entry lacks a string path or contents, so a test fails loudly
+ * instead of reading a malformed request as valid.
+ */
+export function commitFileChanges(op: FakeGraphQLOperation): FakeCommitFileChanges {
+	const read = (name: string): unknown[] => {
+		const list = readPath(op.commitInput, "fileChanges", name);
+		if (list === undefined || list === null) return [];
+		if (!Array.isArray(list))
+			throw new TypeError(`fileChanges.${name} is not a list`);
+		return list;
+	};
+	const additions = read("additions").map((entry, i) => {
+		const path = readPath(entry, "path");
+		const contents = readPath(entry, "contents");
+		if (typeof path !== "string" || typeof contents !== "string") {
+			throw new TypeError(
+				`fileChanges.additions[${i}] needs string path and contents`
+			);
+		}
+		return { path, contents };
+	});
+	const deletions = read("deletions").map((entry, i) => {
+		const path = readPath(entry, "path");
+		if (typeof path !== "string") {
+			throw new TypeError(`fileChanges.deletions[${i}] needs a string path`);
+		}
+		return { path };
+	});
+	return { additions, deletions };
+}
+
+/** Resolver arguments after variable substitution: untyped client input. */
+type GqlArgs = Record<string, unknown>;
+
+interface FakeGitObjectNode {
+	__typename: string;
+	__interfaces: string[];
+	id: string;
+	oid: string;
+	abbreviatedOid: string;
+}
+
+interface FakeBlobNode extends FakeGitObjectNode {
+	byteSize: number;
+	isBinary: boolean;
+	isTruncated: boolean;
+	text: null;
+}
+
+interface FakeTreeNode extends FakeGitObjectNode {
+	entries: () => FakeTreeEntryNode[];
+}
+
+interface FakeTreeEntryNode {
+	__typename: string;
+	name: string;
+	path: string;
+	oid: string;
+	type: "blob" | "tree";
+	mode: number;
+	extension: string;
+	isGenerated: boolean;
+	size: number;
+	lineCount: null;
+	object: () => FakeTreeNode | FakeBlobNode;
+}
+
+interface FakeCommitNode extends FakeGitObjectNode {
+	url: string;
+	commitUrl: string;
+	message: string;
+	messageHeadline: string;
+	committedDate: string;
+	tree: () => FakeTreeNode;
+	file: (args: GqlArgs) => FakeTreeEntryNode | null;
+}
+
+interface FakeRefNode {
+	__typename: string;
+	__interfaces: string[];
+	id: string;
+	name: string;
+	prefix: string;
+	target: () => FakeCommitNode;
 }
 
 /** The message the fake returns when expectedHeadOid is not the branch head. */
@@ -1109,7 +1392,7 @@ export function createFakeGitHubGraphQL(
 	};
 	const nameWithOwner = () => `${state.owner}/${state.name}`;
 	const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
-	const cleanPath = (p: string) => String(p ?? "").replace(/^\/+|\/+$/g, "");
+	const cleanPath = (p: unknown) => String(p ?? "").replace(/^\/+|\/+$/g, "");
 
 	type Entry = {
 		name: string;
@@ -1157,7 +1440,7 @@ export function createFakeGitHubGraphQL(
 			.join("\n");
 		return sha1(`tree\n${listing}`);
 	};
-	const makeBlob = (oid: string) => ({
+	const makeBlob = (oid: string): FakeBlobNode => ({
 		__typename: "Blob",
 		__interfaces: ["GitObject", "Node"],
 		id: `BLOB_${oid}`,
@@ -1168,7 +1451,7 @@ export function createFakeGitHubGraphQL(
 		isTruncated: false,
 		text: null,
 	});
-	const makeTree = (files: Record<string, string>, dir: string): any => ({
+	const makeTree = (files: Record<string, string>, dir: string): FakeTreeNode => ({
 		__typename: "Tree",
 		__interfaces: ["GitObject", "Node"],
 		id: `TREE_${treeOid(files, dir)}`,
@@ -1176,7 +1459,7 @@ export function createFakeGitHubGraphQL(
 		abbreviatedOid: treeOid(files, dir).slice(0, 7),
 		entries: () => (entriesAt(files, dir) ?? []).map((e) => makeEntry(files, e)),
 	});
-	const makeEntry = (files: Record<string, string>, e: Entry): any => ({
+	const makeEntry = (files: Record<string, string>, e: Entry): FakeTreeEntryNode => ({
 		__typename: "TreeEntry",
 		name: e.name,
 		path: e.path,
@@ -1192,12 +1475,16 @@ export function createFakeGitHubGraphQL(
 		lineCount: null,
 		object: () => (e.type === "tree" ? makeTree(files, e.path) : makeBlob(e.oid)),
 	});
-	const entryAt = (files: Record<string, string>, rawPath: string): any => {
+	const lastSegment = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
+	const entryAt = (
+		files: Record<string, string>,
+		rawPath: unknown
+	): FakeTreeEntryNode | null => {
 		const p = cleanPath(rawPath);
 		if (!p) return null;
 		if (files[p] !== undefined) {
 			return makeEntry(files, {
-				name: p.split("/").pop()!,
+				name: lastSegment(p),
 				path: p,
 				type: "blob",
 				oid: files[p],
@@ -1206,14 +1493,14 @@ export function createFakeGitHubGraphQL(
 		}
 		if (entriesAt(files, p) === null) return null;
 		return makeEntry(files, {
-			name: p.split("/").pop()!,
+			name: lastSegment(p),
 			path: p,
 			type: "tree",
 			oid: treeOid(files, p),
 			mode: 16384,
 		});
 	};
-	const makeCommit = (branch: string): any => {
+	const makeCommit = (branch: string): FakeCommitNode => {
 		const b = state.branches[branch];
 		const oid = b.oid;
 		const files = { ...b.files };
@@ -1229,10 +1516,10 @@ export function createFakeGitHubGraphQL(
 			messageHeadline: "fake commit",
 			committedDate: "2026-11-13T00:00:00Z",
 			tree: () => makeTree(files, ""),
-			file: ({ path }: { path: string }) => entryAt(files, path),
+			file: ({ path }: GqlArgs) => entryAt(files, path),
 		};
 	};
-	const branchOf = (qualifiedName: string): string | null => {
+	const branchOf = (qualifiedName: unknown): string | null => {
 		const name = String(qualifiedName ?? "");
 		if (
 			name.startsWith("refs/heads/") &&
@@ -1242,7 +1529,7 @@ export function createFakeGitHubGraphQL(
 		}
 		return state.branches[name] ? name : null;
 	};
-	const makeRef = (branch: string): any => ({
+	const makeRef = (branch: string): FakeRefNode => ({
 		__typename: "Ref",
 		__interfaces: ["Node"],
 		id: `REF_${branch}`,
@@ -1268,7 +1555,7 @@ export function createFakeGitHubGraphQL(
 		owner: () => ({ __typename: "User", login: state.owner }),
 		isPrivate: false,
 		url: () => `https://github.com/${nameWithOwner()}`,
-		ref: ({ qualifiedName }: { qualifiedName: string }) => {
+		ref: ({ qualifiedName }: GqlArgs) => {
 			const branch = branchOf(qualifiedName);
 			return branch ? makeRef(branch) : null;
 		},
@@ -1276,7 +1563,7 @@ export function createFakeGitHubGraphQL(
 			const first = Object.keys(state.branches)[0];
 			return first ? makeRef(first) : null;
 		},
-		object: ({ expression, oid }: { expression?: string; oid?: string }) => {
+		object: ({ expression, oid }: GqlArgs) => {
 			const expr = String(expression ?? oid ?? "");
 			const colon = expr.indexOf(":");
 			const rev = colon < 0 ? expr : expr.slice(0, colon) || "HEAD";
@@ -1304,7 +1591,7 @@ export function createFakeGitHubGraphQL(
 	let currentOp: FakeGraphQLOperation | null = null;
 	const queryRoot = {
 		__typename: "Query",
-		repository: ({ owner, name }: { owner: string; name: string }) => {
+		repository: ({ owner, name }: GqlArgs) => {
 			if (
 				String(owner).toLowerCase() !== state.owner.toLowerCase() ||
 				String(name).toLowerCase() !== state.name.toLowerCase()
@@ -1327,11 +1614,11 @@ export function createFakeGitHubGraphQL(
 	};
 	const mutationRoot = {
 		__typename: "Mutation",
-		createCommitOnBranch: ({ input }: { input: any }) => {
+		createCommitOnBranch: ({ input }: GqlArgs) => {
 			if (currentOp)
 				currentOp.commitInput = JSON.parse(JSON.stringify(input ?? null));
 			commitCount++;
-			if (!input || typeof input !== "object") {
+			if (!isObjectRecord(input)) {
 				throw new GqlFieldError(
 					"INVALID_INPUT",
 					"Argument 'input' on Field 'createCommitOnBranch' has an invalid value."
@@ -1339,37 +1626,38 @@ export function createFakeGitHubGraphQL(
 			}
 			const target = input.branch ?? {};
 			let branch: string | null = null;
-			if (typeof target.id === "string") {
+			const targetId = prop(target, "id");
+			if (typeof targetId === "string") {
 				branch =
-					Object.keys(state.branches).find((b) => `REF_${b}` === target.id) ??
+					Object.keys(state.branches).find((b) => `REF_${b}` === targetId) ??
 					null;
 			} else {
+				const repositoryNameWithOwner = prop(target, "repositoryNameWithOwner");
 				if (
-					String(target.repositoryNameWithOwner ?? "").toLowerCase() !==
+					String(repositoryNameWithOwner ?? "").toLowerCase() !==
 					nameWithOwner().toLowerCase()
 				) {
 					throw new GqlFieldError(
 						"NOT_FOUND",
-						`Could not resolve to a Repository with the name '${target.repositoryNameWithOwner}'.`
+						`Could not resolve to a Repository with the name '${repositoryNameWithOwner}'.`
 					);
 				}
-				branch = branchOf(String(target.branchName ?? ""));
+				branch = branchOf(String(prop(target, "branchName") ?? ""));
 			}
 			if (!branch)
 				throw new GqlFieldError(
 					"NOT_FOUND",
-					`A ref named "${target.branchName}" does not exist.`
+					`A ref named "${prop(target, "branchName")}" does not exist.`
 				);
-			if (typeof input.expectedHeadOid !== "string" || !input.expectedHeadOid) {
+			const expectedHeadOid = input.expectedHeadOid;
+			if (typeof expectedHeadOid !== "string" || !expectedHeadOid) {
 				throw new GqlFieldError(
 					"INVALID_INPUT",
 					'Expected value of type "GitObjectID!" for expectedHeadOid.'
 				);
 			}
-			if (
-				typeof input.message?.headline !== "string" ||
-				input.message.headline.trim() === ""
-			) {
+			const headline = optionalProp(input.message, "headline");
+			if (typeof headline !== "string" || headline.trim() === "") {
 				throw new GqlFieldError(
 					"INVALID_INPUT",
 					"A commit message headline is required."
@@ -1380,27 +1668,29 @@ export function createFakeGitHubGraphQL(
 			if (custom)
 				throw new GqlFieldError(custom.type ?? "UNPROCESSABLE", custom.message);
 			const b = state.branches[branch];
-			if (input.expectedHeadOid !== b.oid) {
+			if (expectedHeadOid !== b.oid) {
 				throw new GqlFieldError(
 					"STALE_DATA",
-					staleHeadMessage(input.expectedHeadOid)
+					staleHeadMessage(expectedHeadOid)
 				);
 			}
-			const additions: any[] = input.fileChanges?.additions ?? [];
-			const deletions: any[] = input.fileChanges?.deletions ?? [];
+			const fileChanges = input.fileChanges;
+			const additions = optionalProp(fileChanges, "additions") ?? [];
+			const deletions = optionalProp(fileChanges, "deletions") ?? [];
 			const files = { ...b.files };
-			for (const add of additions) {
-				const contents = String(add?.contents ?? "");
+			for (const add of spreadUnknown(additions)) {
+				const contents = String(optionalProp(add, "contents") ?? "");
 				const bytes = Buffer.from(contents, "base64");
 				if (bytes.toString("base64") !== contents.replace(/\s/g, "")) {
 					throw new GqlFieldError(
 						"INVALID_INPUT",
-						`contents of ${add?.path} is not valid base64.`
+						`contents of ${optionalProp(add, "path")} is not valid base64.`
 					);
 				}
-				files[cleanPath(add.path)] = gitBlobShaForTest(bytes);
+				files[cleanPath(prop(add, "path"))] = gitBlobShaForTest(bytes);
 			}
-			for (const del of deletions) delete files[cleanPath(del?.path)];
+			for (const del of spreadUnknown(deletions))
+				delete files[cleanPath(optionalProp(del, "path"))];
 			b.oid = sha1(
 				`commit ${b.oid} ${commitCount} ${JSON.stringify(Object.keys(files).sort())}`
 			);
@@ -1423,17 +1713,18 @@ export function createFakeGitHubGraphQL(
 				json: { message: "This endpoint requires you to be authenticated." },
 			};
 		}
-		let body: any;
+		let body: unknown;
 		try {
 			body = JSON.parse(
 				typeof req.body === "string"
 					? req.body
-					: new TextDecoder().decode(req.body as ArrayBuffer)
+					: new TextDecoder().decode(req.body)
 			);
 		} catch {
 			return { status: 400, json: { message: "Problems parsing JSON" } };
 		}
-		if (typeof body?.query !== "string") {
+		const query = optionalProp(body, "query");
+		if (typeof query !== "string") {
 			return {
 				json: {
 					errors: [
@@ -1447,7 +1738,7 @@ export function createFakeGitHubGraphQL(
 		}
 		let doc: GqlDocument;
 		try {
-			doc = gqlParse(body.query);
+			doc = gqlParse(query);
 		} catch (err) {
 			return {
 				json: {
@@ -1455,19 +1746,22 @@ export function createFakeGitHubGraphQL(
 				},
 			};
 		}
-		const op = body.operationName
-			? doc.operations.find((o) => o.name === body.operationName)
+		const operationName = optionalProp(body, "operationName");
+		const op = operationName
+			? doc.operations.find((o) => o.name === operationName)
 			: doc.operations[0];
 		if (!op) return { json: { errors: [{ message: "No operation found" }] } };
-		const variables: Record<string, any> = { ...(body.variables ?? {}) };
+		const rawVariables = optionalProp(body, "variables");
+		// Object() boxes a primitive exactly as spreading it directly would.
+		const variables: Record<string, unknown> = { ...Object(rawVariables ?? {}) };
 		for (const def of op.variableDefs) {
 			if (variables[def.name] === undefined && def.defaultValue)
 				variables[def.name] = gqlEvalValue(def.defaultValue, {});
 		}
 		const record: FakeGraphQLOperation = {
 			kind: op.operation,
-			query: body.query,
-			variables: JSON.parse(JSON.stringify(body.variables ?? {})),
+			query,
+			variables: JSON.parse(JSON.stringify(rawVariables ?? {})),
 			headers: { ...req.headers },
 			response: null,
 		};
@@ -1495,18 +1789,69 @@ export function createFakeGitHubGraphQL(
 
 // ==================== Fake DOM element ====================
 
+/** Event object fireFakeEvent dispatches; the `init` fields are copied onto it. */
+export interface FakeEvent {
+	type: string;
+	target: FakeElement;
+	currentTarget: FakeElement;
+	defaultPrevented: boolean;
+	preventDefault(): void;
+	stopPropagation(): void;
+	stopImmediatePropagation(): void;
+	[key: string]: unknown;
+}
+
+/** Listener recorded by addEventListener; fireFakeEvent calls it with `this` set to the element. */
+export type FakeEventListener = (event: FakeEvent) => unknown;
+
 export interface FakeElement {
 	tag: string;
 	cls: string;
 	texts: string[];
 	children: FakeElement[];
 	attrs: Record<string, string>;
-	style: Record<string, any>;
+	style: Record<string, unknown>;
+	listeners: Record<string, FakeEventListener[]>;
 	isConnected?: boolean;
-	[key: string]: any;
+	/** From createEl options or set by the code under test; a "select" derives it from its options. */
+	value?: unknown;
+	type?: string;
+	placeholder?: string;
+	href?: string;
+	title?: string;
+	/** Read by a "select" to find a preselected <option>. */
+	selected?: unknown;
+	/** Text of the element and its descendants; assigning replaces texts and children. */
+	textContent?: string;
+	/** The element this one was appended to (createDiv/createEl/createSpan/appendChild). */
+	parentElement?: FakeElement;
+	/** "select" only: its <option> descendants. */
+	options?: FakeElement[];
+	/** "select" only: index of the selected option, -1 when there is none. */
+	selectedIndex?: number;
+	/** "select" only: the selected option, or an empty list. */
+	selectedOptions?: FakeElement[];
+	createDiv(options?: FakeElementOptions): FakeElement;
+	createSpan(options?: FakeElementOptions): FakeElement;
+	createEl(tag: string, options?: FakeElementOptions): FakeElement;
+	appendChild(child: FakeElement): FakeElement;
+	setText(text: string): void;
+	appendText(text: string): void;
+	empty(): void;
+	addClass(cls: string): void;
+	removeClass(...args: unknown[]): void;
+	toggleClass(...args: unknown[]): void;
+	setAttribute(key: string, value: string): void;
+	getAttribute(key: string): string | null;
+	setAttr(key: string, value: string): void;
+	addEventListener(type: string, listener: FakeEventListener): void;
+	removeEventListener(type: string, listener: FakeEventListener): void;
+	remove(): void;
+	/** Any other property the code under test sets, such as onclick, disabled or checked. */
+	[key: string]: unknown;
 }
 
-type FakeElementOptions =
+export type FakeElementOptions =
 	| string
 	| {
 			cls?: string;
@@ -1537,6 +1882,18 @@ export function createFakeElement(
 	tag: string = "div",
 	options?: FakeElementOptions
 ): FakeElement {
+	const addChild = (child: FakeElement): FakeElement => {
+		el.children.push(child);
+		if (child && typeof child === "object") {
+			Object.defineProperty(child, "parentElement", {
+				value: el,
+				enumerable: false,
+				configurable: true,
+				writable: true,
+			});
+		}
+		return child;
+	};
 	const el: FakeElement = {
 		tag,
 		cls: "",
@@ -1545,7 +1902,44 @@ export function createFakeElement(
 		attrs: {},
 		style: {},
 		listeners: {},
-	} as FakeElement;
+		createDiv: (o?: FakeElementOptions) => addChild(createFakeElement("div", o)),
+		createSpan: (o?: FakeElementOptions) => addChild(createFakeElement("span", o)),
+		createEl: (childTag: string, o?: FakeElementOptions) =>
+			addChild(createFakeElement(childTag, o)),
+		appendChild: (child: FakeElement) => addChild(child),
+		setText: (t: string) => {
+			el.texts = [String(t)];
+		},
+		appendText: (t: string) => {
+			el.texts.push(String(t));
+		},
+		empty: () => {
+			el.texts = [];
+			el.children = [];
+		},
+		addClass: (c: string) => {
+			el.cls = `${el.cls} ${c}`.trim();
+		},
+		removeClass: () => {},
+		toggleClass: () => {},
+		setAttribute: (k: string, v: string) => {
+			el.attrs[k] = v;
+		},
+		getAttribute: (k: string) => el.attrs[k] ?? null,
+		setAttr: (k: string, v: string) => {
+			el.attrs[k] = v;
+		},
+		addEventListener: (type: string, fn: FakeEventListener) => {
+			(el.listeners[type] = el.listeners[type] ?? []).push(fn);
+		},
+		removeEventListener: (type: string, fn: FakeEventListener) => {
+			el.listeners[type] = (el.listeners[type] ?? []).filter((f) => f !== fn);
+		},
+		remove: () => {
+			const parent = el.parentElement;
+			if (parent) parent.children = parent.children.filter((c) => c !== el);
+		},
+	};
 	const applyOptions = (o?: FakeElementOptions) => {
 		if (typeof o === "string") {
 			el.cls = o;
@@ -1613,59 +2007,6 @@ export function createFakeElement(
 		});
 	}
 	applyOptions(options);
-	const addChild = (child: FakeElement) => {
-		el.children.push(child);
-		if (child && typeof child === "object") {
-			Object.defineProperty(child, "parentElement", {
-				value: el,
-				enumerable: false,
-				configurable: true,
-				writable: true,
-			});
-		}
-		return child;
-	};
-	Object.assign(el, {
-		createDiv: (o?: any) => addChild(createFakeElement("div", o)),
-		createSpan: (o?: any) => addChild(createFakeElement("span", o)),
-		createEl: (childTag: string, o?: any) =>
-			addChild(createFakeElement(childTag, o)),
-		appendChild: (child: FakeElement) => addChild(child),
-		setText: (t: string) => {
-			el.texts = [String(t)];
-		},
-		appendText: (t: string) => {
-			el.texts.push(String(t));
-		},
-		empty: () => {
-			el.texts = [];
-			el.children = [];
-		},
-		addClass: (c: string) => {
-			el.cls = `${el.cls} ${c}`.trim();
-		},
-		removeClass: () => {},
-		toggleClass: () => {},
-		setAttribute: (k: string, v: string) => {
-			el.attrs[k] = v;
-		},
-		getAttribute: (k: string) => el.attrs[k] ?? null,
-		setAttr: (k: string, v: string) => {
-			el.attrs[k] = v;
-		},
-		addEventListener: (type: string, fn: (...args: any[]) => any) => {
-			(el.listeners[type] = el.listeners[type] ?? []).push(fn);
-		},
-		removeEventListener: (type: string, fn: (...args: any[]) => any) => {
-			el.listeners[type] = (el.listeners[type] ?? []).filter(
-				(f: any) => f !== fn
-			);
-		},
-		remove: () => {
-			const parent = el.parentElement as FakeElement | undefined;
-			if (parent) parent.children = parent.children.filter((c) => c !== el);
-		},
-	});
 	Object.defineProperty(el, "textContent", {
 		get: () => collectText(el),
 		set: (v: string) => {
@@ -1713,9 +2054,9 @@ export function findFakeElements(
 export async function fireFakeEvent(
 	el: FakeElement,
 	type: string,
-	init: Record<string, any> = {}
+	init: Record<string, unknown> = {}
 ): Promise<void> {
-	const event: Record<string, any> = {
+	const event: FakeEvent = {
 		type,
 		target: el,
 		currentTarget: el,
@@ -1727,7 +2068,7 @@ export async function fireFakeEvent(
 		stopImmediatePropagation() {},
 		...init,
 	};
-	const results: any[] = [];
+	const results: unknown[] = [];
 	const handler = el["on" + type];
 	if (typeof handler === "function") results.push(handler.call(el, event));
 	for (const fn of [...((el.listeners ?? {})[type] ?? [])])
@@ -1741,63 +2082,107 @@ export function clickFakeElement(el: FakeElement): Promise<void> {
 
 // ==================== Fake Dataview (dv) harness ====================
 
+/** The `array()` method of a value (a Dataview DataArray), bound to it, if it has one. */
+function arrayMethodOf(value: unknown): (() => unknown) | undefined {
+	if (!value || (typeof value !== "object" && typeof value !== "function"))
+		return undefined;
+	const method: unknown = Reflect.get(value, "array");
+	return typeof method === "function"
+		? () => Reflect.apply(method, value, [])
+		: undefined;
+}
+
+/** Minimal Dataview DataArray stand-in (fakeDataArray); iterable like the real one. */
+export interface FakeDataArray<T> extends Iterable<T> {
+	values: T[];
+	readonly length: number;
+	where(f: (x: T) => unknown): FakeDataArray<T>;
+	filter(f: (x: T) => unknown): FakeDataArray<T>;
+	map<U>(f: (x: T, i: number) => U): FakeDataArray<U>;
+	/** Flattens arrays and DataArrays the callback returns. */
+	flatMap(f: (x: T) => unknown): FakeDataArray<unknown>;
+	sort(f?: (x: T) => unknown, dir?: string): FakeDataArray<T>;
+	forEach(f: (x: T, i: number) => void): void;
+	array(): T[];
+	first(): T | undefined;
+	last(): T | undefined;
+	limit(n: number): FakeDataArray<T>;
+	slice(s?: number, e?: number): FakeDataArray<T>;
+	concat(other: unknown): FakeDataArray<unknown>;
+	some(f: (x: T) => boolean): boolean;
+	every(f: (x: T) => boolean): boolean;
+	none(f: (x: T) => boolean): boolean;
+	find(f: (x: T) => boolean): T | undefined;
+	includes(x: T): boolean;
+	join(sep?: string): string;
+	distinct(): FakeDataArray<T>;
+}
+
 /** Minimal Dataview DataArray stand-in. */
-export function fakeDataArray<T = any>(items: T[]): any {
+export function fakeDataArray<T>(items: Iterable<T>): FakeDataArray<T> {
 	const a = [...items];
-	const self: any = {
+	const self: FakeDataArray<T> = {
 		values: a,
 		get length() {
 			return a.length;
 		},
-		where: (f: (x: T) => any) => fakeDataArray(a.filter(f)),
-		filter: (f: (x: T) => any) => fakeDataArray(a.filter(f)),
-		map: (f: (x: T, i: number) => any) => fakeDataArray(a.map(f)),
-		flatMap: (f: (x: T) => any) =>
+		where: (f) => fakeDataArray(a.filter(f)),
+		filter: (f) => fakeDataArray(a.filter(f)),
+		map: (f) => fakeDataArray(a.map(f)),
+		flatMap: (f) =>
 			fakeDataArray(
-				a.flatMap((x) => {
+				a.flatMap((x): unknown => {
 					const r = f(x);
-					return Array.isArray(r)
-						? r
-						: r && typeof r.array === "function"
-							? r.array()
-							: [r];
+					if (Array.isArray(r)) return r;
+					const toArray = r ? arrayMethodOf(r) : undefined;
+					return toArray ? toArray() : [r];
 				})
 			),
-		sort: (f?: (x: T) => any, dir?: string) => {
-			const key = f ?? ((x: T) => x);
-			const sorted = [...a].sort((x, y) => {
-				const kx = key(x);
-				const ky = key(y);
-				return kx < ky ? -1 : kx > ky ? 1 : 0;
-			});
+		sort: (f, dir) => {
+			const key = f ?? ((x: T): unknown => x);
+			const sorted = [...a].sort((x, y) => compareRaw(key(x), key(y)));
 			return fakeDataArray(dir === "desc" ? sorted.reverse() : sorted);
 		},
-		forEach: (f: (x: T, i: number) => void) => a.forEach(f),
+		forEach: (f) => a.forEach(f),
 		array: () => [...a],
 		first: () => a[0],
 		last: () => a[a.length - 1],
-		limit: (n: number) => fakeDataArray(a.slice(0, n)),
-		slice: (s?: number, e?: number) => fakeDataArray(a.slice(s, e)),
-		concat: (other: any) =>
-			fakeDataArray(
-				a.concat(
-					Array.isArray(other) ? other : other?.array ? other.array() : []
-				)
-			),
-		some: (f: (x: T) => boolean) => a.some(f),
-		every: (f: (x: T) => boolean) => a.every(f),
-		none: (f: (x: T) => boolean) => !a.some(f),
-		find: (f: (x: T) => boolean) => a.find(f),
-		includes: (x: T) => a.includes(x),
-		join: (sep?: string) => a.join(sep),
+		limit: (n) => fakeDataArray(a.slice(0, n)),
+		slice: (s, e) => fakeDataArray(a.slice(s, e)),
+		concat: (other) => {
+			const toArray = arrayMethodOf(other);
+			const extra: unknown = Array.isArray(other)
+				? other
+				: toArray
+					? toArray()
+					: [];
+			const base: unknown[] = [...a];
+			return fakeDataArray(base.concat(extra));
+		},
+		some: (f) => a.some(f),
+		every: (f) => a.every(f),
+		none: (f) => !a.some(f),
+		find: (f) => a.find(f),
+		includes: (x) => a.includes(x),
+		join: (sep) => a.join(sep),
 		distinct: () => fakeDataArray(Array.from(new Set(a))),
 		[Symbol.iterator]: () => a[Symbol.iterator](),
 	};
 	return self;
 }
 
+/** Dataview Link stand-in for a file (fakeLink). */
+export interface FakeLink {
+	path: string;
+	display: string | undefined;
+	type: "file";
+	embed: boolean;
+	subpath: undefined;
+	toString(): string;
+}
+
 /** Dataview-Link-like object for a file path. */
-export function fakeLink(path: string, display?: string): any {
+export function fakeLink(path: string, display?: string): FakeLink {
 	return {
 		path,
 		display,
@@ -1811,12 +2196,27 @@ export function fakeLink(path: string, display?: string): any {
 	};
 }
 
+/** The `file` field of a fake Dataview page; extra fields (mtime, ...) come from createFakePage. */
+export interface FakePageFile {
+	path: string;
+	name: string;
+	folder: string;
+	link: FakeLink;
+	[key: string]: unknown;
+}
+
+/** Dataview page stand-in: frontmatter fields plus `file`. */
+export interface FakePage {
+	file: FakePageFile;
+	[key: string]: unknown;
+}
+
 /** Dataview page stand-in: frontmatter fields plus `file` (path, name, folder, link, mtime...). */
 export function createFakePage(
 	path: string,
-	fields: Record<string, any> = {},
-	file: Record<string, any> = {}
-): any {
+	fields: Record<string, unknown> = {},
+	file: Record<string, unknown> = {}
+): FakePage {
 	const name = (path.split("/").pop() || "").replace(/\.md$/i, "");
 	const folder = path.split("/").slice(0, -1).join("/");
 	return {
@@ -1826,25 +2226,52 @@ export function createFakePage(
 }
 
 /** Plain array from an array, a fake DataArray, or an iterable. */
-export function toPlainList(value: any): any[] {
+export function toPlainList(value: unknown): unknown[] {
 	if (Array.isArray(value)) return [...value];
-	if (value && typeof value.array === "function") return value.array();
-	if (value && Array.isArray(value.values)) return [...value.values];
-	return value == null ? [] : Array.from(value as Iterable<any>);
+	const toArray = value ? arrayMethodOf(value) : undefined;
+	if (toArray) {
+		const items = toArray();
+		if (Array.isArray(items)) return items;
+		throw new TypeError("array() did not return an array");
+	}
+	const values = value ? optionalProp(value, "values") : undefined;
+	if (Array.isArray(values)) return [...values];
+	// Array.from converts its argument with ToObject itself, so Object() changes nothing.
+	return value == null ? [] : Array.from(Object(value));
 }
 
 /** Turns DataArray / array rows into a plain array of plain arrays. */
-export function toPlainRows(rows: any): any[][] {
-	return toPlainList(rows).map((r: any) => toPlainList(r));
+export function toPlainRows(rows: unknown): unknown[][] {
+	return toPlainList(rows).map((r) => toPlainList(r));
 }
 
 export interface FakeDvOutput {
-	tables: Array<{ headers: any[]; rows: any[][] }>;
+	tables: Array<{ headers: unknown[]; rows: unknown[][] }>;
 	paragraphs: string[];
 	/** paragraphs plus span/el/header text */
 	texts: string[];
 	/** Elements returned by dv.el (also appended to dv.container). */
 	elements: FakeElement[];
+}
+
+/** The fake `dv` object createFakeDv returns (the Dataview API subset the scripts use). */
+export interface FakeDv {
+	app: unknown;
+	container: FakeElement;
+	current(): FakePage;
+	pages(query?: string): FakeDataArray<FakePage>;
+	page(path: unknown): unknown;
+	array(arr: unknown): FakeDataArray<unknown>;
+	fileLink(path: string, embed?: boolean, display?: string): FakeLink;
+	table(headers: unknown[], rows: unknown): void;
+	paragraph(text: unknown): void;
+	span(text: unknown): void;
+	header(level: number, text: unknown): void;
+	el(
+		tag: string,
+		text: unknown,
+		options?: { cls?: string; attr?: Record<string, string> }
+	): FakeElement;
 }
 
 /**
@@ -1854,18 +2281,18 @@ export interface FakeDvOutput {
  */
 export function createFakeDv(options: {
 	currentPath: string;
-	currentFields?: Record<string, any>;
-	pages?: any[];
-	app?: any;
-	page?: (path: string) => any;
-}): { dv: any; out: FakeDvOutput } {
+	currentFields?: Record<string, unknown>;
+	pages?: FakePage[];
+	app?: unknown;
+	page?: (path: string) => unknown;
+}): { dv: FakeDv; out: FakeDvOutput } {
 	const pages = options.pages ?? [];
 	const out: FakeDvOutput = { tables: [], paragraphs: [], texts: [], elements: [] };
-	const strip = (p: string) => String(p ?? "").replace(/\.md$/i, "");
+	const strip = (p: unknown) => String(p ?? "").replace(/\.md$/i, "");
 	const current =
 		pages.find((p) => p.file.path === options.currentPath) ??
 		createFakePage(options.currentPath, options.currentFields ?? {});
-	const dv: any = {
+	const dv: FakeDv = {
 		app: options.app ?? {},
 		container: createFakeElement("div"),
 		current: () => current,
@@ -1873,37 +2300,43 @@ export function createFakeDv(options: {
 			const q = String(query ?? "").trim();
 			if (!q) return fakeDataArray(pages);
 			const m = q.match(/^"(.*)"$/);
-			if (!m) return fakeDataArray([]);
+			if (!m) return fakeDataArray<FakePage>([]);
 			const folder = m[1].replace(/\/+$/, "");
 			return fakeDataArray(
 				pages.filter((p) => p.file.path.startsWith(folder + "/"))
 			);
 		},
-		page: (path: any) => {
-			const target = strip(typeof path === "string" ? path : path?.path);
+		page: (path: unknown) => {
+			const target = strip(
+				typeof path === "string" ? path : optionalProp(path, "path")
+			);
 			if (options.page) return options.page(target);
 			return pages.find((p) => strip(p.file.path) === target);
 		},
-		array: (arr: any) =>
-			fakeDataArray(Array.isArray(arr) ? arr : arr?.array ? arr.array() : [arr]),
+		array: (arr: unknown) => {
+			const toArray = arr ? arrayMethodOf(arr) : undefined;
+			return fakeDataArray(
+				Array.isArray(arr) ? arr : toArray ? spreadUnknown(toArray()) : [arr]
+			);
+		},
 		fileLink: (path: string, _embed?: boolean, display?: string) =>
 			fakeLink(path, display),
-		table: (headers: any[], rows: any) => {
+		table: (headers: unknown[], rows: unknown) => {
 			out.tables.push({ headers: [...headers], rows: toPlainRows(rows) });
 		},
-		paragraph: (text: any) => {
+		paragraph: (text: unknown) => {
 			out.paragraphs.push(String(text));
 			out.texts.push(String(text));
 		},
-		span: (text: any) => {
+		span: (text: unknown) => {
 			out.texts.push(String(text));
 		},
-		header: (_level: number, text: any) => {
+		header: (_level: number, text: unknown) => {
 			out.texts.push(String(text));
 		},
 		el: (
 			_tag: string,
-			text: any,
+			text: unknown,
 			elOptions?: { cls?: string; attr?: Record<string, string> }
 		) => {
 			out.texts.push(String(text));
@@ -1923,7 +2356,12 @@ export function createFakeDv(options: {
 	return { dv, out };
 }
 
-const AsyncFunctionCtor = Object.getPrototypeOf(async function () {}).constructor;
+/** Constructor of async functions, used to run script text the way Dataview does. */
+const AsyncFunctionCtor: new (
+	...args: string[]
+) => (...args: unknown[]) => Promise<unknown> = Object.getPrototypeOf(
+	async function () {}
+).constructor;
 
 /**
  * Runs script text (as stored in a script file: leading /** ... *\/ header is
@@ -1931,9 +2369,9 @@ const AsyncFunctionCtor = Object.getPrototypeOf(async function () {}).constructo
  */
 export async function runDataviewScript(
 	scriptText: string,
-	dv: any,
-	input: Record<string, any> = {},
-	win: any = {}
+	dv: { app?: unknown },
+	input: Record<string, unknown> = {},
+	win: unknown = {}
 ): Promise<void> {
 	const code = scriptText.replace(/\/\*\*[\s\S]*?\*\//, "");
 	// Inner scope: the script may declare its own `app`/`window` (as Obsidian scripts often do with `const app = dv.app`).

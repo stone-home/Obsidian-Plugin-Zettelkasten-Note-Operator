@@ -2,10 +2,12 @@
  * Tests for CodeProjectManager
  */
 
+import type { TFile as ObsidianTFile } from "obsidian";
 import { App, TFile, requestUrl } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	extractFrontmatter,
 	mockRequestUrl,
@@ -13,7 +15,6 @@ import {
 	createMockRelease,
 	createMockCommit,
 	setFrontmatterCache,
-	createCodeDashboardContent,
 } from "../../../__mocks__/testHelpers";
 import { CodeProjectManager } from "../../../service/projects/codeProjectManager";
 import type { ZettelkastenSettings } from "../../../types";
@@ -29,7 +30,7 @@ describe("CodeProjectManager", () => {
 			projectRootPath: "Projects",
 			dataviewCodeBlockType: "zettelkasten-query",
 		});
-		manager = new CodeProjectManager(app, settings);
+		manager = new CodeProjectManager(asObsidianApp(app), settings);
 		resetRequestUrlMock();
 	});
 
@@ -60,10 +61,8 @@ describe("CodeProjectManager", () => {
 		it("should create dashboard with correct frontmatter", async () => {
 			await manager.createProject("TestProject");
 
-			const content = (app.vault as any)._getContent(
-				"Projects/TestProject/Dashboard.md"
-			);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent("Projects/TestProject/Dashboard.md");
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.type).toBe("permanent");
 			expect(fm.project_name).toBe("TestProject");
@@ -93,7 +92,10 @@ describe("CodeProjectManager", () => {
 			const customSettings = createMockSettings({
 				projectRootPath: "Code/Projects",
 			});
-			const customManager = new CodeProjectManager(app, customSettings);
+			const customManager = new CodeProjectManager(
+				asObsidianApp(app),
+				customSettings
+			);
 
 			const projectFile = await customManager.createProject("Test");
 			expect(projectFile.path).toBe("Code/Projects/Test/Dashboard.md");
@@ -103,7 +105,7 @@ describe("CodeProjectManager", () => {
 	// ==================== createRequirement ====================
 
 	describe("createRequirement", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("ReqTest");
@@ -115,8 +117,8 @@ describe("CodeProjectManager", () => {
 			expect(reqFile).toBeInstanceOf(TFile);
 			expect(reqFile.path).toBe("Projects/ReqTest/requirements/NewFeature.md");
 
-			const content = (app.vault as any)._getContent(reqFile.path);
-			const fm = extractFrontmatter(content);
+			const content = app.vault._getContent(reqFile.path);
+			const fm = extractFrontmatter(content ?? "");
 
 			expect(fm.title).toBe("NewFeature");
 			expect(fm.status).toBe("proposed");
@@ -129,7 +131,7 @@ describe("CodeProjectManager", () => {
 				"FeatureWithRelease"
 			);
 
-			const content = (app.vault as any)._getContent(reqFile.path);
+			const content = app.vault._getContent(reqFile.path);
 			expect(content).toContain("release:");
 		});
 
@@ -145,7 +147,7 @@ describe("CodeProjectManager", () => {
 	// ==================== updateDashboardProperties ====================
 
 	describe("updateDashboardProperties", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("UpdateTest");
@@ -156,7 +158,7 @@ describe("CodeProjectManager", () => {
 				github_token_key: "my_custom_token",
 			});
 
-			const content = (app.vault as any)._getContent(projectFile.path);
+			const content = app.vault._getContent(projectFile.path);
 			expect(content).toContain("github_token_key: my_custom_token");
 		});
 
@@ -165,7 +167,7 @@ describe("CodeProjectManager", () => {
 				public_repo: true,
 			});
 
-			const content = (app.vault as any)._getContent(projectFile.path);
+			const content = app.vault._getContent(projectFile.path);
 			expect(content).toContain("public_repo: true");
 		});
 
@@ -175,7 +177,7 @@ describe("CodeProjectManager", () => {
 				public_repo: true,
 			});
 
-			const content = (app.vault as any)._getContent(projectFile.path);
+			const content = app.vault._getContent(projectFile.path);
 			expect(content).toContain("github_token_key: new_token");
 			expect(content).toContain("public_repo: true");
 		});
@@ -198,9 +200,7 @@ describe("CodeProjectManager", () => {
 				public_repo: true,
 			});
 
-			const content = (app.vault as any)._getContent(
-				"Projects/Custom/Dashboard.md"
-			);
+			const content = app.vault._getContent("Projects/Custom/Dashboard.md");
 			expect(content).toContain("public_repo: true");
 		});
 
@@ -241,7 +241,7 @@ describe("CodeProjectManager", () => {
 	// ==================== refreshProject ====================
 
 	describe("refreshProject", () => {
-		let projectFile: TFile;
+		let projectFile: ObsidianTFile;
 
 		beforeEach(async () => {
 			projectFile = await manager.createProject("RefreshTest");
@@ -254,7 +254,7 @@ describe("CodeProjectManager", () => {
 			});
 
 			// Mock secretStorage
-			(app as any).secretStorage = {
+			app.secretStorage = {
 				getSecret: jest.fn().mockResolvedValue("mock-token"),
 			};
 		});
@@ -302,16 +302,20 @@ describe("CodeProjectManager", () => {
 			};
 
 			// First call returns releases, second returns compare
-			(requestUrl as jest.Mock)
+			requestUrl
 				.mockResolvedValueOnce({
 					status: 200,
 					headers: {},
 					json: mockReleases,
+					text: JSON.stringify(mockReleases),
+					arrayBuffer: new ArrayBuffer(0),
 				})
 				.mockResolvedValueOnce({
 					status: 200,
 					headers: {},
 					json: mockCompare,
+					text: JSON.stringify(mockCompare),
+					arrayBuffer: new ArrayBuffer(0),
 				});
 
 			await manager.refreshProject(projectFile);

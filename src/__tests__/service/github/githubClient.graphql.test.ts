@@ -11,16 +11,13 @@ import { requestUrl } from "../../../__mocks__/obsidian";
 import {
 	getHeader,
 	mockGitHubApi,
+	readPath,
 	requestedCalls,
 	type GitHubRequest,
 } from "../../../__mocks__/testHelpers";
 import { GitHubClient } from "../../../service/github/githubClient";
 
-interface GraphQLCapable {
-	graphql<T>(query: string, variables: Record<string, unknown>): Promise<T>;
-}
-
-const client = (token: string) => new GitHubClient(token) as unknown as GraphQLCapable;
+const client = (token: string) => new GitHubClient(token);
 
 const QUERY =
 	"query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }";
@@ -43,7 +40,7 @@ describe("GitHubClient.graphql (R2)", () => {
 		expect(call.method).toBe("POST");
 		expect(getHeader(call.headers, "Authorization")).toBe("Bearer tok-123");
 		expect(typeof call.body).toBe("string");
-		expect(JSON.parse(call.body as string)).toEqual({
+		expect(JSON.parse(String(call.body))).toEqual({
 			query: QUERY,
 			variables: { owner: "octo", name: "notes" },
 		});
@@ -121,6 +118,6 @@ describe("GitHubClient.graphql (R2)", () => {
 			.catch((e) => e);
 
 		expect(err).toBeInstanceOf(Error);
-		expect((err as { status?: number }).status).toBe(401);
+		expect(readPath(err, "status")).toBe(401);
 	});
 });

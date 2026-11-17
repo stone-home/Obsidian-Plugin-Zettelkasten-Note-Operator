@@ -4,23 +4,26 @@
  * Old per-commit notes are only removed after the user agrees.
  */
 
-import { App, TFile } from "../../../__mocks__/obsidian";
+import type { TFile as ObsidianTFile } from "obsidian";
+import { App } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	createMockCommit,
 	createMockRelease,
 	mockGitHubApi,
 	parseNoteFrontmatter,
+	readPath,
 	requestedUrls,
 	setFrontmatterCache,
+	toPlainList,
 } from "../../../__mocks__/testHelpers";
-import * as cpm from "../../../service/projects/codeProjectManager";
-import { CodeProjectManager } from "../../../service/projects/codeProjectManager";
-
-const buildUnreleasedCommitsNote = (input: any): string =>
-	(cpm as any).buildUnreleasedCommitsNote(input);
+import {
+	buildUnreleasedCommitsNote,
+	CodeProjectManager,
+} from "../../../service/projects/codeProjectManager";
 
 const PROJECT = "Projects/Proj";
 const NOTE_PATH = `${PROJECT}/Unreleased Commits.md`;
@@ -107,12 +110,11 @@ describe("buildUnreleasedCommitsNote (C1)", () => {
 describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () => {
 	let app: App;
 	let manager: CodeProjectManager;
-	let projectFile: TFile;
+	let projectFile: ObsidianTFile;
 
 	const legacyFiles = () =>
 		app.vault.getFiles().filter((f) => f.path.startsWith(`${PROJECT}/commits/`));
-	const noteContent = (): string | undefined =>
-		(app.vault as any)._getContent(NOTE_PATH);
+	const noteContent = (): string | undefined => app.vault._getContent(NOTE_PATH);
 
 	function mockOneRelease(commitShas: string[]) {
 		mockGitHubApi({
@@ -147,16 +149,16 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 	beforeEach(async () => {
 		app = createMockApp();
 		manager = new CodeProjectManager(
-			app as any,
+			asObsidianApp(app),
 			createMockSettings({ projectRootPath: "Projects" })
 		);
-		projectFile = (await manager.createProject("Proj")) as unknown as TFile;
+		projectFile = await manager.createProject("Proj");
 		setFrontmatterCache(app.metadataCache, projectFile.path, {
 			repo: "owner/repo",
 			defaultBranch: "main",
 			github_token_key: "gh_key",
 		});
-		(app as any).secretStorage = { getSecret: jest.fn().mockResolvedValue("tok") };
+		app.secretStorage = { getSecret: jest.fn().mockResolvedValue("tok") };
 	});
 
 	afterEach(() => {
@@ -176,12 +178,12 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 	it("writes Unreleased Commits.md with the compare result and creates nothing under commits/", async () => {
 		mockOneRelease(["aaaaaaa0000001", "bbbbbbb0000002"]);
 
-		await manager.refreshProject(projectFile as any);
+		await manager.refreshProject(projectFile);
 
 		const content = noteContent();
 		expect(content).toBeDefined();
 		const fm = parseNoteFrontmatter(content);
-		expect(fm.commits.map((c: any) => c.sha)).toEqual(
+		expect(toPlainList(fm.commits).map((c) => readPath(c, "sha"))).toEqual(
 			expect.arrayContaining([
 				expect.stringMatching(/^aaaaaaa/),
 				expect.stringMatching(/^bbbbbbb/),
@@ -197,15 +199,15 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 
 	it("rewrites the whole note on the next refresh", async () => {
 		mockOneRelease(["aaaaaaa0000001", "bbbbbbb0000002"]);
-		await manager.refreshProject(projectFile as any);
+		await manager.refreshProject(projectFile);
 
 		mockOneRelease(["ccccccc0000003"]);
-		await manager.refreshProject(projectFile as any);
+		await manager.refreshProject(projectFile);
 
-		const content = noteContent()!;
+		const content = noteContent() ?? "";
 		const fm = parseNoteFrontmatter(content);
 		expect(fm.commits).toHaveLength(1);
-		expect(fm.commits[0].sha).toMatch(/^ccccccc/);
+		expect(readPath(fm.commits, 0, "sha")).toMatch(/^ccccccc/);
 		expect(content).not.toContain("aaaaaaa");
 		expect(content).not.toContain("bbbbbbb");
 	});
@@ -213,7 +215,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 	it("writes an empty list with base null when the repo has no releases", async () => {
 		mockGitHubApi({ [RELEASES]: { json: [] } });
 
-		await manager.refreshProject(projectFile as any);
+		await manager.refreshProject(projectFile);
 
 		const fm = parseNoteFrontmatter(noteContent());
 		expect(fm.commits).toEqual([]);
@@ -224,7 +226,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 	it("summary no longer reports markedReleased", async () => {
 		mockOneRelease(["aaaaaaa0000001"]);
 
-		const summary = await manager.refreshProject(projectFile as any);
+		const summary = await manager.refreshProject(projectFile);
 
 		expect(summary).toBeDefined();
 		expect(summary).not.toHaveProperty("markedReleased");
@@ -235,7 +237,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			await addLegacyNotes();
 			mockOneRelease(["aaaaaaa0000001"]);
 
-			const summary: any = await manager.refreshProject(projectFile as any);
+			const summary = await manager.refreshProject(projectFile);
 
 			expect(legacyFiles()).toHaveLength(2);
 			expect(summary).toMatchObject({ legacyCommitNotes: 2 });
@@ -244,7 +246,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 		it("callback true: trashes each note with fileManager.trashFile, after the new note is written", async () => {
 			await addLegacyNotes();
 			mockOneRelease(["aaaaaaa0000001"]);
-			const trashFile = jest.spyOn(app.fileManager as any, "trashFile");
+			const trashFile = jest.spyOn(app.fileManager, "trashFile");
 			const vaultTrash = jest.spyOn(app.vault, "trash");
 			let noteWrittenBeforeAsking = false;
 			const confirmLegacyCleanup = jest.fn(async (_count: number) => {
@@ -252,7 +254,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 				return true;
 			});
 
-			await (manager as any).refreshProject(projectFile, undefined, {
+			await manager.refreshProject(projectFile, undefined, {
 				confirmLegacyCleanup,
 			});
 
@@ -260,7 +262,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			expect(confirmLegacyCleanup).toHaveBeenCalledWith(2);
 			expect(noteWrittenBeforeAsking).toBe(true);
 			expect(trashFile).toHaveBeenCalledTimes(2);
-			expect(trashFile.mock.calls.map(([f]) => (f as any).path).sort()).toEqual([
+			expect(trashFile.mock.calls.map(([f]) => f.path).sort()).toEqual([
 				`${PROJECT}/commits/1111111.md`,
 				`${PROJECT}/commits/2222222.md`,
 			]);
@@ -271,10 +273,10 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 		it("callback true without fileManager.trashFile: falls back to vault.trash(file, true)", async () => {
 			await addLegacyNotes();
 			mockOneRelease(["aaaaaaa0000001"]);
-			delete (app.fileManager as any).trashFile;
+			delete app.fileManager.trashFile;
 			const vaultTrash = jest.spyOn(app.vault, "trash");
 
-			await (manager as any).refreshProject(projectFile, undefined, {
+			await manager.refreshProject(projectFile, undefined, {
 				confirmLegacyCleanup: jest.fn().mockResolvedValue(true),
 			});
 
@@ -289,13 +291,13 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			await addLegacyNotes();
 			mockOneRelease(["aaaaaaa0000001"]);
 
-			await (manager as any).refreshProject(projectFile, undefined, {
+			await manager.refreshProject(projectFile, undefined, {
 				confirmLegacyCleanup: jest.fn().mockResolvedValue(false),
 			});
 
 			expect(legacyFiles()).toHaveLength(2);
 			const dashboardFm = parseNoteFrontmatter(
-				(app.vault as any)._getContent(projectFile.path)
+				app.vault._getContent(projectFile.path)
 			);
 			expect(dashboardFm.legacy_commits).toBe("keep");
 		});
@@ -308,7 +310,7 @@ describe("CodeProjectManager.refreshProject unreleased commits note (C1)", () =>
 			mockOneRelease(["aaaaaaa0000001"]);
 			const confirmLegacyCleanup = jest.fn().mockResolvedValue(true);
 
-			await (manager as any).refreshProject(projectFile, undefined, {
+			await manager.refreshProject(projectFile, undefined, {
 				confirmLegacyCleanup,
 			});
 

@@ -3,9 +3,8 @@
  */
 
 import { App } from "../../__mocks__/obsidian";
-import { createMockApp, clearVault } from "../../__mocks__/testHelpers";
+import { asObsidianApp, createMockApp, clearVault } from "../../__mocks__/testHelpers";
 import { DataviewJSManager } from "../../dataview/manager";
-import { DataviewScriptBuilder } from "../../dataview/builder";
 
 describe("DataviewScriptBuilder", () => {
 	let app: App;
@@ -14,7 +13,7 @@ describe("DataviewScriptBuilder", () => {
 
 	beforeEach(async () => {
 		app = createMockApp();
-		manager = new DataviewJSManager(app, scriptsFolder);
+		manager = new DataviewJSManager(asObsidianApp(app), scriptsFolder);
 		await manager.onload();
 	});
 

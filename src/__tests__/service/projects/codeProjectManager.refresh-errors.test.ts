@@ -4,10 +4,12 @@
  * on success.
  */
 
-import { App, TFile, requestUrl } from "../../../__mocks__/obsidian";
+import type { TFile as ObsidianTFile } from "obsidian";
+import { App, requestUrl } from "../../../__mocks__/obsidian";
 import {
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
 	clearVault,
 	createMockCommit,
 	createMockRelease,
@@ -21,21 +23,21 @@ const RELEASES = "/repos/owner/repo/releases";
 describe("CodeProjectManager.refreshProject errors (C3)", () => {
 	let app: App;
 	let manager: CodeProjectManager;
-	let projectFile: TFile;
+	let projectFile: ObsidianTFile;
 	let getSecret: jest.Mock;
 
-	const setDashboardCache = (fm: Record<string, any>) =>
+	const setDashboardCache = (fm: Record<string, unknown>) =>
 		setFrontmatterCache(app.metadataCache, projectFile.path, fm);
 
 	beforeEach(async () => {
 		app = createMockApp();
 		manager = new CodeProjectManager(
-			app as any,
+			asObsidianApp(app),
 			createMockSettings({ projectRootPath: "Projects" })
 		);
-		projectFile = (await manager.createProject("ErrProj")) as unknown as TFile;
+		projectFile = await manager.createProject("ErrProj");
 		getSecret = jest.fn(async (key: string) => (key === "gh_key" ? "tok" : null));
-		(app as any).secretStorage = { getSecret };
+		app.secretStorage = { getSecret };
 	});
 
 	afterEach(() => {
@@ -45,7 +47,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 	it("throws when the repo field is missing, without any request", async () => {
 		setDashboardCache({ defaultBranch: "main" });
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+		await expect(manager.refreshProject(projectFile)).rejects.toThrow(
 			/Missing repo field \(owner\/name\)/
 		);
 		expect(requestUrl).not.toHaveBeenCalled();
@@ -55,7 +57,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 		setDashboardCache({ repo: "owner/repo", defaultBranch: "main" });
 
 		await expect(
-			manager.refreshProject(projectFile as any, "missing_key")
+			manager.refreshProject(projectFile, "missing_key")
 		).rejects.toThrow(/No PAT found for key "missing_key"/);
 		expect(requestUrl).not.toHaveBeenCalled();
 	});
@@ -64,7 +66,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 		setDashboardCache({ repo: "owner/repo", defaultBranch: "main" });
 		mockGitHubApi({ [RELEASES]: { status: 404, json: { message: "Not Found" } } });
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+		await expect(manager.refreshProject(projectFile)).rejects.toThrow(
 			/Listing releases of owner\/repo failed \(404\): .*untick Public and pick a PAT/
 		);
 	});
@@ -79,7 +81,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 			[RELEASES]: { status: 401, json: { message: "Bad credentials" } },
 		});
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+		await expect(manager.refreshProject(projectFile)).rejects.toThrow(
 			/\(401\): GitHub rejected the PAT/
 		);
 	});
@@ -98,7 +100,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 			},
 		});
 
-		await expect(manager.refreshProject(projectFile as any)).rejects.toThrow(
+		await expect(manager.refreshProject(projectFile)).rejects.toThrow(
 			/Synced 1 releases, but comparing v2\.0\.0\.\.\.main failed \(404\): The tag or the branch was not found/
 		);
 		expect(
@@ -131,7 +133,7 @@ describe("CodeProjectManager.refreshProject errors (C3)", () => {
 			},
 		});
 
-		const summary = await manager.refreshProject(projectFile as any);
+		const summary = await manager.refreshProject(projectFile);
 
 		expect(summary).toMatchObject({ releases: 2, unreleasedCommits: 3 });
 	});

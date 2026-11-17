@@ -17,6 +17,7 @@ import {
 	selectPullFiles,
 	resolvePullTarget,
 } from "../../../service/github/repoPull";
+import type { GitHubContentEntry } from "../../../service/github/repoPull";
 import type { GithubPullRule } from "../../../types";
 
 const rule = (overrides: Partial<GithubPullRule> = {}): GithubPullRule => ({
@@ -29,7 +30,10 @@ const rule = (overrides: Partial<GithubPullRule> = {}): GithubPullRule => ({
 });
 
 /** Contents API directory entry. */
-const entry = (name: string, overrides: Record<string, any> = {}) => ({
+const entry = (
+	name: string,
+	overrides: Partial<GitHubContentEntry> = {}
+): GitHubContentEntry => ({
 	name,
 	path: `lit/papers/${name}`,
 	sha: "0".repeat(40),
@@ -138,26 +142,23 @@ describe("selectPullFiles (B6)", () => {
 			entry("d.pdf"),
 		];
 
-		const selected = selectPullFiles(entries as any, rule());
+		const selected = selectPullFiles(entries, rule());
 
-		expect(selected.map((e: any) => e.name)).toEqual(["a.pdf", "d.pdf"]);
+		expect(selected.map((e) => e.name)).toEqual(["a.pdf", "d.pdf"]);
 		expect(selected[0]).toEqual(entries[0]);
 	});
 
 	it("tests the pattern against the name without anchoring it", () => {
 		const entries = [entry("2026-report.md"), entry("notes.md"), entry("report")];
 
-		const selected = selectPullFiles(
-			entries as any,
-			rule({ filePattern: "report" })
-		);
+		const selected = selectPullFiles(entries, rule({ filePattern: "report" }));
 
-		expect(selected.map((e: any) => e.name)).toEqual(["2026-report.md", "report"]);
+		expect(selected.map((e) => e.name)).toEqual(["2026-report.md", "report"]);
 	});
 
 	it("returns an empty list when nothing matches", () => {
-		expect(selectPullFiles([entry("a.txt")] as any, rule())).toEqual([]);
-		expect(selectPullFiles([] as any, rule())).toEqual([]);
+		expect(selectPullFiles([entry("a.txt")], rule())).toEqual([]);
+		expect(selectPullFiles([], rule())).toEqual([]);
 	});
 });
 

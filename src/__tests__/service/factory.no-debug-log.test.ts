@@ -7,6 +7,7 @@ import {
 	createMockApp,
 	createMockSettings,
 	clearVault,
+	asObsidianApp,
 } from "../../__mocks__/testHelpers";
 import { NoteFactory } from "../../service/factory";
 import type { INoteOption } from "../../types";
@@ -17,7 +18,7 @@ describe("NoteFactory.createNoteFromOption: no debug output (A6)", () => {
 
 	beforeEach(async () => {
 		app = createMockApp();
-		factory = new NoteFactory(app as any);
+		factory = new NoteFactory(asObsidianApp(app));
 		await factory.initialize(createMockSettings({ autoOpenNewNote: false }));
 		await app.vault.createFolder("001-Fleeting");
 	});
@@ -34,7 +35,7 @@ describe("NoteFactory.createNoteFromOption: no debug output (A6)", () => {
 			specificFolder: "001-Fleeting",
 		};
 
-		const note = await (factory as any).createNoteFromOption(option, "Quiet Note");
+		const note = await factory.createNoteFromOption(option, "Quiet Note");
 
 		expect(note).toBeTruthy();
 		expect(

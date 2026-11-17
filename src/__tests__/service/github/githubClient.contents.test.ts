@@ -13,27 +13,13 @@ import {
 	getHeader,
 	githubFileRoute,
 	mockGitHubApi,
+	readPath,
 	requestedCalls,
 	toArrayBuffer,
 } from "../../../__mocks__/testHelpers";
 import { GitHubClient } from "../../../service/github/githubClient";
 
-interface ContentsCapable {
-	listDirectory(
-		owner: string,
-		repo: string,
-		path: string,
-		ref: string
-	): Promise<any[]>;
-	downloadRaw(
-		owner: string,
-		repo: string,
-		path: string,
-		ref: string
-	): Promise<ArrayBuffer>;
-}
-
-const client = (token: string) => new GitHubClient(token) as unknown as ContentsCapable;
+const client = (token: string) => new GitHubClient(token);
 
 const LISTING = [
 	{
@@ -102,7 +88,7 @@ describe("GitHubClient.listDirectory (B6)", () => {
 			.catch((e) => e);
 
 		expect(err).toBeInstanceOf(Error);
-		expect((err as { status?: number }).status).toBe(404);
+		expect(readPath(err, "status")).toBe(404);
 	});
 });
 
@@ -153,7 +139,7 @@ describe("GitHubClient.downloadRaw (B6)", () => {
 
 	it("returns the arrayBuffer even when the bytes are not text", async () => {
 		const buffer = toArrayBuffer(new Uint8Array([0xc3, 0x28, 0xa0, 0xa1]));
-		(requestUrl as jest.Mock).mockResolvedValue({
+		requestUrl.mockResolvedValue({
 			status: 200,
 			headers: {},
 			text: "�(��",
@@ -183,6 +169,6 @@ describe("GitHubClient.downloadRaw (B6)", () => {
 			.downloadRaw("octo", "notes", "lit/a.pdf", "main")
 			.catch((e) => e);
 
-		expect((err as { status?: number }).status).toBe(403);
+		expect(readPath(err, "status")).toBe(403);
 	});
 });

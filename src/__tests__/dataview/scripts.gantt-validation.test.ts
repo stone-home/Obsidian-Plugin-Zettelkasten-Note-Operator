@@ -8,10 +8,13 @@
  */
 
 import {
+	asObsidianApp,
 	createMockApp,
 	createFakeDv,
 	createFakePage,
+	readPath,
 	runDataviewScript,
+	type FakePage,
 } from "../../__mocks__/testHelpers";
 import { DataviewJSManager, getDefaultScriptContent } from "../../dataview/manager";
 
@@ -31,7 +34,7 @@ function isValidIsoDate(s: string): boolean {
 }
 
 /** Luxon-DateTime-like value, as Dataview gives for date frontmatter and file.mtime. */
-function dt(iso: string): any {
+function dt(iso: string) {
 	const day = iso.slice(0, 10);
 	const millis = Date.parse(iso.length > 10 ? iso : `${day}T00:00:00Z`);
 	const [year, month, dayOfMonth] = day.split("-").map(Number);
@@ -64,39 +67,48 @@ const fakeLuxon = {
 	DateTime: {
 		fromISO: (s: string) => (isValidIsoDate(s) ? dt(s) : invalidDateTime()),
 		fromJSDate: (d: Date) => dt(d.toISOString()),
-		isDateTime: (o: any) => !!o?.isLuxonDateTime,
+		isDateTime: (o: unknown) => Boolean(readPath(o, "isLuxonDateTime")),
 	},
 };
 
 const draft = (
 	name: string,
-	fields: Record<string, any>,
+	fields: Record<string, unknown>,
 	mtime = "2026-11-12T10:00:00Z"
 ) => createFakePage(`${P}/drafts/${name}.md`, fields, { mtime: dt(mtime) });
 const experiment = (
 	name: string,
-	fields: Record<string, any>,
+	fields: Record<string, unknown>,
 	mtime = "2026-11-25T10:00:00Z"
 ) => createFakePage(`${P}/experiments/${name}.md`, fields, { mtime: dt(mtime) });
 const objective = (
 	name: string,
-	fields: Record<string, any>,
+	fields: Record<string, unknown>,
 	mtime = "2026-11-25T10:00:00Z"
 ) => createFakePage(`${P}/objectives/${name}.md`, fields, { mtime: dt(mtime) });
 
-async function runGantt(pages: any[]) {
-	const { dv, out } = createFakeDv({
+/** dv.date: a Luxon-like value stays as it is when valid; an ISO date string becomes one. */
+function dvDate(v: unknown) {
+	if (readPath(v, "isLuxonDateTime")) return readPath(v, "isValid") ? v : null;
+	return typeof v === "string" && isValidIsoDate(v) ? dt(v) : null;
+}
+
+/** The built-in default content of a script; fails the test when there is none. */
+function defaultContentOf(id: string): string {
+	const content = getDefaultScriptContent(id);
+	if (content === null) throw new Error(`No default content for ${id}`);
+	return content;
+}
+
+async function runGantt(pages: FakePage[]) {
+	const { dv: baseDv, out } = createFakeDv({
 		currentPath: `${P}/Dashboard.md`,
 		currentFields: { granularity: "day" },
 		pages,
 	});
-	dv.luxon = fakeLuxon;
-	dv.date = (v: any) => {
-		if (v && v.isLuxonDateTime) return v.isValid ? v : null;
-		return typeof v === "string" && isValidIsoDate(v) ? dt(v) : null;
-	};
+	const dv = Object.assign(baseDv, { luxon: fakeLuxon, date: dvDate });
 	await runDataviewScript(
-		getDefaultScriptContent("zk-research-gantt")!,
+		defaultContentOf("zk-research-gantt"),
 		dv,
 		{},
 		{
@@ -111,17 +123,20 @@ async function runGantt(pages: any[]) {
 	return { out, lines, problemTable };
 }
 
-function mentions(cell: any, needle: string): boolean {
-	if (cell && typeof cell === "object" && typeof cell.path === "string")
-		return cell.path.includes(needle);
+function mentions(cell: unknown, needle: string): boolean {
+	const path = readPath(cell, "path");
+	if (typeof path === "string") return path.includes(needle);
 	return String(cell).includes(needle);
 }
 
-const problemRowFor = (table: { rows: any[][] } | undefined, needle: string) =>
+const problemRowFor = (table: { rows: unknown[][] } | undefined, needle: string) =>
 	table?.rows.find((r) => mentions(r[0], needle));
 
 beforeAll(async () => {
-	await new DataviewJSManager(createMockApp() as any, "dataview-scripts").onload();
+	await new DataviewJSManager(
+		asObsidianApp(createMockApp()),
+		"dataview-scripts"
+	).onload();
 });
 
 describe("zk-research-gantt date validation (D7)", () => {
@@ -145,7 +160,7 @@ describe("zk-research-gantt date validation (D7)", () => {
 		expect(problemTable).toBeDefined();
 		const row = problemRowFor(problemTable, "Backwards");
 		expect(row).toBeDefined();
-		expect(row![1]).toBe("end");
+		expect(row?.[1]).toBe("end");
 	});
 
 	it("does not draw an experiment with start 'tbd' and lists it with field 'start'", async () => {
@@ -156,7 +171,7 @@ describe("zk-research-gantt date validation (D7)", () => {
 		expect(lines.some((l) => l.includes("Ablation]"))).toBe(false);
 		const row = problemRowFor(problemTable, "Ablation");
 		expect(row).toBeDefined();
-		expect(row![1]).toBe("start");
+		expect(row?.[1]).toBe("start");
 	});
 
 	it("lists an objective with an impossible date and skips objectives without start or end silently", async () => {
@@ -171,7 +186,7 @@ describe("zk-research-gantt date validation (D7)", () => {
 		expect(lines.some((l) => l.includes("Someday]"))).toBe(false);
 		const leapRow = problemRowFor(problemTable, "Leap");
 		expect(leapRow).toBeDefined();
-		expect(leapRow![1]).toBe("start");
+		expect(leapRow?.[1]).toBe("start");
 		expect(problemRowFor(problemTable, "Open")).toBeUndefined();
 		expect(problemRowFor(problemTable, "Someday")).toBeUndefined();
 	});

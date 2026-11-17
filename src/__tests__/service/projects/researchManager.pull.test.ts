@@ -11,16 +11,20 @@
  *   Resolves to { added, updated, skipped, failed, unknownRules, warnings }.
  */
 
+import type { TFile as ObsidianTFile } from "obsidian";
 import { App, TFile, requestUrl, stringifyYaml } from "../../../__mocks__/obsidian";
 import {
 	clearNotices,
 	clearVault,
 	createMockApp,
 	createMockSettings,
+	asObsidianApp,
+	asObsidianFile,
 	enforceVaultFolderRules,
 	getHeader,
 	gitBlobShaForTest,
 	githubFileRoute,
+	mockFileOf,
 	mockGitHubApi,
 	noticeMessages,
 	parseNoteFrontmatter,
@@ -33,33 +37,15 @@ import {
 import { ResearchManager } from "../../../service/projects/researchManager";
 import { DEFAULT_SETTINGS } from "../../../constants";
 import { setOrmMergeMode } from "../../../__mocks__/markdown-note-orm";
-
-type PullRule = {
-	id: string;
-	label?: string;
-	sourceDir: string;
-	filePattern: string;
-	target: string;
-};
-type PullResult = {
-	added: number;
-	updated: number;
-	skipped: number;
-	failed: number;
-	unknownRules: string[];
-	warnings: string[];
-};
-interface PullCapable {
-	pullFromGitHub(projectFile: TFile, tokenKey?: string): Promise<PullResult>;
-	setPullRules(projectFile: TFile, ids: string[]): Promise<void>;
-}
+import type { GitHubContentEntry } from "../../../service/github/repoPull";
+import type { GithubPullRule } from "../../../types";
 
 const PROJECT = "Research/P";
 const DASHBOARD = `${PROJECT}/Dashboard.md`;
 const TOKEN = "pull-token-value";
 const API = "/repos/octo/notes/contents";
 
-const RULES: PullRule[] = [
+const RULES: GithubPullRule[] = [
 	{
 		id: "papers",
 		label: "Papers",
@@ -94,8 +80,8 @@ const fileEntry = (
 	dir: string,
 	name: string,
 	content: Uint8Array | string,
-	overrides: Record<string, any> = {}
-) => ({
+	overrides: Partial<GitHubContentEntry> = {}
+): GitHubContentEntry => ({
 	name,
 	path: `${dir}/${name}`,
 	sha: gitBlobShaForTest(content),
@@ -108,15 +94,14 @@ const fileEntry = (
 describe("ResearchManager pull from GitHub (B6)", () => {
 	let app: App;
 	let manager: ResearchManager;
-	let pull: PullCapable;
-	let projectFile: TFile;
+	let projectFile: ObsidianTFile;
 	let spies: ReturnType<typeof enforceVaultFolderRules>;
 
-	const setDashboard = async (fm: Record<string, any>) => {
+	const setDashboard = async (fm: Record<string, unknown>) => {
 		const content = `---\n${stringifyYaml(fm)}---\n\n# Research Command Center\n`;
 		const existing = app.vault.getAbstractFileByPath(DASHBOARD);
 		if (existing instanceof TFile) await app.vault.modify(existing, content);
-		else projectFile = await app.vault.create(DASHBOARD, content);
+		else projectFile = asObsidianFile(await app.vault.create(DASHBOARD, content));
 		setFrontmatterCache(app.metadataCache, DASHBOARD, fm);
 	};
 
@@ -127,7 +112,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 	const readLocal = async (path: string) => {
 		const file = app.vault.getAbstractFileByPath(path);
 		expect(file).toBeInstanceOf(TFile);
-		return Buffer.from(await app.vault.readBinary(file as TFile));
+		return Buffer.from(await app.vault.readBinary(mockFileOf(file)));
 	};
 
 	const papersListing = () => [
@@ -185,14 +170,13 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 	beforeEach(async () => {
 		app = createMockApp();
 		manager = new ResearchManager(
-			app as any,
+			asObsidianApp(app),
 			createMockSettings({
 				researchRootPath: "Research",
 				githubPullRules: RULES,
-			} as any)
+			})
 		);
-		pull = manager as unknown as PullCapable;
-		(app as any).secretStorage = {
+		app.secretStorage = {
 			getSecret: jest.fn(async (key: string) =>
 				key === "gh" ? TOKEN : key === "other" ? "other-token" : null
 			),
@@ -222,7 +206,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 
 	describe("settings and Dashboard fields", () => {
 		it("DEFAULT_SETTINGS has an empty githubPullRules list", () => {
-			expect((DEFAULT_SETTINGS as any).githubPullRules).toEqual([]);
+			expect(DEFAULT_SETTINGS.githubPullRules).toEqual([]);
 		});
 
 		it("createProject writes github_pull: [] on a new Dashboard", async () => {
@@ -231,9 +215,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			try {
 				const file = await manager.createProject("Fresh");
 
-				const fm = parseNoteFrontmatter(
-					(app.vault as any)._getContent(file.path)
-				);
+				const fm = parseNoteFrontmatter(app.vault._getContent(file.path));
 				expect(fm.github_pull).toEqual([]);
 			} finally {
 				setOrmMergeMode("override");
@@ -243,10 +225,10 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("setPullRules writes github_pull through processFrontMatter and keeps other keys", async () => {
 			const processSpy = jest.spyOn(app.fileManager, "processFrontMatter");
 
-			await pull.setPullRules(projectFile, ["data", "papers", "zzz999"]);
+			await manager.setPullRules(projectFile, ["data", "papers", "zzz999"]);
 
 			expect(processSpy).toHaveBeenCalled();
-			const fm = parseNoteFrontmatter((app.vault as any)._getContent(DASHBOARD));
+			const fm = parseNoteFrontmatter(app.vault._getContent(DASHBOARD));
 			expect(fm.github_pull).toEqual(["data", "papers", "zzz999"]);
 			expect(fm.repo).toBe("octo/notes");
 			expect(
@@ -255,11 +237,10 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		});
 
 		it("setPullRules can clear the list", async () => {
-			await pull.setPullRules(projectFile, []);
+			await manager.setPullRules(projectFile, []);
 
 			expect(
-				parseNoteFrontmatter((app.vault as any)._getContent(DASHBOARD))
-					.github_pull
+				parseNoteFrontmatter(app.vault._getContent(DASHBOARD)).github_pull
 			).toEqual([]);
 		});
 	});
@@ -268,7 +249,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("adds missing files, updates changed ones, skips identical ones", async () => {
 			standardRoutes();
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result).toMatchObject({
 				added: 2,
@@ -302,7 +283,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("lists each sourceDir on the Dashboard branch, with the PAT", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			const listings = urlsMatching(/\/contents\/(lit\/papers|data)\?/);
 			expect(listings.map((c) => c.url)).toEqual([
@@ -319,7 +300,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("downloads raw bytes only for added or changed files", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			expect(urlsMatching(/\/b\.pdf/)).toHaveLength(0);
 			expect(urlsMatching(/\/a\.pdf/)).toHaveLength(1);
@@ -334,7 +315,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("does not descend into folders or fetch submodules and non-matching files", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			expect(urlsMatching(/\/lit\/papers\/sub/)).toHaveLength(0);
 			expect(urlsMatching(/module\.pdf/)).toHaveLength(0);
@@ -345,9 +326,9 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			const modifySpy = jest.spyOn(app.vault, "modifyBinary");
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
-			expect(modifySpy.mock.calls.map((c) => (c[0] as TFile).path)).toEqual([
+			expect(modifySpy.mock.calls.map((c) => c[0].path)).toEqual([
 				`${PROJECT}/materials/papers/c.pdf`,
 			]);
 			expect(spies.createBinary.mock.calls.map((c) => c[0]).sort()).toEqual([
@@ -359,7 +340,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("creates missing folders one segment at a time", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			expect(spies.createFolder.mock.calls.map((c) => c[0])).toEqual([
 				`${PROJECT}/materials/data`,
@@ -372,7 +353,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			const deleteSpy = jest.spyOn(app.vault, "delete");
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			expect(trashSpy).not.toHaveBeenCalled();
 			expect(deleteSpy).not.toHaveBeenCalled();
@@ -392,7 +373,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			});
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			const listings = urlsMatching(/\/contents\/(lit\/papers|data)\?/).map(
 				(c) => c.url
@@ -412,7 +393,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			});
 			standardRoutes();
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.unknownRules).toEqual(["ghost"]);
 			expect(result).toMatchObject({ added: 1, failed: 0 });
@@ -435,7 +416,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				),
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result).toMatchObject({ added: 1, failed: 0 });
 			expect(urlsMatching(/\/contents\/data\?/)[0].url).toBe(
@@ -446,7 +427,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("shows a Notice that summarises added, updated, skipped and failed", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile);
+			await manager.pullFromGitHub(projectFile);
 
 			const summary = noticeMessages().find((m) => /added/i.test(m));
 			expect(summary).toBeDefined();
@@ -465,7 +446,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				[`${API}/lit/papers`]: routeForRef("trunk", { json: many }),
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.warnings.some((w) => w.includes("lit/papers"))).toBe(true);
 		});
@@ -478,7 +459,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				[`${API}/lit/papers`]: routeForRef("trunk", { json: some }),
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.warnings.some((w) => w.includes("lit/papers"))).toBe(false);
 		});
@@ -490,7 +471,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				}),
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.failed).toBe(1);
 			expect(result.warnings.length).toBeGreaterThan(0);
@@ -509,7 +490,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				},
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.failed).toBe(1);
 			expect(
@@ -528,7 +509,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				},
 			});
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result).toMatchObject({
 				added: 1,
@@ -555,7 +536,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 				github_pull: ["data"],
 			});
 
-			await expect(pull.pullFromGitHub(projectFile)).rejects.toThrow(
+			await expect(manager.pullFromGitHub(projectFile)).rejects.toThrow(
 				/Missing repo/
 			);
 			expect(requestUrl).not.toHaveBeenCalled();
@@ -565,7 +546,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			standardRoutes();
 
 			await expect(
-				pull.pullFromGitHub(projectFile, "missing-key")
+				manager.pullFromGitHub(projectFile, "missing-key")
 			).rejects.toThrow(/No PAT found for key/);
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
@@ -573,7 +554,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 		it("prefers the tokenKey argument over the Dashboard key", async () => {
 			standardRoutes();
 
-			await pull.pullFromGitHub(projectFile, "other");
+			await manager.pullFromGitHub(projectFile, "other");
 
 			expect(requestedCalls().length).toBeGreaterThan(0);
 			for (const call of requestedCalls()) {
@@ -592,7 +573,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			});
 			standardRoutes();
 
-			const result = await pull.pullFromGitHub(projectFile);
+			const result = await manager.pullFromGitHub(projectFile);
 
 			expect(result.added).toBe(1);
 			expect(requestedCalls().length).toBeGreaterThan(0);
@@ -610,7 +591,7 @@ describe("ResearchManager pull from GitHub (B6)", () => {
 			});
 			standardRoutes();
 
-			await expect(pull.pullFromGitHub(projectFile)).rejects.toThrow(/PAT/);
+			await expect(manager.pullFromGitHub(projectFile)).rejects.toThrow(/PAT/);
 			expect(requestUrl).not.toHaveBeenCalled();
 		});
 	});
