@@ -14,6 +14,7 @@ An Obsidian plugin for managing Zettelkasten notes with integrated project manag
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
 - [Architecture](#architecture)
+- [Development](#development)
 - [License](#license)
 
 ## Features
@@ -39,7 +40,7 @@ To run from a clone of this repo instead, run `npm ci` and `npm run build` in th
 Common workflows:
 
 - **Create a new note**: click the **+** ribbon icon or run *Create New Zettel Note* → choose a note type → pick a template → enter a title. The note is created in the folder set for that type (e.g. `004-Permanent/`). If a note with that name already exists, you are asked before it is overwritten.
-- **Search and link**: run *Open Zettelkasten Search* (or click Search in the dashboard). Set the target folder, type to filter, then **Open** a result or **Insert** a `[[path|name]]` wikilink at the cursor. Double-click a result to add the current note to that note's `sources` frontmatter.
+- **Search and link**: run *Open Zettelkasten Search* (or click Search in the dashboard). Set the target folder, type to filter, then **Open** a result or **Insert** a `[[path]]` wikilink (vault path without `.md`) at the cursor. Double-click a result to add the current note to that note's `sources` frontmatter.
 - **Research project**: from the dashboard click **Research** → create or open a project. In the project's `Dashboard.md`, use Quick Actions to create objectives, steps, experiments and drafts. The **Drafts** list has a **Generate AI Prompt** and a **Push to GitHub** button per draft; the command *Generate AI Prompt from current draft* does the same for the active draft. See [Pulling files from GitHub](#pulling-files-from-github) to bring results back from the repo.
 - **Code project**: from the dashboard click **Projects** → create or open a project. In `Dashboard.md` set `repo` (e.g. `owner/repo`), pick a PAT for a private repo or tick **Public**, then click **Refresh** to sync releases and unreleased commits. Create requirements and link them to releases in the Requirements table.
 - **Call the plugin from a script**: in a DataviewJS block use `window.ZettelkastenOperator`, e.g. `await ZettelkastenOperator.createResearchDraft(dv.current().file.path, "My Draft")`. See [API Reference](#api-reference).
@@ -273,6 +274,8 @@ With **Reload default scripts on load** on (the default), the plugin records a h
 
 Start a custom script with a block-comment header. The opening `/**` must be on its own line, and each tag is written as `@tag value` (no colon). Without a header, the script ID is the file name.
 
+Optional tags are `@category`, `@tags` (a comma-separated list, e.g. `@tags research, gantt`) and one `@param {type} name - description` line per parameter; a description that ends with `(required)` marks the parameter as required. These tags are only stored with the script; the plugin does not check the parameters of a code block against them.
+
 ```javascript
 /**
  * @id my-custom-script
@@ -295,7 +298,7 @@ Settings are grouped in four tabs.
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Fleeting / Literature / Atom / Permanent Default Path | Folder for each note type | `001-Fleeting`, `002-Literature`, `003-Atom`, `004-Permanent` |
-| Lexicon / Hub Default Path | Folders read by AI prompt rules and research tables | `005-Lexicon`, `006-Hubs` |
+| Lexicon / Hub/MoC Default Path | Folders read by AI prompt rules and research tables | `005-Lexicon`, `006-Hubs` |
 | Search default folder | Starting folder of the search modal | `002-Literature` |
 
 **Projects**
@@ -309,6 +312,8 @@ Settings are grouped in four tabs.
 | GitHub pull rules | Rules for [pulling files from GitHub](#pulling-files-from-github) | none |
 
 AI prompt rules match linked notes by folder, tag or regex and apply *import full*, *import summary* (named sections), *citation only*, or *ignore*. Citation list entries use `citationKey → Title` for Zotero/Pandoc.
+
+The first rule that matches a note applies. A folder rule matches notes inside that folder, and a regex rule is tested against the note's path. A tag rule matches when a text item of the frontmatter `tags` list, or a text `tag` value, contains the rule's value: a quoted `"2024"` counts, but an unquoted number such as `2024` or a nested list does not.
 
 **Dataview**
 
@@ -329,7 +334,7 @@ Each template has a name, category (note type), specific folder, filename prefix
 
 ### Global Window Object
 
-The plugin exposes `window.ZettelkastenOperator` for use in Dataview scripts. Methods that take `projectPath` expect the path of the project's `Dashboard.md`.
+The plugin exposes `window.ZettelkastenOperator` for use in Dataview scripts. Methods that take `projectPath` expect the path of the project's `Dashboard.md`; the `create…` methods also accept the project folder, but objectives, steps, experiments and drafts created that way are prefixed only with initials derived from the folder name (the Dashboard's `project_code` and date are not used). `createResearchStep` also accepts an objective folder, which it links as `[[folder]]`. `pushToGitHub` given a project folder pushes nothing: it shows "No GitHub repo configured" and returns zero counts.
 
 ```typescript
 interface ZettelkastenOperator {
@@ -363,7 +368,7 @@ interface ZettelkastenOperator {
 }
 ```
 
-`tokenKey` is a SecretStorage key; pass `""` for a public repo without a PAT.
+`tokenKey` is a SecretStorage key; when it is omitted, the dashboard's `github_token_key` is used. Pass `""` to `refreshCodeProject` for a public repo without a PAT; `pullFromGitHub` with `""` needs `public_repo: true` in the dashboard, and `pushToGitHub` always needs a PAT.
 
 ### Usage in Dataview Scripts
 
@@ -388,6 +393,30 @@ try {
 ## Architecture
 
 The plugin has a core (main, settings, types), a service layer (note factory, research and code project managers, draft compiler, prompt generator, GitHub client and helpers), a Dataview layer (code block processor and script manager) and a UI layer (dashboard, search and project modals). For components, call flows and a debugging guide see [docs/architecture.md](docs/architecture.md); for the PlantUML diagrams see [docs/diagrams.md](docs/diagrams.md).
+
+## Development
+
+Install the dependencies with `npm ci`, then run every check through the npm scripts:
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Builds `main.js` and `styles.css` and rebuilds on every change (inline source maps) |
+| `npm run build` | Type check, then the production build of `main.js` and `styles.css` |
+| `npm run lint` | ESLint 9 on `src/` with the flat config `eslint.config.mjs` |
+| `npm run typecheck` | TypeScript check of `src/` without the `*.test.ts` files (`tsconfig.json`; mocks and test setup are still included) |
+| `npm run typecheck:tests` | TypeScript check of the sources, tests and mocks (`tsconfig.test.json`) |
+| `npm run format`, `npm run format:check` | Prettier on `src/**/*.{ts,json,md}`: double quotes, tabs from `.editorconfig` |
+| `npm test` | Jest tests |
+| `npm run test:coverage` | Jest with the coverage gate: all of `src/` except tests and mocks, with minimum thresholds in `jest.config.ts` that are raised as coverage grows |
+
+Repository layout:
+
+- `src/`: plugin sources; `src/main.ts` is the entry module.
+- `src/__tests__/`: Jest tests, mirroring the `src/` tree and named after the module (or, for `dataview/scripts.*`, the built-in Dataview scripts) and the behavior they check (e.g. `service/factory.overwrite-confirm.test.ts`).
+- `src/__mocks__/`: test doubles for `obsidian` and `markdown-note-orm`, plus shared builders in `testHelpers.ts`.
+- `docs/`: published documentation (architecture and diagrams).
+- `pkm/`: internal project notes, such as the project brief (`OPZO - Brief.md`) and the requirements (`OPZO - Requirement - *.md`).
+- `AGENTS.md`: instructions for coding agents; `CLAUDE.md` imports it.
 
 ## License
 

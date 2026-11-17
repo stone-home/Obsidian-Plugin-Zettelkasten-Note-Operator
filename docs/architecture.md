@@ -150,8 +150,8 @@ All creation, refresh, push and pull from within a note goes through `window.Zet
 
 ### 5.4 Running Tests
 
-- Tests live under `src/__tests__/`, with Obsidian and markdown-note-orm mocks in `src/__mocks__/` (`testHelpers.ts` has a fake GitHub GraphQL server, contents API routes and a fake Dataview harness). `src/__tests__/verify/` holds independent acceptance checks.
-- Run `npm test`; `npx jest --coverage` enforces the thresholds in `jest.config.ts`. Type check with `npx tsc -noEmit -skipLibCheck`; build with `npm run build`.
+- Tests live under `src/__tests__/`, with Obsidian and markdown-note-orm mocks in `src/__mocks__/` (`testHelpers.ts` has a fake GitHub GraphQL server, contents API routes and a fake Dataview harness; `settingsTabHarness.ts` drives the settings tab). The test tree mirrors `src/`, and each file is named after the module (or, for `dataview/scripts.*`, the built-in Dataview scripts) and the behavior it checks, such as `factory.overwrite-confirm.test.ts`.
+- Run `npm test`; `npm run test:coverage` enforces the thresholds in `jest.config.ts`. Type check with `npm run typecheck` and `npm run typecheck:tests`; build with `npm run build`.
 - The ORM mock can mimic the real library's merge rule with `setOrmMergeMode("preserve-existing")`.
 - Built-in script text can be run in tests with `getDefaultScriptContent(id)` and `runDataviewScript` from the helpers.
 
